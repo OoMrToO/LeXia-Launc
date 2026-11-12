@@ -10,7 +10,6 @@ on:
       - "pick.json"
       - "docs/**"
       - "scripts/pick.py"
-      - "remote.json"
       - ".github/workflows/daily-pick.yml"
       - ".github/workflows/publish.yml"
   workflow_dispatch:

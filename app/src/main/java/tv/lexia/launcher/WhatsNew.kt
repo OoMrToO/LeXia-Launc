@@ -46,7 +46,7 @@ object WhatsNew {
         val key = fingerprint(items(a))
         val last = prefs.seenNews.ifEmpty { if (before >= 102) SHOWN_IN_102 else "" }
         prefs.seenNews = key
-        if (!fresh && key != last) show(a, ui)
+        // Personal build: no card after updates (Ayarlar › Hakkında still shows the list).
     }
 
     /** [vote]: right after an update, the card also asks whether the release is liked (once per build). */

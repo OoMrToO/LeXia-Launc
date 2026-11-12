@@ -188,26 +188,17 @@ object Remote {
 
     private var loaded = false
 
-    /** The copy kept on the TV, read once, so hidden films stay hidden before the internet is up. */
+    /**
+     * This LeXia is one person's own: there are no remote settings (no announcements, no forced
+     * update, no held builds, nothing switched off from afar). Everything stays at its default.
+     * Kept as calls so the screens that ask stay the same.
+     */
     fun loadSaved(ctx: Context) {
         if (loaded) return
         loaded = true
-        val file = java.io.File(ctx.filesDir, "remote.json")
-        use(try { if (file.exists()) file.readText() else null } catch (e: Exception) { null })
     }
 
-    /** Fetches remote.json (on a background thread) and keeps a copy for offline starts. */
     fun refresh(ctx: Context) {
-        val file = java.io.File(ctx.filesDir, "remote.json")
         loadSaved(ctx)
-        val t = "?t=" + System.currentTimeMillis()
-        val fresh = Net.fromHosts("/remote.json" + t) ?: return
-        use(fresh)
-        applyDefaults(ctx)
-        ping(ctx)
-        try {
-            file.writeText(fresh)
-        } catch (e: Exception) {
-        }
     }
 }

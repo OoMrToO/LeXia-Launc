@@ -1,13 +1,10 @@
 name: Publish files
 
-# Puts what the TV reads on the files site (Cloudflare Pages): the film list, the remote settings,
-# the newest APK and its number. No pages, no counters.
+# Puts what the TV reads on the files site (Cloudflare Pages): the film list, the newest APK and
+# its number. No pages, no counters, no remote settings.
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ["remote.json"]
 
 concurrency:
   group: publish
@@ -36,9 +33,7 @@ jobs:
         run: |
           set -e
           mkdir -p out/apk
-          # A broken remote.json stops here.
-          python3 -c "import json;json.load(open('remote.json'))"
-          cp pick.json remote.json out/
+          cp pick.json out/
           if gh release download latest -p app.apk -p kur.apk -p version.txt -D rel 2>/dev/null; then
             cp rel/app.apk out/apk/app.apk
             cp rel/app.apk out/apk/test.apk
