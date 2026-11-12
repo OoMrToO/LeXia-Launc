@@ -138,7 +138,7 @@ class AddonPlayerActivity : Activity() {
     override fun onStop() {
         saveProgress()
         handler.removeCallbacks(progressTask)
-        playerView.player = null
+        if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
         super.onStop()
