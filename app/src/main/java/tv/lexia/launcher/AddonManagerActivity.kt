@@ -150,7 +150,8 @@ class AddonManagerActivity : Activity() {
     private fun showCatalogItems(
         addon: Addons.Installed,
         catalog: Addons.Catalog,
-        entries: List<Addons.CatalogItem>
+        entries: List<Addons.CatalogItem>,
+        nextSkip: Int = entries.size
     ) {
         val labels = entries.map { item ->
             item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · " + item.releaseInfo else ""
@@ -212,14 +213,14 @@ class AddonManagerActivity : Activity() {
                 status.text = "Sonraki katalog sayfası yükleniyor…"
                 worker.execute {
                     try {
-                        val more = Addons.fetchCatalog(addon, catalog, skip = entries.size)
+                        val more = Addons.fetchCatalog(addon, catalog, skip = nextSkip)
                         val known = entries.map { it.id }.toSet()
                         val unique = more.filterNot { it.id in known }
                         runOnUiThread {
                             if (unique.isEmpty()) {
                                 Toast.makeText(this, "Başka kayıt bulunamadı.", Toast.LENGTH_LONG).show()
                             } else {
-                                showCatalogItems(addon, catalog, entries + unique)
+                                showCatalogItems(addon, catalog, entries + unique, nextSkip + more.size)
                             }
                         }
                     } catch (e: Exception) {
