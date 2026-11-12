@@ -232,11 +232,11 @@ class AddonManagerActivity : Activity() {
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
                 val message = buildString {
                     append("Sezon ${episode.season}, bölüm ${episode.episode}")
-                    if (episode.released.isNotBlank()) append("\\nYayın: ${episode.released}")
+                    if (episode.released.isNotBlank()) append("\nYayın: ${episode.released}")
                     if (saved != null && saved.durationMs > 0) {
-                        append("\\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
+                        append("\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
                     }
-                    append("\\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
+                    append("\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
                 }
                 AlertDialog.Builder(this)
                     .setTitle(episode.title)
