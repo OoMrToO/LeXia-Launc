@@ -62,7 +62,7 @@ android {
         }
     }
 
-    // The app has no libraries and no translations; lint's release check would only slow the build.
+    // The app has no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
         abortOnError = false
