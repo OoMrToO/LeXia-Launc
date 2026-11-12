@@ -195,7 +195,7 @@ class AddonManagerActivity : Activity() {
                                 if (episodes.isNotEmpty()) showEpisodes(addon, seriesProgressId, episodes)
                                 else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
                             } else {
-                                DetailActivity.open(this, film)
+                                askMovieSource(film, seriesProgressId)
                             }
                         }
                     } catch (e: Exception) {
@@ -206,6 +206,25 @@ class AddonManagerActivity : Activity() {
                     }
                 }
             }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun askMovieSource(film: Pick, progressId: String) {
+        val input = EditText(this).apply {
+            hint = "https://ornek.com/video.mp4"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle(film.title)
+            .setMessage("Yalnızca kullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir. Eklenti kaynak uçları çağrılmaz.")
+            .setView(input)
+            .setPositiveButton("Oynat") { _, _ ->
+                openDirectPlayer(input.text.toString(), progressId, 0, 1)
+            }
+            .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
             .show()
     }
@@ -222,50 +241,57 @@ class AddonManagerActivity : Activity() {
                 progress != null && progress.positionMs > 0 -> " · Devam"
                 else -> ""
             }
-            "S${episode.season} · B${episode.episode}  ${episode.title}$marker"
+            val release = episode.released.take(10).takeIf { it.isNotBlank() }?.let { " · " + it }.orEmpty()
+            "S" + episode.season + " · B" + episode.episode + "  " + episode.title + release + marker
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("${addon.name} · Bölümler")
+            .setTitle(addon.name + " · Bölümler")
             .setItems(labels) { _, index ->
                 val episode = episodes[index]
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
-                val message = buildString {
-                    append("Sezon ${episode.season}, bölüm ${episode.episode}")
-                    if (episode.released.isNotBlank()) append("\nYayın: ${episode.released}")
-                    if (saved != null && saved.durationMs > 0) {
-                        append("\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
-                    }
-                    append("\n\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
-                }
-                val sourceInput = EditText(this).apply {
+                val progressText = if (saved != null && saved.durationMs > 0) {
+                    "İlerleme: " + (saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100) + "%"
+                } else "Henüz izleme ilerlemesi yok."
+                val input = EditText(this).apply {
                     hint = "https://ornek.com/video.mp4"
                     setSingleLine(true)
                     setTextColor(-1)
                     setHintTextColor(0xFF8B929E.toInt())
                 }
-                val dialog = AlertDialog.Builder(this)
+                val message = buildString {
+                    append("Sezon " + episode.season + ", bölüm " + episode.episode + "\n")
+                    if (episode.released.isNotBlank()) append("Yayın: " + episode.released + "\n")
+                    append(progressText)
+                    append("\n\nKullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir.")
+                }
+                AlertDialog.Builder(this)
                     .setTitle(episode.title)
                     .setMessage(message)
-                    .setView(sourceInput)
+                    .setView(input)
                     .setPositiveButton("Oynat") { _, _ ->
-                        val source = sourceInput.text.toString().trim()
-                        val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
-                        if (uri?.scheme != "https" || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) {
-                            Toast.makeText(this, "Yalnızca doğrudan HTTPS medya adresi kabul edilir.", Toast.LENGTH_LONG).show()
-                        } else {
-                            startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
-                                putExtra(AddonPlayerActivity.EXTRA_URL, source)
-                                putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, seriesId)
-                                putExtra(AddonPlayerActivity.EXTRA_SEASON, episode.season)
-                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode.episode)
-                            })
-                        }
+                        openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
                     }
                     .setNegativeButton("Kapat", null)
                     .show()
             }
             .setNegativeButton("Kapat", null)
             .show()
+    }
+
+    private fun openDirectPlayer(rawUrl: String, progressId: String, season: Int, episode: Int) {
+        val source = rawUrl.trim()
+        val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
+        if (uri == null || !uri.scheme.equals("https", true) ||
+            uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) {
+            Toast.makeText(this, "Yalnızca doğrudan HTTPS medya adresi kabul edilir.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+            putExtra(AddonPlayerActivity.EXTRA_URL, source)
+            putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, progressId)
+            putExtra(AddonPlayerActivity.EXTRA_SEASON, season)
+            putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode)
+        })
     }
 
     override fun onDestroy() {
