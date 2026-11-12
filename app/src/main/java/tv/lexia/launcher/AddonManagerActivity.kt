@@ -190,13 +190,8 @@ class AddonManagerActivity : Activity() {
                         runOnUiThread {
                             status.text = "Metadata yüklendi: " + film.title
                             if (isSeries) {
-                                status.text = if (episodes.isEmpty()) {
-                                    "Metadata yüklendi; sağlayıcı bölüm listesi sunmuyor."
-                                } else {
-                                    episodes.size.toString() + " bölüm bulundu."
-                                }
-                                if (episodes.isNotEmpty()) showEpisodes(addon, seriesProgressId, episodes)
-                                else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
+                                status.text = episodes.size.toString() + " bölüm bulundu."
+                                showSeriesOverview(film, seriesProgressId, episodes)
                             } else {
                                 askMovieSource(film, seriesProgressId)
                             }
@@ -230,6 +225,52 @@ class AddonManagerActivity : Activity() {
                     }
                 }
             }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showSeriesOverview(
+        film: Pick,
+        progressId: String,
+        episodes: List<Addons.EpisodeItem>
+    ) {
+        val message = buildString {
+            if (film.meta.isNotBlank()) append(film.meta)
+            if (film.runtime > 0) {
+                if (isNotEmpty()) append(" · ")
+                append(film.runtime.toString() + " dk")
+            }
+            if (film.seasons > 0) {
+                if (isNotEmpty()) append(" · ")
+                append(film.seasons.toString() + " sezon")
+            }
+            if (film.overview.isNotBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append(film.overview)
+            }
+            if (isNotEmpty()) append("\n\n")
+            append(episodes.size.toString() + " bölüm metadata kaydı")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(film.title)
+            .setMessage(message)
+            .setPositiveButton(if (episodes.isEmpty()) "Tamam" else "Bölümler") { _, _ ->
+                if (episodes.isNotEmpty()) showEpisodes(
+                    Addons.Installed(
+                        baseUrl = "",
+                        id = "",
+                        name = "",
+                        version = "",
+                        description = "",
+                        types = emptyList(),
+                        catalogs = emptyList(),
+                        resources = emptySet()
+                    ),
+                    progressId,
+                    episodes
+                )
+            }
+            .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
             .show()
     }
