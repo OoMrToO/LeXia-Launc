@@ -165,6 +165,19 @@ class AddonManagerActivity : Activity() {
                         val isSeries = meta.type.equals("series", true) ||
                             meta.type.equals("tv", true) || catalog.type.equals("series", true) ||
                             catalog.type.equals("tv", true)
+                        if (isSeries) {
+                            val episodes = Addons.fetchEpisodes(
+                                addon, item.type.ifBlank { catalog.type }, item.id
+                            )
+                            runOnUiThread {
+                                status.text = if (episodes.isEmpty()) {
+                                    "Metadata açıldı; bu sağlayıcı bölüm listesi sunmuyor."
+                                } else {
+                                    " ${episodes.size} bölüm bulundu."
+                                }
+                                if (episodes.isNotEmpty()) showEpisodes(addon, item.id, episodes)
+                            }
+                        }
                         val film = Pick(
                             title = meta.name.ifBlank { item.name.ifBlank { item.id } },
                             meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
@@ -193,6 +206,43 @@ class AddonManagerActivity : Activity() {
                         }
                     }
                 }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showEpisodes(
+        addon: Addons.Installed,
+        seriesId: String,
+        episodes: List<Addons.EpisodeItem>
+    ) {
+        val labels = episodes.map { episode ->
+            val progress = WatchProgress.get(this, seriesId, episode.season, episode.episode)
+            val marker = when {
+                progress?.isComplete == true -> " ✓"
+                progress != null && progress.positionMs > 0 -> " · Devam"
+                else -> ""
+            }
+            "S${episode.season} · B${episode.episode}  ${episode.title}$marker"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("${addon.name} · Bölümler")
+            .setItems(labels) { _, index ->
+                val episode = episodes[index]
+                val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
+                val message = buildString {
+                    append("Sezon ${episode.season}, bölüm ${episode.episode}")
+                    if (episode.released.isNotBlank()) append("\\nYayın: ${episode.released}")
+                    if (saved != null && saved.durationMs > 0) {
+                        append("\\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
+                    }
+                    append("\\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(episode.title)
+                    .setMessage(message)
+                    .setPositiveButton("Tamam", null)
+                    .show()
             }
             .setNegativeButton("Kapat", null)
             .show()
