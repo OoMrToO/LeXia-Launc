@@ -237,10 +237,31 @@ class AddonManagerActivity : Activity() {
                     }
                     append("\\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
                 }
-                AlertDialog.Builder(this)
+                val sourceInput = EditText(this).apply {
+                    hint = "https://ornek.com/video.mp4"
+                    setSingleLine(true)
+                    setTextColor(-1)
+                    setHintTextColor(0xFF8B929E.toInt())
+                }
+                val dialog = AlertDialog.Builder(this)
                     .setTitle(episode.title)
                     .setMessage(message)
-                    .setPositiveButton("Tamam", null)
+                    .setView(sourceInput)
+                    .setPositiveButton("Oynat") { _, _ ->
+                        val source = sourceInput.text.toString().trim()
+                        val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
+                        if (uri?.scheme != "https" || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) {
+                            Toast.makeText(this, "Yalnızca doğrudan HTTPS medya adresi kabul edilir.", Toast.LENGTH_LONG).show()
+                        } else {
+                            startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+                                putExtra(AddonPlayerActivity.EXTRA_URL, source)
+                                putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, seriesId)
+                                putExtra(AddonPlayerActivity.EXTRA_SEASON, episode.season)
+                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode.episode)
+                            })
+                        }
+                    }
+                    .setNegativeButton("Kapat", null)
                     .show()
             }
             .setNegativeButton("Kapat", null)
