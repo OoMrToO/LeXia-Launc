@@ -190,5 +190,9 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <activity
+            android:name=".AddonManagerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
     </application>
 </manifest>
