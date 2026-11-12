@@ -3,6 +3,7 @@ package tv.lexia.launcher
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -60,7 +61,7 @@ object Addons {
 
     fun add(context: Context, raw: String) {
         val url = normalize(raw)
-        require(url.startsWith("https://")) { "Güvenlik için yalnızca HTTPS adresleri kabul edilir." }
+        require(url.startsWith("https://", true)) { "Güvenlik için yalnızca HTTPS adresleri kabul edilir." }
         val values = urls(context).toMutableSet()
         values.add(url)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -78,9 +79,7 @@ object Addons {
         val base = normalize(raw)
         val manifestUrl = if (base.endsWith("/manifest.json")) base else "$base/manifest.json"
         val json = JSONObject(getText(manifestUrl))
-        val resources = JSONArray(json.optString("resources", "[]").let {
-            if (it.startsWith("[")) it else "[]"
-        })
+        val resources = json.optJSONArray("resources") ?: JSONArray()
         val resourceSet = mutableSetOf<String>()
         for (i in 0 until resources.length()) {
             val value = resources.opt(i)
@@ -227,10 +226,21 @@ object Addons {
                 connection.instanceFollowRedirects = false
                 val code = connection.responseCode
                 if (code in 200..299) {
-                    val stream = connection.inputStream
-                    val output = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                    require(output.length <= 4 * 1024 * 1024) { "Yanıt boyutu 4 MB sınırını aşıyor." }
-                    return output
+                    val output = ByteArrayOutputStream()
+                    connection.inputStream.use { input ->
+                        val buffer = ByteArray(8 * 1024)
+                        var total = 0
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 4 * 1024 * 1024) {
+                                "Yanıt boyutu 4 MB sınırını aşıyor."
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    return output.toString(Charsets.UTF_8.name())
                 }
                 if (code in 301..308) {
                     require(redirectCount < 5) { "Çok fazla yönlendirme." }
