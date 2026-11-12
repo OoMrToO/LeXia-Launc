@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and later: only the Listem backup code goes to the Google account or a new device. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="lexia_backup.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="lexia_backup.xml" />
+    </device-transfer>
+</data-extraction-rules>

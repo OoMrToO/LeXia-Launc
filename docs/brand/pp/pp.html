@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- Profile pictures for the LeXia admin's accounts (1024 x 1024, safe for round crops). Render: node docs/brand/pp/render.js -->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: Inter; font-weight: 600; src: url(../../../app/src/main/assets/fonts/Inter_600SemiBold.ttf); }
+@font-face { font-family: Inter; font-weight: 800; src: url(../../../app/src/main/assets/fonts/Inter_800ExtraBold.ttf); }
+* { margin: 0; box-sizing: border-box; }
+body { background: #000; }
+.pp { width: 1024px; height: 1024px; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: Inter, sans-serif; color: #fff; }
+.g { background: linear-gradient(135deg,#FFB36B,#FF4D8D 45%,#8A6CFF 70%,#6FB7FF); -webkit-background-clip: text; color: transparent; }
+.bg1 { background: radial-gradient(circle at 30% 20%, #2A1E5A 0%, #0B0A16 60%, #050508 100%); }
+.bg2 { background: linear-gradient(160deg, #1A1238 0%, #0A0A12 60%); }
+.bg3 { background: radial-gradient(circle at 50% 40%, #1E1C3A 0%, #07070C 70%); }
+.glow { position: absolute; width: 900px; height: 900px; border-radius: 50%; filter: blur(120px); opacity: .35;
+        background: conic-gradient(from 200deg, #FF4D8D, #8A6CFF, #6FB7FF, #FFB36B, #FF4D8D); }
+</style></head><body>
+<div class="pp bg1" id="amblem"><div class="glow"></div>
+  <img src="../emblem.png" style="width:620px;height:620px;position:relative;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))"></div>
+<div class="pp bg2" id="yazili"><div class="glow" style="opacity:.25"></div>
+  <img src="../emblem.png" style="width:460px;height:460px;position:relative;margin-top:-40px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))">
+  <div style="position:relative;font-size:130px;font-weight:800;letter-spacing:-.035em;margin-top:20px"><span class="g">L</span>e<span class="g">X</span>ia</div></div>
+<div class="pp bg3" id="admin"><div class="glow" style="opacity:.3"></div>
+  <img src="../emblem.png" style="width:540px;height:540px;position:relative;margin-top:-60px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))">
+  <div style="position:relative;margin-top:26px;padding:16px 46px;border-radius:999px;background:#fff;color:#0B0B0D;font-size:54px;font-weight:800;letter-spacing:.18em">ADMIN</div></div>
+</body></html>

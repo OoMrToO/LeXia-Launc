@@ -1,0 +1,64 @@
+name: Publish files
+
+# Puts what the TV reads on the files site (Cloudflare Pages): the film list, the remote settings,
+# the newest APK and its number. No pages, no counters.
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["remote.json"]
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PROJECT: lexia-tv
+      WRANGLER: wrangler@3.99.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p out/apk
+          # A broken remote.json stops here.
+          python3 -c "import json;json.load(open('remote.json'))"
+          cp pick.json remote.json out/
+          if gh release download latest -p app.apk -p kur.apk -p version.txt -D rel 2>/dev/null; then
+            cp rel/app.apk out/apk/app.apk
+            cp rel/app.apk out/apk/test.apk
+            cp rel/kur.apk out/kur.apk
+            cp rel/version.txt out/version.txt
+            cp rel/version.txt out/test.txt
+          else
+            echo "Henüz derleme yok; yalnızca film listesi yayınlanıyor."
+          fi
+          cat > out/_headers <<'H'
+          /*
+            X-Content-Type-Options: nosniff
+            X-Robots-Tag: noindex, nofollow
+            Cache-Control: no-cache
+          /pick.json
+            Cache-Control: public, max-age=300
+          H
+          printf 'User-agent: *\nDisallow: /\n' > out/robots.txt
+          du -sh out
+      - name: Deploy
+        run: |
+          npx -y $WRANGLER pages project create $PROJECT --production-branch main 2>/dev/null || true
+          npx -y $WRANGLER pages deploy out --project-name $PROJECT --branch main --commit-dirty=true

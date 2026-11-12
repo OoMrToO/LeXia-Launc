@@ -1,0 +1,29 @@
+name: Daily pick
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pick:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/pick.py
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add pick.json
+          git commit -m "Günlük öneri" || echo "değişiklik yok"
+          git push
+
+  publish:
+    needs: pick
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit

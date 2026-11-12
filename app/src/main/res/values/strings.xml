@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_button_label">LeXia Ana Sayfa tuşu</string>
+    <string name="home_button_desc">Kumandadaki Ana Sayfa tuşuna basınca Google TV ekranı yerine LeXia açılır. Ekrandaki içerik okunmaz; yalnızca Ana Sayfa tuşu yakalanır.</string>
+</resources>

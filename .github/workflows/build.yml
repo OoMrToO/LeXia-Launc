@@ -1,0 +1,112 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    # Notes and the daily film list don't change the app, so they don't make a new build.
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - "pick.json"
+      - "docs/**"
+      - "scripts/pick.py"
+      - "remote.json"
+      - ".github/workflows/daily-pick.yml"
+      - ".github/workflows/publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PROJECT: lexia-tv
+      WRANGLER: wrangler@3.99.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secrets
+        run: |
+          for n in KEYSTORE_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [ -z "${!n}" ]; then echo "::error::Depo sırrı eksik: $n (Settings › Secrets and variables › Actions)"; exit 1; fi
+          done
+      # A settings name reused with another type crashes LeXia at every start.
+      - name: Settings keys
+        run: python3 scripts/check_prefs.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      # The signing key is made once, locked with KEYSTORE_PASSWORD, and kept in the repository.
+      # Every later build must use the same key, or the TV refuses the update.
+      - name: Signing key (made once)
+        run: |
+          set -e
+          if [ ! -f app/signing.p12 ]; then
+            keytool -genkeypair -storetype PKCS12 -keystore app/signing.p12 -alias lexia \
+              -keyalg RSA -keysize 4096 -validity 20000 -dname "CN=LeXia" \
+              -storepass:env KEYSTORE_PASSWORD -keypass:env KEYSTORE_PASSWORD
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add app/signing.p12
+            git commit -qm "İmza anahtarı"
+            git push -q origin HEAD:main
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The files site (film list, updates) is a Cloudflare Pages project; its address is compiled
+      # into the app, so it is created and looked up before the build.
+      - name: Site address
+        run: |
+          set -e
+          address() {
+            curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT" |
+              python3 -c "import json,sys; print((json.load(sys.stdin).get('result') or {}).get('subdomain') or '')"
+          }
+          HOST=$(address)
+          if [ -z "$HOST" ]; then
+            npx -y $WRANGLER pages project create $PROJECT --production-branch main
+            HOST=$(address)
+          fi
+          test -n "$HOST"
+          echo "LEXIA_SITE=https://$HOST" >> "$GITHUB_ENV"
+          echo "Site: https://$HOST"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+      - run: gradle assembleFullRelease assembleSetupRelease --no-daemon
+      - run: |
+          cp app/build/outputs/apk/full/release/app-full-release.apk app.apk
+          cp app/build/outputs/apk/full/release/app-full-release.apk app-${{ github.run_number }}.apk
+          cp app/build/outputs/apk/setup/release/app-setup-release.apk kur.apk
+          echo "${{ github.run_number }}" > version.txt
+      # Turns the scrambled names in a crash report back into real ones.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mapping-${{ github.run_number }}
+          path: app/build/outputs/mapping/fullRelease/mapping.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Son sürüm
+          make_latest: true
+          files: |
+            app-${{ github.run_number }}.apk
+            app.apk
+            kur.apk
+            version.txt
+
+  publish:
+    needs: build
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit

@@ -1,0 +1,1141 @@
+package tv.lexia.launcher
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.text.TextUtils
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+
+/**
+ * A trailer inside LeXia: YouTube's own embedded player, full screen, run with the remote.
+ * The video still comes from YouTube; only the YouTube app is skipped. When a trailer may not be
+ * embedded (the studio turned it off) or nothing plays, it opens in the YouTube app as before.
+ * Can be switched off in Ayarlar › Filmler › "Fragmanlar LeXia'da oynasın".
+ */
+class TrailerActivity : Activity() {
+
+    companion object {
+        private const val EXTRA_ID = "id"
+        private const val EXTRA_TITLE = "title"
+        private const val EXTRA_LIST = "list"
+        private const val EXTRA_TITLES = "titles"
+
+        /** The films of the trailers being opened (same order), for the menu and the end card; read once. */
+        private var pendingFilms: List<Pick> = emptyList()
+
+        /** Opens the trailer of [p], with its film known (Listeme ekle, Çıkınca haber ver, Detaylar). */
+        fun open(a: Activity, p: Pick) {
+            pendingFilms = listOf(p)
+            open(a, p.trailer, p.title)
+        }
+
+        /** A marathon of these films' trailers. */
+        fun marathon(a: Activity, films: List<Pick>) {
+            val ok = films.filter { ID.matches(it.trailer) }
+            pendingFilms = ok
+            marathon(a, ok.map { it.trailer }, ok.map { it.title })
+        }
+
+        /** Several trailers one after another ("Fragman maratonu"); a trailer that cannot play is skipped. */
+        fun marathon(a: Activity, ids: List<String>, titles: List<String>) {
+            val ok = ids.indices.filter { ID.matches(ids[it]) }
+            if (ok.isEmpty()) return
+            a.startActivity(
+                Intent(a, TrailerActivity::class.java)
+                    .putExtra(EXTRA_ID, ids[ok[0]]).putExtra(EXTRA_TITLE, titles.getOrElse(ok[0]) { "" })
+                    .putStringArrayListExtra(EXTRA_LIST, ArrayList(ok.map { ids[it] }))
+                    .putStringArrayListExtra(EXTRA_TITLES, ArrayList(ok.map { titles.getOrElse(it) { "" } }))
+            )
+            a.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        }
+        private val ID = Regex("^[A-Za-z0-9_-]{6,20}$")
+
+        /** Opens a trailer: inside LeXia when the setting is on (Ayarlar › Filmler), otherwise in the YouTube app. */
+        fun open(a: Activity, id: String, title: String) {
+            if (!ID.matches(id)) {
+                Glass.toast(a, "Fragman bulunamadı")
+                return
+            }
+            val prefs = Prefs(a)
+            if (prefs.trailerInApp) {
+                a.startActivity(Intent(a, TrailerActivity::class.java).putExtra(EXTRA_ID, id).putExtra(EXTRA_TITLE, title))
+                a.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            } else {
+                pendingFilms = emptyList()
+                youtube(a, id)
+            }
+        }
+
+        /** "Netflix'i", "Disney+'ı", "Prime Video'yu", "MUBI'yi", "Apple TV'yi": the name as an object. */
+        fun accusative(name: String): String {
+            val n = name.trim()
+            if (n.endsWith("+")) return "$n'ı"
+            if (n.uppercase().endsWith("TV")) return "$n'yi"
+            val low = n.lowercase(java.util.Locale("tr", "TR"))
+            val v = low.lastOrNull { it in "aıeiouöü" } ?: 'e'
+            val ending = when (v) { 'a', 'ı' -> "ı"; 'e', 'i' -> "i"; 'o', 'u' -> "u"; else -> "ü" }
+            return if (low.last() in "aıeiouöü") "$n'y$ending" else "$n'$ending"
+        }
+
+        /** "Netflix'te", "Prime Video'da", "Disney+'ta", "Apple TV'de", "MUBI'de": the name with -de/-da. */
+        fun locative(name: String): String {
+            val n = name.trim()
+            val tr = java.util.Locale("tr", "TR")
+            if (n.endsWith("+")) return "$n'ta"
+            if (n.uppercase(tr).endsWith("TV")) return "$n'de"
+            val low = n.lowercase(tr)
+            val back = (low.lastOrNull { it in "aıeiouöü" } ?: 'e') in "aıou"
+            val hard = low.last() in "çfhkpsştx"
+            return "$n'" + (if (hard) "t" else "d") + (if (back) "a" else "e")
+        }
+
+        fun youtube(ctx: Context, id: String) {
+            try {
+                ctx.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$id"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e: Exception) {
+                Glass.toast(ctx, "Fragman açılamadı")
+            }
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var web: WebView? = null
+    private lateinit var ui: Ui
+    private lateinit var prefs: Prefs
+    private lateinit var frame: FrameLayout
+
+    // Controls, drawn by LeXia over YouTube's player (see the design: title top left, buttons and bar below).
+    /** Everything shown on a key press or while paused; fades after four seconds of playing. */
+    private lateinit var info: FrameLayout
+    private lateinit var infoLabel: TextView
+    private lateinit var infoTitle: TextView
+    private lateinit var infoMeta: LinearLayout
+    private lateinit var buttons: LinearLayout
+    private lateinit var nextCard: LinearLayout
+    private lateinit var nextThumb: ImageView
+    private lateinit var nextTitle: TextView
+    private lateinit var track: FrameLayout
+    private lateinit var barFill: View
+    private lateinit var knob: View
+    private lateinit var tip: TextView
+    private lateinit var timeLeft: TextView
+    private lateinit var hint: TextView
+    /** Big play sign in a glass circle while paused. */
+    private lateinit var center: TextView
+    /** "+30 sn" while skipping with the arrows held. */
+    private lateinit var bubble: TextView
+    private lateinit var status: TextView
+    /** Black over the player until it plays and while paused: hides YouTube's title, logo and "more videos". */
+    private lateinit var shield: View
+    /** Two black halves that part like a cinema curtain when the first trailer starts, and close at the end. */
+    private lateinit var curtainTop: View
+    private lateinit var curtainLow: View
+    private var curtainOpen = false
+    /** The cast on the right, from "Oyuncular"; the trailer keeps playing. */
+    private var castPanel: View? = null
+    /** The film's own colour on the bar and knob. */
+    private var barColor = Color.WHITE
+
+    private var id = ""
+    private var currentTitle = ""
+    private var playing = false
+    private var paused = false
+    private var done = false
+    /** Marathon: every trailer and its title, and which one is on. */
+    private var list: List<String> = emptyList()
+    private var titles: List<String> = emptyList()
+    private var at = 0
+    /** The films being played, when the opener gave them (same order as [list]). */
+    private var films: List<Pick> = emptyList()
+    /** The remote is on the buttons (▲); otherwise its keys run the trailer. */
+    private var onButtons = false
+    private var skipSum = 0
+    /** Where the trailer is, 0..1, for the bar. */
+    private var progress = 0f
+    /** When a trailer ends: what to do next, instead of closing. */
+    private var endCard: View? = null
+    private var countdown: Runnable? = null
+
+    private val skipEnd = Runnable { skipSum = 0; bubble.animate().alpha(0f).setDuration(D.MED).start() }
+    /** Nothing played after this long: the YouTube app takes over (or the next trailer). */
+    private val giveUp = Runnable { if (!playing) { if (list.size > 1) nextTrailer() else fallBack() } }
+    private val hideInfo = Runnable { if (!paused && !onButtons && endCard == null) info.animate().alpha(0f).setDuration(D.MED).start() }
+    /** While the controls are on screen, the time and bar follow the trailer twice a second. */
+    private val tick = object : Runnable {
+        override fun run() {
+            if (info.alpha > 0f) readTime()
+            handler.postDelayed(this, 500)
+        }
+    }
+
+    private fun shieldTo(a: Float) {
+        shield.animate().cancel()
+        shield.animate().alpha(a).setDuration(D.MED).start()
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        id = intent.getStringExtra(EXTRA_ID) ?: ""
+        prefs = Prefs(this)
+        films = pendingFilms
+        pendingFilms = emptyList()
+        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        list = intent.getStringArrayListExtra(EXTRA_LIST)?.filter { ID.matches(it) } ?: emptyList()
+        titles = intent.getStringArrayListExtra(EXTRA_TITLES) ?: emptyList()
+        if (!ID.matches(id)) {
+            finish()
+            return
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        ui = Ui(this)
+        frame = FrameLayout(this)
+        frame.setBackgroundColor(Color.BLACK)
+        frame.clipChildren = false
+
+        // Some TVs have no working web view; then the YouTube app it is.
+        val w = try {
+            WebView(this)
+        } catch (e: Throwable) {
+            null
+        }
+        if (w == null) {
+            fallBack()
+            return
+        }
+        web = w
+        w.setBackgroundColor(Color.BLACK)
+        w.isFocusable = false
+        w.settings.javaScriptEnabled = true
+        w.settings.domStorageEnabled = true
+        w.settings.mediaPlaybackRequiresUserGesture = false
+        w.settings.setSupportZoom(false)
+        w.webViewClient = object : WebViewClient() {
+            // Links inside the player (YouTube logo, "watch on YouTube") open the YouTube app instead.
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                fallBack()
+                return true
+            }
+        }
+        // The page reports back through its title: "p" playing, "pause", "end" finished, "e:<code>" error.
+        w.webChromeClient = object : WebChromeClient() {
+            override fun onReceivedTitle(view: WebView, t: String?) {
+                when {
+                    t == "p" -> onPlaying()
+                    t == "pause" -> onPaused()
+                    t == "end" -> showEnd()
+                    t != null && t.startsWith("e:") -> if (list.size > 1 && at < list.size - 1) nextTrailer() else fallBack()
+                }
+            }
+        }
+        frame.addView(w, ui.fl(ui.match, ui.match))
+        shield = View(this)
+        shield.setBackgroundColor(Color.BLACK)
+        frame.addView(shield, ui.fl(ui.match, ui.match))
+        val half = resources.displayMetrics.heightPixels / 2 + 2
+        curtainTop = View(this)
+        curtainTop.setBackgroundColor(Color.BLACK)
+        frame.addView(curtainTop, ui.fl(ui.match, half, Gravity.TOP))
+        curtainLow = View(this)
+        curtainLow.setBackgroundColor(Color.BLACK)
+        frame.addView(curtainLow, ui.fl(ui.match, half, Gravity.BOTTOM))
+
+        center = ui.text("▶", 56, Color.WHITE, 400)
+        center.gravity = Gravity.CENTER
+        center.setPadding(ui.u(12), 0, 0, 0)
+        center.background = ui.round(Color.argb(60, 255, 255, 255), 75, 1, Color.argb(70, 255, 255, 255))
+        center.alpha = 0f
+        val clp = ui.fl(ui.u(150), ui.u(150), Gravity.CENTER)
+        clp.bottomMargin = ui.u(130)
+        frame.addView(center, clp)
+
+        bubble = ui.text("", 30, C.INK, 800)
+        bubble.gravity = Gravity.CENTER
+        bubble.setPadding(ui.u(26), ui.u(10), ui.u(26), ui.u(10))
+        bubble.background = ui.round(Color.WHITE, 30)
+        bubble.alpha = 0f
+        frame.addView(bubble, ui.fl(ui.wrap, ui.wrap, Gravity.CENTER))
+
+        status = ui.text(if (title.isEmpty()) "Fragman yükleniyor…" else "$title  ·  fragman yükleniyor…", 26, C.TEXT2, 500)
+        frame.addView(status, ui.fl(ui.wrap, ui.wrap, Gravity.CENTER))
+
+        currentTitle = title
+        buildControls()
+        setContentView(frame)
+        bindFilm()
+        showInfo()
+        handler.post(tick)
+
+        // A trailer left half way: carry on from there, or start again (a marathon always starts at the top).
+        val saved = if (list.size <= 1) prefs.trailerAt[id] ?: 0 else 0
+        if (saved >= 8) {
+            Dialogs.list(
+                this, "Kaldığın yerden?", listOf("Kaldığın yerden devam et" to clock(saved.toDouble()), "Baştan başla" to ""),
+                subtitle = title, icon = R.drawable.ic_film, cancel = { load(w, 0) }
+            ) { i -> load(w, if (i == 0) saved else 0) }
+        } else {
+            load(w, 0)
+        }
+    }
+
+    /**
+     * YouTube's own iframe player. The page address is LeXia's site, so YouTube knows where it is embedded.
+     * The frame is taller than the screen (same width): the video keeps the full width with no zoom, while
+     * YouTube's title (frame top) and logo and "more videos" (frame bottom) fall off the screen.
+     * A marathon keeps a second, hidden player with the next trailer ready, so the next one starts at once.
+     * The sound rises softly at the start and falls at the end.
+     */
+    private fun load(w: WebView, start: Int) {
+        if (done || isFinishing) return
+        val html = """
+            <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}.f{position:fixed;left:0;top:-20vh;width:100vw;height:140vh;pointer-events:none}.f iframe{width:100%;height:100%;border:0}</style>
+            </head><body><div class="f" id="w0"><div id="p0"></div></div><div class="f" id="w1" style="visibility:hidden"><div id="p1"></div></div>
+            <script src="https://www.youtube.com/iframe_api"></script>
+            <script>
+            var P=[null,null],cur=0,cued=['',''],ready=[false,false],player=null,fading=null,faded=false;
+            var PV={autoplay:0,controls:0,rel:0,playsinline:1,iv_load_policy:3,modestbranding:1,fs:0,disablekb:1,cc_load_policy:0,cc_lang_pref:'tr',hl:'tr'};
+            function mk(i,v,start){
+              var pv={};for(var k in PV)pv[k]=PV[k];if(start>0)pv.start=start;
+              P[i]=new YT.Player('p'+i,{videoId:v,playerVars:pv,
+                events:{
+                  onReady:function(e){ready[i]=true;subs(e.target);
+                    if(i===cur){player=e.target;e.target.setVolume(0);e.target.playVideo();}
+                    else if(cued[i]&&cued[i]!==v){e.target.cueVideoById(cued[i]);}},
+                  onApiChange:function(e){subs(e.target);},
+                  onStateChange:function(e){if(i!==cur)return;
+                    if(e.data===1){document.title='p';if(!faded){faded=true;fadeTo(100,1600);}setTimeout(function(){subs(e.target);},400);setTimeout(function(){subs(e.target);},2500);}
+                    else if(e.data===0)document.title='end';else if(e.data===2)document.title='pause';},
+                  onError:function(e){if(i===cur)document.title='e:'+e.data;}
+                }});
+            }
+            function onYouTubeIframeAPIReady(){mk(0,'$id',$start);}
+            // Subtitles only in Turkish: a Turkish track if the video has one, otherwise none at all.
+            function subs(pl){try{if(!pl||!pl.getOption)return;var l=pl.getOption('captions','tracklist')||[];var t=null;
+              for(var i=0;i<l.length;i++){if(String(l[i].languageCode||'').indexOf('tr')===0){t=l[i];break;}}
+              if(t){pl.setOption('captions','track',{languageCode:t.languageCode});}
+              else{pl.setOption('captions','track',{});pl.unloadModule('captions');pl.unloadModule('cc');}}catch(x){}}
+            function fadeTo(t,ms){clearInterval(fading);var p=player;if(!p||!p.setVolume)return;var v=0;try{v=p.getVolume();}catch(x){}
+              var n=Math.max(1,Math.round(ms/50)),d=(t-v)/n,k=0;
+              fading=setInterval(function(){k++;v+=d;try{p.setVolume(Math.max(0,Math.min(100,Math.round(v))));}catch(x){}if(k>=n)clearInterval(fading);},50);}
+            function toggle(){if(!player)return;if(player.getPlayerState()===1)player.pauseVideo();else player.playVideo();}
+            function seek(s){if(!player)return;player.seekTo(Math.max(0,player.getCurrentTime()+s),true);}
+            function play(v){document.title='';faded=false;clearInterval(fading);var o=1-cur;
+              if(P[o]&&ready[o]&&cued[o]===v){try{player.stopVideo();}catch(x){}
+                document.getElementById('w'+cur).style.visibility='hidden';document.getElementById('w'+o).style.visibility='visible';
+                cur=o;player=P[o];cued[o]='';player.setVolume(0);player.playVideo();subs(player);}
+              else{if(!player)return;player.setVolume(0);player.loadVideoById(v);}}
+            function prep(v){var o=1-cur;if(cued[o]===v)return;cued[o]=v;if(!P[o]){mk(o,v,0);}else if(ready[o]){P[o].cueVideoById(v);}}
+            </script></body></html>
+        """.trimIndent()
+        w.loadDataWithBaseURL(Net.OLD_SITE + "/", html, "text/html", "utf-8", null)
+        handler.removeCallbacks(giveUp)
+        handler.postDelayed(giveUp, 15000)
+    }
+
+    // ---------- Controls ----------
+
+    private fun buildControls() {
+        info = FrameLayout(this)
+        info.clipChildren = false
+        val top = View(this)
+        top.background = ui.gradient(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, Color.argb(150, 0, 0, 0), Color.TRANSPARENT)
+        info.addView(top, ui.fl(ui.match, ui.u(300), Gravity.TOP))
+        val low = View(this)
+        low.background = ui.gradient(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(215, 0, 0, 0), Color.TRANSPARENT)
+        info.addView(low, ui.fl(ui.match, ui.u(470), Gravity.BOTTOM))
+
+        // Top left: what is playing.
+        val head = ui.vbox()
+        infoLabel = ui.label("")
+        head.addView(infoLabel)
+        infoTitle = ui.text("", 52, C.TEXT, 800)
+        infoTitle.letterSpacing = -0.02f
+        infoTitle.maxLines = 1
+        infoTitle.ellipsize = TextUtils.TruncateAt.END
+        head.addView(infoTitle, ui.ll(ui.u(1300), ui.wrap, top = 10))
+        infoMeta = ui.hbox()
+        head.addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 14))
+        val hlp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.START)
+        hlp.setMargins(ui.u(96), ui.u(66), 0, 0)
+        info.addView(head, hlp)
+
+        // Bottom: buttons with the next trailer on the right, the bar, the times, the keys.
+        val foot = ui.vbox()
+        foot.clipChildren = false
+        foot.clipToPadding = false
+        val row = ui.hbox()
+        row.clipChildren = false
+        row.clipToPadding = false
+        buttons = ui.hbox()
+        buttons.clipChildren = false
+        buttons.clipToPadding = false
+        row.addView(buttons, ui.ll(0, ui.wrap, weight = 1f))
+        nextCard = ui.hbox()
+        nextCard.setPadding(ui.u(10), ui.u(10), ui.u(24), ui.u(10))
+        nextCard.background = ui.round(Color.argb(140, 20, 20, 26), D.PLATE, 1, Color.argb(40, 255, 255, 255))
+        nextThumb = ImageView(this)
+        nextThumb.scaleType = ImageView.ScaleType.CENTER_CROP
+        nextThumb.background = ui.round(Color.parseColor("#1C2A3A"), 10)
+        nextThumb.clipToOutline = true
+        nextCard.addView(nextThumb, ui.ll(ui.u(150), ui.u(84)))
+        val nextText = ui.vbox()
+        nextText.addView(ui.text("SIRADAKİ  ·  ▼", 15, Color.argb(160, 255, 255, 255), 600).also { it.letterSpacing = 0.2f })
+        nextTitle = ui.text("", 22, C.TEXT, 700)
+        nextTitle.maxLines = 1
+        nextTitle.ellipsize = TextUtils.TruncateAt.END
+        nextText.addView(nextTitle, ui.ll(ui.u(260), ui.wrap, top = 4))
+        nextCard.addView(nextText, ui.ll(ui.wrap, ui.wrap, left = 16))
+        nextCard.visibility = View.GONE
+        row.addView(nextCard)
+        foot.addView(row, ui.ll(ui.match, ui.wrap))
+
+        // The bar: a thick track, white fill, a round knob with the time over it.
+        val barBox = FrameLayout(this)
+        barBox.clipChildren = false
+        track = FrameLayout(this)
+        track.background = ui.round(Color.argb(64, 255, 255, 255), 4)
+        barFill = View(this)
+        barFill.background = ui.round(Color.WHITE, 4)
+        barFill.pivotX = 0f
+        barFill.scaleX = 0f
+        track.addView(barFill, ui.fl(ui.match, ui.match))
+        val tlp = ui.fl(ui.match, ui.u(8), Gravity.CENTER_VERTICAL)
+        barBox.addView(track, tlp)
+        knob = View(this)
+        knob.background = ui.round(Color.WHITE, 13, 6, Color.argb(50, 255, 255, 255))
+        barBox.addView(knob, ui.fl(ui.u(26), ui.u(26), Gravity.CENTER_VERTICAL))
+        tip = ui.text("0:00", 22, C.TEXT, 700)
+        tip.setPadding(ui.u(12), ui.u(5), ui.u(12), ui.u(5))
+        tip.background = ui.round(Color.argb(140, 0, 0, 0), 8)
+        val tipLp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP)
+        tipLp.topMargin = -ui.u(60)
+        barBox.addView(tip, tipLp)
+        foot.addView(barBox, ui.ll(ui.match, ui.u(30), top = 34))
+        val times = ui.hbox()
+        times.addView(ui.text("0:00", 20, C.TEXT2, 600), ui.ll(0, ui.wrap, weight = 1f))
+        timeLeft = ui.text("", 20, C.TEXT2, 600)
+        times.addView(timeLeft)
+        foot.addView(times, ui.ll(ui.match, ui.wrap, top = 8))
+        hint = ui.text("", 18, Color.argb(130, 255, 255, 255), 500)
+        foot.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 16))
+        val flp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM)
+        flp.setMargins(ui.u(96), 0, ui.u(96), ui.u(56))
+        info.addView(foot, flp)
+        frame.addView(info, ui.fl(ui.match, ui.match))
+        track.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeKnob() }
+    }
+
+    /** Title, badges and buttons for the trailer on screen. */
+    private fun bindFilm() {
+        val p = film()
+        infoLabel.text = if (list.size > 1) "FRAGMAN MARATONU  ·  ${at + 1} / ${list.size}" else "FRAGMAN"
+        infoTitle.text = p?.title ?: currentTitle
+        infoMeta.removeAllViews()
+        if (p != null) {
+            val where = ui.whereBadge()
+            ui.setWhere(where, when {
+                p.provider.isNotEmpty() -> p.provider
+                upcoming(p) -> null
+                p.where.isNotEmpty() -> p.where.first()
+                else -> null
+            })
+            if (where.visibility == View.VISIBLE) infoMeta.addView(where, ui.ll(ui.wrap, ui.wrap, right = 18))
+            if (p.imdb > 0) {
+                val imdb = ui.text("IMDb", 15, Color.BLACK, 800)
+                imdb.setPadding(ui.u(9), ui.u(3), ui.u(9), ui.u(3))
+                imdb.background = ui.round(Color.parseColor("#F5C518"), D.BADGE)
+                infoMeta.addView(imdb)
+                infoMeta.addView(ui.text(String.format(java.util.Locale("tr", "TR"), "%.1f", p.imdb), 22, C.TEXT, 600), ui.ll(ui.wrap, ui.wrap, left = 12, right = 20))
+            }
+            val bits = ArrayList<String>()
+            if (upcoming(p)) bits.add(releaseText(p))
+            if (p.year.isNotEmpty() && !upcoming(p)) bits.add(p.year)
+            if (p.genres.isNotEmpty()) bits.add(p.genres.take(2).joinToString(", "))
+            infoMeta.addView(ui.text(bits.joinToString("   ·   "), 21, C.TEXT2, 500))
+            // Which trailer this is: "TÜRKÇE DUBLAJ", "TÜRKÇE ALTYAZILI", "ORİJİNAL DİL".
+            p.trailers.firstOrNull { it.key == id }?.let { v ->
+                val l = v.label.lowercase(java.util.Locale("tr", "TR"))
+                val text = when {
+                    "dublaj" in l -> "TÜRKÇE DUBLAJ"
+                    "altyazı" in l -> "TÜRKÇE ALTYAZILI"
+                    "türkçe" in l -> "TÜRKÇE"
+                    else -> "ORİJİNAL DİL"
+                }
+                val b = ui.certBadge(text)
+                b.letterSpacing = 0.08f
+                infoMeta.addView(b, ui.ll(ui.wrap, ui.wrap, left = 22))
+            }
+            filmColor(p)
+        }
+        // Buttons: list (or remind), details, the platform's app.
+        buttons.removeAllViews()
+        if (p != null) {
+            buttons.addView(listButton(p, false))
+            val more = ui.iconPill("Detaylar", R.drawable.ic_info)
+            more.setOnClickListener { details(p) }
+            buttons.addView(more)
+            platformButton(p)?.let { buttons.addView(it) }
+            if (p.trailers.size > 1) {
+                val pick = ui.iconPill("Fragmanlar · ${p.trailers.size}", R.drawable.ic_film)
+                pick.setOnClickListener { chooseTrailer(p) }
+                buttons.addView(pick)
+            }
+            if (p.cast.isNotEmpty()) {
+                val cast = ui.iconPill("Oyuncular", R.drawable.ic_eye)
+                cast.setOnClickListener { toggleCast(p) }
+                buttons.addView(cast)
+            }
+        }
+        setButtonsFocusable(false)
+        // The next trailer, in a marathon.
+        val next = at + 1
+        if (list.size > 1 && next < list.size) {
+            nextCard.visibility = View.VISIBLE
+            nextTitle.text = titles.getOrElse(next) { "" }
+            nextThumb.setImageDrawable(null)
+            films.firstOrNull { it.trailer == list[next] }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
+                Thread {
+                    val b = Net.bitmap("https://image.tmdb.org/t/p/w300$path", ui.u(150), true)
+                    runOnUiThread { if (b != null && !isFinishing) nextThumb.setImageBitmap(b) }
+                }.start()
+            }
+        } else {
+            nextCard.visibility = View.GONE
+        }
+        hint.text = "OK  oynat / durdur   ·   ◀ ▶  sar, basılı tut: hızlı" +
+            (if (buttons.childCount > 0) "   ·   ▲  düğmeler" else "") +
+            (if (nextCard.visibility == View.VISIBLE) "   ·   ▼  sıradaki" else "") + "   ·   Geri  çık"
+    }
+
+    private fun setButtonsFocusable(on: Boolean) {
+        for (i in 0 until buttons.childCount) buttons.getChildAt(i).isFocusable = on
+    }
+
+    /** "14 Kasım'da vizyonda". */
+    private fun releaseText(p: Pick): String {
+        val c = java.util.Calendar.getInstance()
+        try {
+            c.time = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(p.release)!!
+        } catch (e: Exception) {
+            return "Yakında vizyonda"
+        }
+        val sfx = arrayOf("'ta", "'ta", "'ta", "'da", "'ta", "'da", "'da", "'ta", "'de", "'de", "'da", "'ta")
+        return java.text.SimpleDateFormat("d MMMM", java.util.Locale("tr", "TR")).format(c.time) + sfx[c.get(java.util.Calendar.MONTH)] + " vizyonda"
+    }
+
+    /** The platform's app ("Netflix'i aç"), or, when it is not on this TV, the store ("Netflix uygulamasını bul"). */
+    private fun platformButton(p: Pick): TextView? {
+        val platforms = (listOfNotNull(p.provider.takeIf { it.isNotEmpty() }) + p.where).distinct()
+        val appName = platforms.firstOrNull { Apps.forPlatform(this, it) != null }
+        val app = appName?.let { Apps.forPlatform(this, it) }
+        if (app != null) {
+            val b = ui.iconPill(accusative(appName) + " aç", R.drawable.ic_tv)
+            b.setOnClickListener {
+                prefs.markUsed(app.key)
+                HomeButtonService.opened(app.pkg)
+                try { startActivity(Apps.launchIntent(app)) } catch (e: Exception) { }
+                close()
+            }
+            return b
+        }
+        val name = platforms.firstOrNull() ?: return null
+        val b = ui.iconPill("$name uygulamasını bul", R.drawable.ic_tv)
+        b.setOnClickListener {
+            pausePlayer()
+            HomeButtonService.pause()
+            Apps.findInStore(this, name)
+        }
+        return b
+    }
+
+    private fun onPlaying() {
+        playing = true
+        paused = false
+        openCurtain()
+        // Marathon: the next trailer waits ready in the hidden player.
+        if (list.size > 1 && at + 1 < list.size) web?.evaluateJavascript("prep('${list[at + 1]}')", null)
+        center.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setDuration(D.MED).start()
+        status.animate().alpha(0f).setDuration(D.MED).start()
+        // A moment after it starts: YouTube shows its title over the first frames.
+        handler.postDelayed({ if (playing && !paused && endCard == null) shieldTo(0f) }, 600)
+        handler.removeCallbacks(hideInfo)
+        handler.postDelayed(hideInfo, 4000)
+    }
+
+    private fun onPaused() {
+        paused = true
+        center.scaleX = 0.8f
+        center.scaleY = 0.8f
+        center.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(D.MED).start()
+        shieldTo(0.6f)
+        showInfo()
+    }
+
+    /** Shows the controls; they fade after four seconds while the trailer plays. */
+    private fun showInfo() {
+        handler.removeCallbacks(hideInfo)
+        info.animate().cancel()
+        info.alpha = 1f
+        readTime()
+        handler.postDelayed(hideInfo, 4000)
+    }
+
+    /** Asks the player where it is ("72.4|150.2|1") and moves the bar, the knob and the times. */
+    private fun readTime() {
+        val w = web ?: return
+        w.evaluateJavascript("(player&&player.getDuration)?(player.getCurrentTime()+'|'+player.getDuration()+'|'+player.getPlayerState()):''") { r ->
+            val parts = r?.trim('"')?.split('|') ?: return@evaluateJavascript
+            if (parts.size < 3) return@evaluateJavascript
+            val now = parts[0].toDoubleOrNull() ?: return@evaluateJavascript
+            val all = parts[1].toDoubleOrNull() ?: return@evaluateJavascript
+            if (all <= 0) return@evaluateJavascript
+            progress = (now / all).toFloat().coerceIn(0f, 1f)
+            tip.text = clock(now)
+            timeLeft.text = "−" + clock(all - now)
+            placeKnob()
+        }
+    }
+
+    private fun placeKnob() {
+        val wTrack = track.width.toFloat()
+        if (wTrack <= 0f) return
+        barFill.scaleX = progress
+        val x = wTrack * progress
+        knob.translationX = x - knob.width / 2f
+        tip.translationX = (x - tip.width / 2f).coerceIn(0f, wTrack - tip.width)
+    }
+
+    private fun clock(sec: Double): String {
+        val s = sec.toInt().coerceAtLeast(0)
+        return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
+    }
+
+    // ---------- Keys ----------
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val w = web ?: return super.dispatchKeyEvent(event)
+        val back = event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE
+        // The end card has buttons: the remote moves between them; Geri closes.
+        if (endCard != null) {
+            if (back) {
+                if (event.action == KeyEvent.ACTION_DOWN) close()
+                return true
+            }
+            if (event.action == KeyEvent.ACTION_DOWN) stopCountdown()
+            return super.dispatchKeyEvent(event)
+        }
+        if (castPanel != null && back) {
+            if (event.action == KeyEvent.ACTION_DOWN) hideCast()
+            return true
+        }
+        // On the buttons (▲): left and right move between them, OK presses, ▼ or Geri go back to the trailer.
+        if (onButtons) {
+            if (back || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (event.action == KeyEvent.ACTION_DOWN) leaveButtons()
+                return true
+            }
+            if (event.action == KeyEvent.ACTION_DOWN) showInfo()
+            return super.dispatchKeyEvent(event)
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) {
+            return event.keyCode != KeyEvent.KEYCODE_BACK || super.dispatchKeyEvent(event)
+        }
+        // Held arrows skip faster: 10 seconds a press, 30 once the key has been held a moment.
+        val step = if (event.repeatCount >= 6) 30 else 10
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_SPACE -> w.evaluateJavascript("toggle()", null)
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> skip(-step)
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> skip(step)
+            KeyEvent.KEYCODE_DPAD_UP -> if (buttons.childCount > 0) { enterButtons(); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_MEDIA_NEXT -> if (list.size > 1 && at < list.size - 1) { nextTrailer(); return true } else return super.dispatchKeyEvent(event)
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> return super.dispatchKeyEvent(event)
+            else -> return super.dispatchKeyEvent(event)
+        }
+        showInfo()
+        return true
+    }
+
+    private fun enterButtons() {
+        onButtons = true
+        setButtonsFocusable(true)
+        showInfo()
+        buttons.getChildAt(0)?.requestFocus()
+    }
+
+    private fun leaveButtons() {
+        onButtons = false
+        currentFocus?.clearFocus()
+        setButtonsFocusable(false)
+        showInfo()
+    }
+
+    private fun skip(s: Int) {
+        web?.evaluateJavascript("seek($s)", null)
+        skipSum += s
+        bubble.text = (if (skipSum >= 0) "+" else "−") + Math.abs(skipSum) + " sn"
+        bubble.animate().cancel()
+        bubble.alpha = 1f
+        handler.removeCallbacks(skipEnd)
+        handler.postDelayed(skipEnd, 900)
+    }
+
+    // ---------- Film actions ----------
+
+    /** The film of the trailer on screen, when it is known. */
+    private fun film(): Pick? = films.firstOrNull { it.trailer == id || it.trailers.any { v -> v.key == id } }
+
+    private fun upcoming(p: Pick) = Episodes.daysUntil(p.release)?.let { it > 0 } == true
+
+    /** "Listeme ekle" (or, before its release, "Çıkınca haber ver"), as a button that switches. */
+    private fun listButton(p: Pick, primary: Boolean): TextView {
+        val b = ui.pill("", 64, 23, primary = primary)
+        fun label() {
+            b.text = if (upcoming(p)) {
+                if (prefs.reminders.any { it.key == p.key }) "✓   Haber verilecek" else "Çıkınca haber ver"
+            } else {
+                if (prefs.watchlist.any { it.key == p.key }) "✓   Listemde" else "+   Listeme ekle"
+            }
+        }
+        label()
+        b.setOnClickListener {
+            if (upcoming(p)) {
+                val l = prefs.reminders
+                if (l.any { it.key == p.key }) prefs.reminders = l.filter { it.key != p.key }
+                else {
+                    prefs.reminders = l + p
+                    Glass.toast(this, "Vizyona girdiği gün ana ekranda haber vereceğim")
+                }
+            } else {
+                val l = prefs.watchlist
+                prefs.watchlist = if (l.any { it.key == p.key }) l.filter { it.key != p.key } else listOf(p) + l
+            }
+            label()
+        }
+        return b
+    }
+
+    private fun pausePlayer() {
+        web?.evaluateJavascript("if(player&&player.getPlayerState()===1)player.pauseVideo();", null)
+    }
+
+    /** The film's page; the trailer stops while it is open. */
+    private fun details(p: Pick) {
+        pausePlayer()
+        DetailActivity.open(this, p)
+    }
+
+    // ---------- End ----------
+
+    /** The trailer is over: the film's picture dimmed, what to do next and, in a marathon, the next one in 5 s. */
+    private fun showEnd() {
+        if (done || endCard != null) return
+        prefs.trailerAt = prefs.trailerAt - id
+        hideCast()
+        handler.removeCallbacks(hideInfo)
+        info.animate().alpha(0f).setDuration(D.MED).start()
+        center.alpha = 0f
+        shieldTo(1f)
+        val box = FrameLayout(this)
+        val p = film()
+        // The film's own picture, dim, behind the card.
+        if (p != null && p.backdrop.isNotEmpty()) {
+            val img = ImageView(this)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            img.alpha = 0f
+            box.addView(img, ui.fl(ui.match, ui.match))
+            val wpx = resources.displayMetrics.widthPixels
+            Thread {
+                val b = Net.bitmap("https://image.tmdb.org/t/p/w1280" + p.backdrop, wpx / 2, true)
+                runOnUiThread { if (b != null && !isFinishing) { img.setImageBitmap(b); img.animate().alpha(0.38f).setDuration(D.SLOW).start() } }
+            }.start()
+        }
+        val shade = View(this)
+        shade.background = ui.gradient(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, Color.argb(200, 0, 0, 0), Color.argb(60, 0, 0, 0))
+        box.addView(shade, ui.fl(ui.match, ui.match))
+
+        val card = ui.vbox()
+        card.clipChildren = false
+        card.clipToPadding = false
+        card.addView(ui.label("FRAGMAN BİTTİ"))
+        val t = ui.text(p?.title ?: currentTitle, 84, C.TEXT, 800)
+        t.letterSpacing = -0.02f
+        t.maxLines = 2
+        t.ellipsize = TextUtils.TruncateAt.END
+        card.addView(t, ui.ll(ui.u(1050), ui.wrap, top = 10))
+        if (infoMeta.childCount > 0) {
+            (infoMeta.parent as? LinearLayout)?.removeView(infoMeta)
+            card.addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 18))
+        }
+        if (p != null) {
+            val line = when {
+                upcoming(p) -> "Vizyona girdiğinde ana ekranda haber vereyim mi?"
+                else -> "Beğendiysen listene ekle, sonra izlemek için hazır olsun."
+            }
+            card.addView(ui.text(line, 28, C.TEXT2, 400), ui.ll(ui.wrap, ui.wrap, top = 18))
+        }
+        val row = ui.hbox()
+        row.clipChildren = false
+        row.clipToPadding = false
+        if (p != null) {
+            row.addView(listButton(p, false))
+            platformButton(p)?.let { row.addView(it) }
+        }
+        val again = ui.pill("Tekrar izle", 64, 23)
+        again.setOnClickListener { replay() }
+        row.addView(again)
+        val shut = ui.pill("Kapat", 64, 23)
+        shut.setOnClickListener { close() }
+        row.addView(shut)
+        card.addView(row, ui.ll(ui.wrap, ui.wrap, top = 44))
+        val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        lp.leftMargin = ui.u(110)
+        lp.bottomMargin = ui.u(120)
+        box.addView(card, lp)
+
+        // Marathon: the next trailer, starting by itself after five seconds.
+        val next = at + 1
+        if (list.size > 1 && next < list.size) box.addView(upNext(next), run {
+            val l = ui.fl(ui.u(480), ui.wrap, Gravity.BOTTOM or Gravity.END)
+            l.rightMargin = ui.u(110)
+            l.bottomMargin = ui.u(120)
+            l
+        })
+        frame.addView(box, ui.fl(ui.match, ui.match))
+        endCard = box
+        card.alpha = 0f
+        card.translationY = ui.uf(30)
+        card.animate().alpha(1f).translationY(0f).setDuration(D.SLOW).start()
+        row.getChildAt(0)?.requestFocus()
+    }
+
+    /** "SIRADAKİ FRAGMAN" card with a five-second ring. */
+    private fun upNext(next: Int): View {
+        val box = ui.vbox()
+        box.isFocusable = true
+        box.isClickable = true
+        box.background = ui.round(Color.argb(160, 20, 20, 26), 24, 1, Color.argb(40, 255, 255, 255))
+        box.clipToOutline = true
+        val pic = FrameLayout(this)
+        val img = ImageView(this)
+        img.scaleType = ImageView.ScaleType.CENTER_CROP
+        img.setBackgroundColor(Color.parseColor("#1C2A3A"))
+        pic.addView(img, ui.fl(ui.match, ui.match))
+        val ring = Ring(this)
+        val rlp = ui.fl(ui.u(64), ui.u(64), Gravity.BOTTOM or Gravity.END)
+        rlp.setMargins(0, 0, ui.u(18), ui.u(18))
+        pic.addView(ring, rlp)
+        box.addView(pic, ui.ll(ui.match, ui.u(270)))
+        val txt = ui.vbox()
+        txt.setPadding(ui.u(24), ui.u(20), ui.u(24), ui.u(24))
+        txt.addView(ui.label("SIRADAKİ FRAGMAN"))
+        val nt = ui.text(titles.getOrElse(next) { "" }, 28, C.TEXT, 700)
+        nt.maxLines = 1
+        nt.ellipsize = TextUtils.TruncateAt.END
+        txt.addView(nt, ui.ll(ui.match, ui.wrap, top = 6))
+        val left = ui.text("5 saniye içinde başlıyor", 18, C.TEXT2, 500)
+        txt.addView(left, ui.ll(ui.wrap, ui.wrap, top = 6))
+        box.addView(txt)
+        films.firstOrNull { it.trailer == list[next] }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
+            Thread {
+                val b = Net.bitmap("https://image.tmdb.org/t/p/w780$path", ui.u(480), true)
+                runOnUiThread { if (b != null && !isFinishing) img.setImageBitmap(b) }
+            }.start()
+        }
+        box.setOnFocusChangeListener { v, f ->
+            ui.lift(v, f, 1.04f, 20)
+            box.background = ui.round(if (f) Color.argb(230, 255, 255, 255) else Color.argb(160, 20, 20, 26), 24, 1, Color.argb(40, 255, 255, 255))
+            for (tv in listOf(nt, left)) tv.setTextColor(if (f) C.INK else if (tv === nt) C.TEXT else C.TEXT2)
+        }
+        box.setOnClickListener { stopCountdown(); nextTrailer() }
+        var s = 5
+        val r = object : Runnable {
+            override fun run() {
+                ring.fraction = s / 5f
+                left.text = if (s > 0) "$s saniye içinde başlıyor" else "Başlıyor…"
+                if (s <= 0) { nextTrailer(); return }
+                s--
+                handler.postDelayed(this, 1000)
+            }
+        }
+        countdown = r
+        handler.post(r)
+        return box
+    }
+
+    private fun stopCountdown() {
+        countdown?.let { handler.removeCallbacks(it) }
+        countdown = null
+    }
+
+    private fun removeEnd() {
+        stopCountdown()
+        endCard?.let { frame.removeView(it) }
+        endCard = null
+        // The badges were lent to the card: back under the title.
+        if (infoMeta.parent !== infoTitle.parent) {
+            (infoMeta.parent as? android.view.ViewGroup)?.removeView(infoMeta)
+            (infoTitle.parent as LinearLayout).addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 14))
+        }
+    }
+
+    private fun replay() {
+        removeEnd()
+        playing = false
+        shieldTo(1f)
+        web?.evaluateJavascript("play('$id')", null)
+        showInfo()
+    }
+
+    /** Marathon: the next trailer in the same player. */
+    private fun nextTrailer() {
+        if (done) return
+        removeEnd()
+        if (at >= list.size - 1) {
+            close()
+            return
+        }
+        if (onButtons) leaveButtons()
+        at++
+        id = list[at]
+        playing = false
+        paused = false
+        shieldTo(1f)
+        currentTitle = titles.getOrElse(at) { "" }
+        status.text = if (currentTitle.isEmpty()) "Sıradaki fragman…" else "$currentTitle  ·  ${at + 1} / ${list.size}"
+        status.animate().alpha(1f).setDuration(D.FAST).start()
+        progress = 0f
+        placeKnob()
+        bindFilm()
+        showInfo()
+        web?.evaluateJavascript("play('$id')", null)
+        handler.removeCallbacks(giveUp)
+        handler.postDelayed(giveUp, 15000)
+    }
+
+    /** The five-second ring on the next trailer's card: a white arc that empties. */
+    private class Ring(ctx: Context) : View(ctx) {
+        var fraction = 1f
+            set(v) { field = v; invalidate() }
+        private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(110, 0, 0, 0) }
+        private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.argb(70, 255, 255, 255) }
+        private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
+        private val num = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
+
+        override fun onDraw(c: Canvas) {
+            val s = width.toFloat()
+            val st = s * 0.08f
+            track.strokeWidth = st
+            arc.strokeWidth = st
+            val r = RectF(st, st, s - st, s - st)
+            c.drawCircle(s / 2, s / 2, s / 2 - st / 2, bg)
+            c.drawArc(r, 0f, 360f, false, track)
+            c.drawArc(r, -90f, 360f * fraction, false, arc)
+            num.textSize = s * 0.36f
+            c.drawText(Math.round(fraction * 5).toString(), s / 2, s / 2 + num.textSize * 0.36f, num)
+        }
+    }
+
+    /** Could not be played here: the YouTube app, once, then this screen closes. */
+    private fun fallBack() {
+        if (done) return
+        done = true
+        youtube(this, id)
+        finish()
+    }
+
+    /** Sound falls, the curtain closes, then the screen goes; the place is kept for next time. */
+    private fun close() {
+        if (done) return
+        done = true
+        savePlace()
+        web?.evaluateJavascript("fadeTo(0,420)", null)
+        if (Fx.lite) {
+            handler.postDelayed({ finish() }, 150)
+            return
+        }
+        for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
+            v.translationY = dir * v.height
+            v.animate().translationY(0f).setDuration(420).setInterpolator(android.view.animation.AccelerateInterpolator(1.4f)).start()
+        }
+        handler.postDelayed({ finish() }, 460)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        close()
+    }
+
+    /** Where the trailer was left, if it was left half way (not in the first or last seconds). */
+    private fun savePlace() {
+        val w = web ?: return
+        val key = id
+        w.evaluateJavascript("(player&&player.getDuration)?(player.getCurrentTime()+'|'+player.getDuration()):''") { r ->
+            val parts = r?.trim('"')?.split('|') ?: return@evaluateJavascript
+            val now = parts.getOrNull(0)?.toDoubleOrNull() ?: return@evaluateJavascript
+            val all = parts.getOrNull(1)?.toDoubleOrNull() ?: return@evaluateJavascript
+            if (all <= 0) return@evaluateJavascript
+            prefs.trailerAt = if (now >= 8 && now < all - 10) prefs.trailerAt + (key to now.toInt()) else prefs.trailerAt - key
+        }
+    }
+
+    /** The first time a trailer plays, the curtain parts from the middle. */
+    private fun openCurtain() {
+        if (curtainOpen) return
+        curtainOpen = true
+        if (Fx.lite) {
+            curtainTop.visibility = View.GONE
+            curtainLow.visibility = View.GONE
+            return
+        }
+        for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
+            v.animate().translationY(dir * v.height).setStartDelay(450).setDuration(1100)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
+        }
+    }
+
+    /** Another trailer of the same film (dubbed, subtitled, original, teaser), in the same player. */
+    private fun chooseTrailer(p: Pick) {
+        val cur = p.trailers.indexOfFirst { it.key == id }
+        Dialogs.list(this, "Fragmanlar", p.trailers.map { it.label to "" }, subtitle = p.title,
+            icon = R.drawable.ic_film, current = cur) { i ->
+            val v = p.trailers[i]
+            if (v.key == id) return@list
+            removeEnd()
+            leaveButtons()
+            id = v.key
+            playing = false
+            paused = false
+            shieldTo(1f)
+            progress = 0f
+            placeKnob()
+            status.text = "${p.title}  ·  ${v.label.lowercase(java.util.Locale("tr", "TR"))}"
+            status.animate().alpha(1f).setDuration(D.FAST).start()
+            bindFilm()
+            showInfo()
+            web?.evaluateJavascript("play('$id')", null)
+            handler.removeCallbacks(giveUp)
+            handler.postDelayed(giveUp, 15000)
+        }
+    }
+
+    /** The cast down the right side, with their photos; the trailer goes on behind. */
+    private fun toggleCast(p: Pick) {
+        if (castPanel != null) {
+            hideCast()
+            return
+        }
+        val panel = ui.vbox()
+        panel.setPadding(ui.u(40), ui.u(56), ui.u(40), ui.u(40))
+        panel.background = ui.round(Color.argb(ui.panelAlpha(), 0x16, 0x16, 0x1B), D.PANEL)
+        panel.addView(ui.label("OYUNCULAR"), ui.ll(ui.wrap, ui.wrap, bottom = 20))
+        for (c in p.cast.take(7)) {
+            val row = ui.hbox()
+            val ph = FrameLayout(this)
+            val bg = android.graphics.drawable.GradientDrawable()
+            bg.shape = android.graphics.drawable.GradientDrawable.OVAL
+            bg.setColor(Color.parseColor("#2A2B30"))
+            ph.background = bg
+            ph.clipToOutline = true
+            val img = ImageView(this)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            ph.addView(img, ui.fl(ui.match, ui.match))
+            if (c.photo.isNotEmpty()) Img.load(this, "w185", c.photo, ui.u(84), img)
+            row.addView(ph, ui.ll(ui.u(76), ui.u(76)))
+            val t = ui.vbox()
+            val n = ui.text(c.name, 22, C.TEXT, 700)
+            n.maxLines = 1
+            n.ellipsize = TextUtils.TruncateAt.END
+            t.addView(n)
+            if (c.role.isNotEmpty()) {
+                val r = ui.text(c.role, 17, C.TEXT3, 500)
+                r.maxLines = 1
+                r.ellipsize = TextUtils.TruncateAt.END
+                t.addView(r, ui.ll(ui.wrap, ui.wrap, top = 2))
+            }
+            row.addView(t, ui.ll(ui.match, ui.wrap, left = 18))
+            panel.addView(row, ui.ll(ui.match, ui.wrap, bottom = 16))
+        }
+        val lp = ui.fl(ui.u(460), ui.wrap, Gravity.END or Gravity.TOP)
+        lp.setMargins(0, ui.u(60), ui.u(60), 0)
+        frame.addView(panel, lp)
+        panel.alpha = 0f
+        panel.translationX = ui.uf(60)
+        panel.animate().alpha(1f).translationX(0f).setDuration(D.MED).setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
+        castPanel = panel
+    }
+
+    private fun hideCast() {
+        val p = castPanel ?: return
+        castPanel = null
+        p.animate().alpha(0f).translationX(ui.uf(60)).setDuration(D.FAST).withEndAction { frame.removeView(p) }.start()
+    }
+
+    /** The bar and its knob take the film's own colour, softened toward white. */
+    private fun filmColor(p: Pick) {
+        if (p.backdrop.isEmpty()) return
+        val key = id
+        Thread {
+            val b = Net.bitmap("https://image.tmdb.org/t/p/w300" + p.backdrop, 300, true)
+            val c = b?.let { Fx.accent(it) } ?: 0
+            runOnUiThread {
+                if (isFinishing || key != id) return@runOnUiThread
+                barColor = if (c == 0) Color.WHITE else Fx.blend(c, Color.WHITE, 0.3f)
+                barFill.background = ui.round(barColor, 4)
+                knob.background = ui.round(barColor, 13, 6, Color.argb(50, 255, 255, 255))
+            }
+        }.start()
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Leaving (Home, another app): stop the sound, keep the place.
+        if (!done) savePlace()
+        web?.onPause()
+        if (isFinishing) web?.loadUrl("about:blank")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        web?.onResume()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        web?.let {
+            (it.parent as? FrameLayout)?.removeView(it)
+            it.destroy()
+        }
+        web = null
+        super.onDestroy()
+    }
+}

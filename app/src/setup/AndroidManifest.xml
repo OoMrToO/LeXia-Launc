@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Setup build: same app without the Home button service, so Play Protect lets it install. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <service
+            android:name="tv.lexia.launcher.HomeButtonService"
+            tools:node="remove" />
+    </application>
+</manifest>

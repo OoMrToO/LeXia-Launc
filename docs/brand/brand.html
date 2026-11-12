@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- LeXia Launcher brand: emblem, TV banner, app icon and GitHub social preview. Render: node docs/brand/render.js -->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:Inter;font-weight:400;src:url(../../app/src/main/assets/fonts/Inter_400Regular.ttf)}
+@font-face{font-family:Inter;font-weight:500;src:url(../../app/src/main/assets/fonts/Inter_500Medium.ttf)}
+@font-face{font-family:Inter;font-weight:600;src:url(../../app/src/main/assets/fonts/Inter_600SemiBold.ttf)}
+@font-face{font-family:Inter;font-weight:800;src:url(../../app/src/main/assets/fonts/Inter_800ExtraBold.ttf)}
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;font-family:Inter;color:#fff}
+.x{background:linear-gradient(135deg,#FFB36B 0%,#FF4D8D 45%,#8A6CFF 70%,#6FB7FF 100%);-webkit-background-clip:text;color:transparent}
+.word{font-weight:800;letter-spacing:-.035em;line-height:1}
+.sub{font-weight:500;color:rgba(255,255,255,.62);letter-spacing:.32em;text-transform:uppercase}
+section{position:relative;overflow:hidden}
+.bg{position:absolute;inset:0;background:radial-gradient(ellipse 70% 90% at 20% 50%,#1C1A3A 0%,#0A0B14 55%,#05060A 100%)}
+.glow{position:absolute;border-radius:50%;filter:blur(60px)}
+</style></head><body>
+<template id="emblem">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <linearGradient id="bgE" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A1838"/><stop offset=".55" stop-color="#0C0D1C"/><stop offset="1" stop-color="#05060C"/></linearGradient>
+  <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC27A"/><stop offset=".5" stop-color="#FF5A86"/><stop offset="1" stop-color="#FF5A86" stop-opacity=".2"/></linearGradient>
+  <linearGradient id="cool" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7FC4FF"/><stop offset=".5" stop-color="#8A6CFF"/><stop offset="1" stop-color="#8A6CFF" stop-opacity=".2"/></linearGradient>
+  <radialGradient id="core"><stop offset="0" stop-color="#fff"/><stop offset=".25" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+ </defs>
+ <rect width="512" height="512" rx="112" fill="url(#bgE)"/>
+ <g filter="url(#soft)" opacity=".75">
+  <path d="M132 120 L380 392" stroke="url(#warm)" stroke-width="70" stroke-linecap="round"/>
+  <path d="M380 120 L132 392" stroke="url(#cool)" stroke-width="70" stroke-linecap="round"/>
+ </g>
+ <path d="M140 128 L372 384" stroke="url(#warm)" stroke-width="46" stroke-linecap="round"/>
+ <path d="M372 128 L140 384" stroke="url(#cool)" stroke-width="46" stroke-linecap="round"/>
+ <circle cx="256" cy="256" r="74" fill="url(#core)"/>
+ <circle cx="256" cy="256" r="17" fill="#fff"/>
+ <rect width="512" height="512" rx="112" fill="url(#sheen)"/>
+ <rect x="1.5" y="1.5" width="509" height="509" rx="110.5" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="3"/>
+</svg>
+</template>
+
+<!-- 512 app icon -->
+<section id="icon" style="width:512px;height:512px;background:transparent"><div class="e" style="width:512px;height:512px"></div></section>
+
+<!-- 640x360 TV banner (320x180 dp at xhdpi) -->
+<section id="banner" style="width:640px;height:360px">
+ <div class="bg"></div>
+ <div class="glow" style="width:300px;height:300px;left:-40px;top:30px;background:#FF4D8D;opacity:.22"></div>
+ <div class="glow" style="width:300px;height:300px;left:120px;top:60px;background:#6FB7FF;opacity:.18"></div>
+ <div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:52px;gap:30px">
+  <div class="e" style="width:150px;height:150px;flex:none;filter:drop-shadow(0 14px 30px rgba(0,0,0,.6))"></div>
+  <div><div class="word" style="font-size:96px"><span class="x">L</span>e<span class="x">X</span>ia</div>
+   <div class="sub" style="font-size:19px;margin-top:14px">Launcher</div></div>
+ </div>
+</section>
+
+<!-- 1280x640 GitHub social preview -->
+<section id="social" style="width:1280px;height:640px">
+ <div class="bg"></div>
+ <div class="glow" style="width:520px;height:520px;left:-80px;top:60px;background:#FF4D8D;opacity:.2"></div>
+ <div class="glow" style="width:520px;height:520px;left:220px;top:100px;background:#6FB7FF;opacity:.16"></div>
+ <div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:110px;gap:64px">
+  <div class="e" style="width:300px;height:300px;flex:none;filter:drop-shadow(0 24px 50px rgba(0,0,0,.6))"></div>
+  <div><div class="word" style="font-size:150px"><span class="x">L</span>e<span class="x">X</span>ia</div>
+   <div class="sub" style="font-size:28px;margin-top:20px">Launcher</div>
+   <div style="font-size:30px;font-weight:500;color:rgba(255,255,255,.78);margin-top:40px;line-height:1.35;max-width:640px">
+    Google TV için Apple TV havasında<br>sade ve Türkçe bir ana ekran.</div></div>
+ </div>
+</section>
+
+<script>
+const svg = document.getElementById('emblem').innerHTML;
+let n = 0;
+for (const e of document.querySelectorAll('.e')) {
+  // Each copy gets its own ids so the gradients don't clash.
+  const k = 'k' + (n++);
+  e.innerHTML = svg.replace(/id="(\w+)"/g, `id="$1${k}"`).replace(/url\(#(\w+)\)/g, `url(#$1${k})`)
+    .replace('<svg ', '<svg width="100%" height="100%" ');
+}
+</script>
+</body></html>
