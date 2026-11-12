@@ -136,8 +136,10 @@ object Addons {
             runtime = m.optString("runtime").toIntOrNull() ?: 0,
             seasons = m.optInt("seasonCount", 0).takeIf { it > 0 }
                 ?: m.optJSONArray("videos")?.let { videos ->
-                    (0 until videos.length()).mapNotNull { videos.optJSONObject(it)?.optInt("season") }
-                        .distinct().size
+                    (0 until videos.length()).mapNotNull { index ->
+                        val video = videos.optJSONObject(index) ?: return@mapNotNull null
+                        if (!video.has("season")) null else video.optInt("season", -1).takeIf { it >= 0 }
+                    }.distinct().size
                 } ?: 0
         )
     }
