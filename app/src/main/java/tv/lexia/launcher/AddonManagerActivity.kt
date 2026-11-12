@@ -114,31 +114,32 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             try {
                 val addon = Addons.fetchManifest(address)
-                val entries = mutableListOf<Pair<Addons.Catalog, Addons.CatalogItem>>()
-                val summary = buildString {
-                    append(addon.name)
-                    if (addon.version.isNotBlank()) append(" · v${addon.version}")
-                    append("\n")
-                    if (addon.catalogs.isEmpty()) {
-                        append("Katalog bulunamadı.")
-                    } else {
-                        append("${addon.catalogs.size} katalog bulundu.")
-                        addon.catalogs.forEach { catalog ->
-                            val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\n\n• ${catalog.name}: ")
-                            if (items == null) {
-                                append("katalog okunamadı")
-                            } else {
-                                append("${items.size} kayıt")
-                                entries.addAll(items.map { catalog to it })
-                            }
-                        }
-                    }
-                    append("\n\nKayıt seçildiğinde standart metadata ayrıntısı açılır. Yayın/kaynak uçları çağrılmaz.")
+                val results = addon.catalogs.map { catalog ->
+                    catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
                 }
                 runOnUiThread {
-                    status.text = summary
-                    if (entries.isNotEmpty()) showCatalogItems(addon, entries)
+                    status.text = if (results.isEmpty()) {
+                        addon.name + " · Katalog bulunamadı."
+                    } else {
+                        addon.name + " · " + results.size + " katalog hazır."
+                    }
+                    if (results.isNotEmpty()) {
+                        val labels = results.map { (catalog, items) ->
+                            catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                        }.toTypedArray()
+                        AlertDialog.Builder(this)
+                            .setTitle(addon.name + " · Kataloglar")
+                            .setItems(labels) { _, index ->
+                                val (catalog, items) = results[index]
+                                if (items.isNullOrEmpty()) {
+                                    Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    showCatalogItems(addon, catalog, items)
+                                }
+                            }
+                            .setNegativeButton("Kapat", null)
+                            .show()
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = e.message ?: "Eklenti okunamadı." }
@@ -148,21 +149,22 @@ class AddonManagerActivity : Activity() {
 
     private fun showCatalogItems(
         addon: Addons.Installed,
-        entries: List<Pair<Addons.Catalog, Addons.CatalogItem>>
+        catalog: Addons.Catalog,
+        entries: List<Addons.CatalogItem>
     ) {
-        val labels = entries.map { (_, item) ->
-            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · ${item.releaseInfo}" else ""
+        val labels = entries.map { item ->
+            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · " + item.releaseInfo else ""
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("${addon.name} · Katalog")
+            .setTitle(addon.name + " · " + catalog.name)
             .setItems(labels) { _, which ->
-                val (catalog, item) = entries[which]
-                status.text = "${item.name.ifBlank { item.id }} yükleniyor…"
+                val item = entries[which]
+                status.text = item.name.ifBlank { item.id } + " yükleniyor…"
                 worker.execute {
                     try {
                         val details = Addons.fetchMetaDetails(addon, item.type.ifBlank { catalog.type }, item.id)
                         val meta = details.item
-                        val seriesProgressId = "${addon.baseUrl}|${meta.id.ifBlank { item.id }}"
+                        val seriesProgressId = addon.baseUrl + "|" + meta.id.ifBlank { item.id }
                         val isSeries = meta.type.equals("series", true) ||
                             meta.type.equals("tv", true) || catalog.type.equals("series", true) ||
                             catalog.type.equals("tv", true)
@@ -173,7 +175,7 @@ class AddonManagerActivity : Activity() {
                                 .filter { it.isNotBlank() }.joinToString(" · "),
                             overview = meta.description,
                             backdrop = meta.background.ifBlank { meta.poster },
-                            reason = "Eklenti kataloğu · ${addon.name}",
+                            reason = "Eklenti kataloğu · " + addon.name,
                             trailer = "",
                             logo = "",
                             imdb = meta.imdbRating,
@@ -185,12 +187,12 @@ class AddonManagerActivity : Activity() {
                             seasons = meta.seasons
                         )
                         runOnUiThread {
-                            status.text = "Metadata yüklendi: ${film.title}"
+                            status.text = "Metadata yüklendi: " + film.title
                             if (isSeries) {
                                 status.text = if (episodes.isEmpty()) {
                                     "Metadata yüklendi; sağlayıcı bölüm listesi sunmuyor."
                                 } else {
-                                    "${episodes.size} bölüm bulundu."
+                                    episodes.size.toString() + " bölüm bulundu."
                                 }
                                 if (episodes.isNotEmpty()) showEpisodes(addon, seriesProgressId, episodes)
                                 else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
@@ -202,6 +204,27 @@ class AddonManagerActivity : Activity() {
                         runOnUiThread {
                             status.text = e.message ?: "Metadata alınamadı."
                             Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            .setPositiveButton("Daha fazla yükle") { _, _ ->
+                status.text = "Sonraki katalog sayfası yükleniyor…"
+                worker.execute {
+                    try {
+                        val more = Addons.fetchCatalog(addon, catalog, skip = entries.size)
+                        val known = entries.map { it.id }.toSet()
+                        val unique = more.filterNot { it.id in known }
+                        runOnUiThread {
+                            if (unique.isEmpty()) {
+                                Toast.makeText(this, "Başka kayıt bulunamadı.", Toast.LENGTH_LONG).show()
+                            } else {
+                                showCatalogItems(addon, catalog, entries + unique)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(this, e.message ?: "Sonraki sayfa yüklenemedi.", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
