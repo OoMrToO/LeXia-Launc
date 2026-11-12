@@ -564,6 +564,13 @@ class SettingsActivity : Activity() {
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
+            Row(
+                "Eklentiler",
+                "HTTPS eklenti depolarını ekle; manifest ve katalog bilgilerini görüntüle.",
+                chevron = true,
+                action = { startActivity(Intent(this, AddonManagerActivity::class.java)) },
+                value = { Addons.urls(this).size.let { if (it == 0) "" else "$it depo" } }
+            ),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
