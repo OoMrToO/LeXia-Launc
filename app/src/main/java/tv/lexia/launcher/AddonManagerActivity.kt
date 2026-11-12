@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -91,7 +90,7 @@ class AddonManagerActivity : Activity() {
     private fun askUrl() {
         val input = EditText(this).apply {
             hint = "https://ornek.com"
-            singleLine = true
+            setSingleLine(true)
             setTextColor(-1)
             setHintTextColor(0xFF8B929E.toInt())
         }
@@ -119,14 +118,14 @@ class AddonManagerActivity : Activity() {
                 val summary = buildString {
                     append(addon.name)
                     if (addon.version.isNotBlank()) append(" · v${addon.version}")
-                    append("\n")
+                    append("\\n")
                     if (addon.catalogs.isEmpty()) {
                         append("Katalog bulunamadı.")
                     } else {
                         append("${addon.catalogs.size} katalog bulundu.")
                         addon.catalogs.forEach { catalog ->
                             val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\n\n• ${catalog.name}: ")
+                            append("\\n\\n• ${catalog.name}: ")
                             if (items == null) {
                                 append("katalog okunamadı")
                             } else {
@@ -135,7 +134,7 @@ class AddonManagerActivity : Activity() {
                             }
                         }
                     }
-                    append("\n\nKayıt seçildiğinde standart metadata ayrıntısı açılır. Yayın/kaynak uçları çağrılmaz.")
+                    append("\\n\\nKayıt seçildiğinde standart metadata ayrıntısı açılır. Yayın/kaynak uçları çağrılmaz.")
                 }
                 runOnUiThread {
                     status.text = summary
@@ -232,11 +231,11 @@ class AddonManagerActivity : Activity() {
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
                 val message = buildString {
                     append("Sezon ${episode.season}, bölüm ${episode.episode}")
-                    if (episode.released.isNotBlank()) append("\nYayın: ${episode.released}")
+                    if (episode.released.isNotBlank()) append("\\nYayın: ${episode.released}")
                     if (saved != null && saved.durationMs > 0) {
-                        append("\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
+                        append("\\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
                     }
-                    append("\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
+                    append("\\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
                 }
                 AlertDialog.Builder(this)
                     .setTitle(episode.title)
