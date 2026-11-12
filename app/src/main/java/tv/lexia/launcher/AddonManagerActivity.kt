@@ -114,34 +114,87 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             try {
                 val addon = Addons.fetchManifest(address)
+                val entries = mutableListOf<Pair<Addons.Catalog, Addons.CatalogItem>>()
                 val summary = buildString {
                     append(addon.name)
-                    if (addon.version.isNotBlank()) append(" · v${addon.version}")
+                    if (addon.version.isNotBlank()) append(" · v\${addon.version}")
                     append("\n")
                     if (addon.catalogs.isEmpty()) {
                         append("Katalog bulunamadı.")
                     } else {
-                        append("${addon.catalogs.size} katalog bulundu.")
+                        append("\${addon.catalogs.size} katalog bulundu.")
                         addon.catalogs.forEach { catalog ->
                             val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\n\n• ${catalog.name}: ")
+                            append("\n\n• \${catalog.name}: ")
                             if (items == null) {
                                 append("katalog okunamadı")
                             } else {
-                                append("${items.size} kayıt")
-                                items.take(12).forEach { item ->
-                                    append("\n   – ${item.name.ifBlank { item.id }}")
-                                }
+                                append("\${items.size} kayıt")
+                                entries.addAll(items.map { catalog to it })
                             }
                         }
                     }
-                    append("\n\nYalnızca katalog/metadata okunur; yayın kaynağı uçları çağrılmaz.")
+                    append("\n\nKayıt seçildiğinde standart metadata ayrıntısı açılır. Yayın/kaynak uçları çağrılmaz.")
                 }
-                runOnUiThread { status.text = summary }
+                runOnUiThread {
+                    status.text = summary
+                    if (entries.isNotEmpty()) showCatalogItems(addon, entries)
+                }
             } catch (e: Exception) {
                 runOnUiThread { status.text = e.message ?: "Eklenti okunamadı." }
             }
         }
+    }
+
+    private fun showCatalogItems(
+        addon: Addons.Installed,
+        entries: List<Pair<Addons.Catalog, Addons.CatalogItem>>
+    ) {
+        val labels = entries.map { (_, item) ->
+            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · \${item.releaseInfo}" else ""
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("\${addon.name} · Katalog")
+            .setItems(labels) { _, which ->
+                val (catalog, item) = entries[which]
+                status.text = "\${item.name.ifBlank { item.id }} yükleniyor…"
+                worker.execute {
+                    try {
+                        val meta = Addons.fetchMeta(addon, item.type.ifBlank { catalog.type }, item.id)
+                        val isSeries = meta.type.equals("series", true) ||
+                            meta.type.equals("tv", true) || catalog.type.equals("series", true) ||
+                            catalog.type.equals("tv", true)
+                        val film = Pick(
+                            title = meta.name.ifBlank { item.name.ifBlank { item.id } },
+                            meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
+                                .filter { it.isNotBlank() }.joinToString(" · "),
+                            overview = meta.description,
+                            backdrop = meta.background.ifBlank { meta.poster },
+                            reason = "Eklenti kataloğu · \${addon.name}",
+                            trailer = "",
+                            logo = "",
+                            imdb = meta.imdbRating,
+                            year = meta.releaseInfo.take(4),
+                            genres = meta.genres,
+                            runtime = meta.runtime,
+                            poster = meta.poster,
+                            kind = if (isSeries) "tv" else "movie",
+                            seasons = meta.seasons
+                        )
+                        runOnUiThread {
+                            status.text = "Metadata yüklendi: \${film.title}"
+                            DetailActivity.open(this, film)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            status.text = e.message ?: "Metadata alınamadı."
+                            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     override fun onDestroy() {
