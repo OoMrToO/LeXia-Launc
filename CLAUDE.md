@@ -13,7 +13,7 @@ Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `
 - **Hiçbir şey sayılmaz/gönderilmez:** `Remote.ping` ve `Remote.sendCrash` boş; sürüm oylaması kalktı. Hatalar yalnızca TV'de (Ayarlar › Hakkında › Son hata).
 - **Liste yedeği eski sitede kalır:** `Backup` hâlâ `lexialauncher.pages.dev/api/backup`'ı kullanır (`Net.OLD_SITE`), böylece eski LeXia'dan alınan kod yeni uygulamada geri yüklenir. Eski Cloudflare projesi silinirse yedek çalışmaz; o zaman bu depoya küçük bir Pages Function taşınmalı.
 - **Uzaktan ayarlar yok** (kullanıcı, 12 Kasım: "yönetim, sayaç, güncelleme ekranı duyurusu gerek yok"): `remote.json` silindi, `Remote.loadSaved/refresh` boş; duyuru, zorunlu güncelleme ekranı, sürüm bekletme, seçki, uzaktan gizleme/kapatma çalışmaz (hep varsayılan). **Yenilikler kartı** güncellemeden sonra çıkmaz (`WhatsNew.maybeShow` yalnızca "görüldü" işaretler; Ayarlar › Hakkında'da liste hâlâ var), `whatsnew.txt` her yayında yazılmak zorunda değil.
-- **Eklentiler taşınmadı:** eski depoya başka araçla eklenen Stremio/Nuvio eklenti yönetimi (`Addon.kt`, `AddonStore.kt`, Ayarlar › Eklentiler) ve #124 (yayın çözme + uygulama içi oynatma) burada yok. Bu oturumlar o kısmı taşımaz, geliştirmez (aşağıda bölüm 8, korsan izleme kararı).
+- **Eklenti kapsamı (12 Kasım 2026):** `feature/nuvio-addon-base` dalında yalnızca HTTPS depo/manifest kaydı ve katalog metadata okuma ile yerel bölüm izleme ilerlemesi için sınırlı altyapı eklendi. Eklenti kodu çalıştırma, scraper, stream/source çözme ve yetkisiz yayın uçları kapsam dışıdır. Bu değişiklik henüz derlenip TV'de denenmedi.
 - **İş akışları:** `build.yml` (main'e push: anahtar → site adresi → iki APK → `latest` sürümü → yayın), `daily-pick.yml` (02:17 UTC film listesi → yayın), `publish.yml` (dosya sitesini kurar).
 - **Depo sırları (4):** `KEYSTORE_PASSWORD` (kullanıcının seçtiği yeni parola), `TMDB_KEY`, `CLOUDFLARE_API_TOKEN` (Pages: Edit; Kasım 2027'de bitiyor), `CLOUDFLARE_ACCOUNT_ID`.
 - **İlk kurulum:** TV'de Downloader ile `<site adresi>/kur.apk`; sihirbaz tam sürüme günceller. Sonraki güncellemeler uygulama içinden.
@@ -43,7 +43,7 @@ Kullanıcı: "Kapat her şeyi, kimseye haber verme; başka bir repo açıp sadec
 - `remote.json`: `minVersion` 0 (eski sürümdekiler "Güncelleme gerekli" ekranında kilitli kalmasın), `dlcode` yok. Downloader kodu 7036535 artık ölü adrese gidiyor.
 - **Cloudflare projesi ve kopya depo silinmedi** (ad boşa çıkarsa başkası alıp kurulu TV'lere içerik verebilir); silmek kullanıcının işi ve önerilmez.
 - Geri açmak: #125'i geri al, site yeniden yayınlanır.
-- **GPT ile eklenenler (12 Kasım):** kullanıcı başka bir araçla ana dala Stremio/Nuvio uyumlu eklenti yönetimi (`Addon.kt`, `AddonStore.kt`, Ayarlar › Eklentiler) ekledi; taslak #124 eklentilerden katalog + yayın çözme + uygulama içi oynatma (Media3). **Bu oturumlar o kısmı geliştirmez, birleştirmez, düzeltmez** (bölüm 8, korsan izleme kararı; yalnızca kendi TV'si için de). Diğer işlerde çalışmadan önce `origin/main` alınır.
+- **Önceki Nuvio kararı:** scraper ve yayın çözme/uygulama içi oynatma entegrasyonu yapılmayacak (bölüm 8). 12 Kasım 2026'da kullanıcı, yalnızca güvenli metadata/depo yönetimi ve yerel izleme ilerlemesi kapsamındaki yeni çalışmayı onayladı; bu onay scraper veya stream resolver kapsamını açmaz. Diğer işlerde çalışmadan önce `origin/main` alınır.
 - Aşağıdaki bölümlerde site, kurulum, arkadaşlar ve forumla ilgili notlar artık tarihçe.
 
 ## 1. Çalışma biçimi (kullanıcıyla anlaşmalar)
