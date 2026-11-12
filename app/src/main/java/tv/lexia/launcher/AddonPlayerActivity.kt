@@ -5,10 +5,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.MediaController
-import android.widget.TextView
 import android.widget.VideoView
 
 /** Plays a direct HTTPS media URL supplied by the user or an authorized provider. */
