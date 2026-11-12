@@ -165,18 +165,9 @@ class AddonManagerActivity : Activity() {
                         val isSeries = meta.type.equals("series", true) ||
                             meta.type.equals("tv", true) || catalog.type.equals("series", true) ||
                             catalog.type.equals("tv", true)
-                        if (isSeries) {
-                            val episodes = Addons.fetchEpisodes(
-                                addon, item.type.ifBlank { catalog.type }, item.id
-                            )
-                            runOnUiThread {
-                                status.text = if (episodes.isEmpty()) {
-                                    "Metadata açıldı; bu sağlayıcı bölüm listesi sunmuyor."
-                                } else {
-                                    "${episodes.size} bölüm bulundu."
-                                }
-                            }
-                        }
+                        val episodes = if (isSeries) {
+                            Addons.fetchEpisodes(addon, item.type.ifBlank { catalog.type }, item.id)
+                        } else emptyList()
                         val film = Pick(
                             title = meta.name.ifBlank { item.name.ifBlank { item.id } },
                             meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
@@ -197,9 +188,11 @@ class AddonManagerActivity : Activity() {
                         runOnUiThread {
                             status.text = "Metadata yüklendi: ${film.title}"
                             if (isSeries) {
-                                val episodes = runCatching {
-                                    Addons.fetchEpisodes(addon, item.type.ifBlank { catalog.type }, item.id)
-                                }.getOrDefault(emptyList())
+                                status.text = if (episodes.isEmpty()) {
+                                    "Metadata yüklendi; sağlayıcı bölüm listesi sunmuyor."
+                                } else {
+                                    "${episodes.size} bölüm bulundu."
+                                }
                                 if (episodes.isNotEmpty()) showEpisodes(addon, item.id, episodes)
                                 else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
                             } else {
