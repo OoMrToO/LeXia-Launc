@@ -9,7 +9,7 @@ import android.widget.FrameLayout
 import android.widget.MediaController
 import android.widget.VideoView
 
-/** Plays a direct HTTPS media URL supplied by the user or an authorized provider. */
+/** Plays a direct HTTPS media URL supplied by the user or an authorized provider.\n * Playback position is persisted locally so the episode can resume after leaving the player.\n */
 class AddonPlayerActivity : Activity() {
     private lateinit var video: VideoView
     private val handler = Handler(Looper.getMainLooper())
