@@ -175,9 +175,16 @@ object Addons {
         require("catalog" in addon.resources || addon.resources.isEmpty()) {
             "Bu eklenti katalog kaynağı sunmuyor."
         }
+        require(catalog.type.matches(Regex("^[A-Za-z0-9_-]{1,32}$"))) {
+            "Katalog türü geçersiz."
+        }
+        require(catalog.id.isNotBlank() && catalog.id.length <= 128) {
+            "Katalog kimliği geçersiz."
+        }
+        val encodedCatalogId = java.net.URLEncoder.encode(catalog.id, "UTF-8").replace("+", "%20")
         val url = addon.baseUrl.trimEnd('/') +
-            "/catalog/${catalog.type}/${catalog.id}.json" +
-            if (skip > 0) "?skip=$skip" else ""
+            "/catalog/${catalog.type}/$encodedCatalogId.json" +
+            if (skip > 0) "?skip=${skip.coerceAtMost(10000)}" else ""
         val metas = JSONObject(getText(url)).optJSONArray("metas") ?: JSONArray()
         return (0 until metas.length()).mapNotNull { i ->
             val m = metas.optJSONObject(i) ?: return@mapNotNull null
