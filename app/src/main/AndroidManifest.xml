@@ -191,6 +191,11 @@
             </intent-filter>
         </receiver>
         <activity
+            android:name=".AddonPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".AddonManagerActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
