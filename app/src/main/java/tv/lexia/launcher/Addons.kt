@@ -25,6 +25,15 @@ object Addons {
         val resources: Set<String>
     )
 
+    data class EpisodeItem(
+        val id: String,
+        val title: String,
+        val season: Int,
+        val episode: Int,
+        val released: String,
+        val thumbnail: String
+    )
+
     data class CatalogItem(
         val id: String,
         val type: String,
@@ -100,7 +109,7 @@ object Addons {
         )
     }
 
-    /** Loads a single standard meta resource; it never requests stream/source resources. */
+    /** Loads a single standard meta resource, including episode metadata for series. */
     fun fetchMeta(addon: Installed, type: String, id: String): CatalogItem {
         require("meta" in addon.resources || addon.resources.isEmpty()) {
             "Bu eklenti metadata kaynağı sunmuyor."
@@ -127,6 +136,34 @@ object Addons {
             runtime = m.optString("runtime").toIntOrNull() ?: 0,
             seasons = 0
         )
+    }
+
+    /** Reads episode descriptors embedded in a standard Stremio-style meta response. */
+    fun fetchEpisodes(addon: Installed, type: String, id: String): List<EpisodeItem> {
+        require("meta" in addon.resources || addon.resources.isEmpty()) {
+            "Bu eklenti metadata kaynağı sunmuyor."
+        }
+        require(type.matches(Regex("^[A-Za-z0-9_-]{1,32}$"))) { "İçerik türü geçersiz." }
+        require(id.isNotBlank() && id.length <= 256 && !id.contains('/')) { "İçerik kimliği geçersiz." }
+        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+        val address = addon.baseUrl.trimEnd('/') + "/meta/$type/$encodedId.json"
+        val root = JSONObject(getText(address))
+        val meta = root.optJSONObject("meta") ?: root
+        val videos = meta.optJSONArray("videos") ?: JSONArray()
+        return (0 until videos.length()).mapNotNull { index ->
+            val video = videos.optJSONObject(index) ?: return@mapNotNull null
+            val season = video.optInt("season", -1)
+            val number = video.optInt("episode", -1)
+            if (season < 0 || number < 1) return@mapNotNull null
+            EpisodeItem(
+                id = video.optString("id"),
+                title = video.optString("title").ifBlank { "Bölüm $number" },
+                season = season,
+                episode = number,
+                released = video.optString("released"),
+                thumbnail = video.optString("thumbnail")
+            )
+        }.sortedWith(compareBy<EpisodeItem> { it.season }.thenBy { it.episode })
     }
 
     /** Fetches only catalogue metadata. Addon stream/source resources are never requested. */
