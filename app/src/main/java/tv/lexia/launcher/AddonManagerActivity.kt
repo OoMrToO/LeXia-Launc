@@ -118,8 +118,16 @@ class AddonManagerActivity : Activity() {
                     append(addon.name)
                     if (addon.version.isNotBlank()) append(" · v${addon.version}")
                     append("\n")
-                    append(if (addon.catalogs.isEmpty()) "Katalog bulunamadı." else "${addon.catalogs.size} katalog bulundu.")
-                    addon.catalogs.forEach { append("\n• ${it.name} (${it.type})") }
+                    if (addon.catalogs.isEmpty()) {
+                        append("Katalog bulunamadı.")
+                    } else {
+                        append("${addon.catalogs.size} katalog bulundu.")
+                        addon.catalogs.forEach { catalog ->
+                            val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
+                            append("\n• ${catalog.name}: ")
+                            append(items?.size?.let { "$it kayıt" } ?: "katalog okunamadı")
+                        }
+                    }
                     append("\n\nYalnızca katalog/metadata okunur; yayın kaynağı uçları çağrılmaz.")
                 }
                 runOnUiThread { status.text = summary }
