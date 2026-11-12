@@ -57,6 +57,7 @@ jobs:
             git config user.email "actions@github.com"
             git add app/signing.p12
             git commit -qm "İmza anahtarı"
+            git pull -q --rebase origin main
             git push -q origin HEAD:main
           fi
       - uses: actions/setup-node@v4

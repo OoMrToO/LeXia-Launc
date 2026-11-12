@@ -21,7 +21,8 @@ jobs:
           git config user.email "actions@github.com"
           git add pick.json
           git commit -m "Günlük öneri" || echo "değişiklik yok"
-          git push
+          # Another job (a build) may have pushed meanwhile.
+          for i in 1 2 3; do git pull -q --rebase && git push && break; sleep 5; done
 
   publish:
     needs: pick
