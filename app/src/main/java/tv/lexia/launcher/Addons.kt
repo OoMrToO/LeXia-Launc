@@ -66,8 +66,13 @@ object Addons {
         val resources = JSONArray(json.optString("resources", "[]").let {
             if (it.startsWith("[")) it else "[]"
         })
-        val resourceSet = buildSet {
-            for (i in 0 until resources.length()) add(resources.optString(i))
+        val resourceSet = mutableSetOf<String>()
+        for (i in 0 until resources.length()) {
+            val value = resources.opt(i)
+            when (value) {
+                is String -> resourceSet.add(value)
+                is JSONObject -> value.optString("name").takeIf { it.isNotBlank() }?.let(resourceSet::add)
+            }
         }
         val typesJson = json.optJSONArray("types") ?: json.optJSONArray("supportedTypes") ?: JSONArray()
         val types = (0 until typesJson.length()).map { typesJson.optString(it) }.filter { it.isNotBlank() }
@@ -80,7 +85,7 @@ object Addons {
             else Catalog(type, id, c.optString("name").ifBlank { id })
         }
         return Installed(
-            baseUrl = base,
+            baseUrl = base.removeSuffix("/manifest.json"),
             id = json.optString("id").ifBlank { base },
             name = json.optString("name").ifBlank { base },
             version = json.optString("version"),
@@ -120,7 +125,7 @@ object Addons {
         val value = raw.trim().trimEnd('/')
         require(value.startsWith("https://", true)) { "Eklenti adresi HTTPS olmalı." }
         require(value.length <= 2048 && !value.any { it.isWhitespace() }) { "Eklenti adresi geçersiz." }
-        return value
+        return value.removeSuffix("/manifest.json")
     }
 
     private fun getText(address: String): String {
