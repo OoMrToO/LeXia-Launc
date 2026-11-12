@@ -3,6 +3,7 @@ package tv.lexia.launcher
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -34,6 +35,8 @@ object Addons {
         val thumbnail: String
     )
 
+    data class MetaDetails(val item: CatalogItem, val episodes: List<EpisodeItem>)
+
     data class CatalogItem(
         val id: String,
         val type: String,
@@ -58,7 +61,7 @@ object Addons {
 
     fun add(context: Context, raw: String) {
         val url = normalize(raw)
-        require(url.startsWith("https://")) { "Güvenlik için yalnızca HTTPS adresleri kabul edilir." }
+        require(url.startsWith("https://", true)) { "Güvenlik için yalnızca HTTPS adresleri kabul edilir." }
         val values = urls(context).toMutableSet()
         values.add(url)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -76,9 +79,7 @@ object Addons {
         val base = normalize(raw)
         val manifestUrl = if (base.endsWith("/manifest.json")) base else "$base/manifest.json"
         val json = JSONObject(getText(manifestUrl))
-        val resources = JSONArray(json.optString("resources", "[]").let {
-            if (it.startsWith("[")) it else "[]"
-        })
+        val resources = json.optJSONArray("resources") ?: JSONArray()
         val resourceSet = mutableSetOf<String>()
         for (i in 0 until resources.length()) {
             val value = resources.opt(i)
@@ -109,43 +110,8 @@ object Addons {
         )
     }
 
-    /** Loads a single standard meta resource, including episode metadata for series. */
-    fun fetchMeta(addon: Installed, type: String, id: String): CatalogItem {
-        require("meta" in addon.resources || addon.resources.isEmpty()) {
-            "Bu eklenti metadata kaynağı sunmuyor."
-        }
-        require(type.matches(Regex("^[A-Za-z0-9_-]{1,32}$"))) { "İçerik türü geçersiz." }
-        require(id.isNotBlank() && id.length <= 256 && !id.contains('/')) { "İçerik kimliği geçersiz." }
-        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
-        val address = addon.baseUrl.trimEnd('/') + "/meta/$type/$encodedId.json"
-        val root = JSONObject(getText(address))
-        val m = root.optJSONObject("meta") ?: root
-        val genres = m.optJSONArray("genres")?.let { a ->
-            (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.take(12)
-        }.orEmpty()
-        return CatalogItem(
-            id = m.optString("id", id),
-            type = m.optString("type", type),
-            name = m.optString("name"),
-            poster = m.optString("poster"),
-            background = m.optString("background"),
-            description = m.optString("description"),
-            releaseInfo = m.optString("releaseInfo"),
-            imdbRating = m.optDouble("imdbRating", 0.0),
-            genres = genres,
-            runtime = m.optString("runtime").toIntOrNull() ?: 0,
-            seasons = m.optInt("seasonCount", 0).takeIf { it > 0 }
-                ?: m.optJSONArray("videos")?.let { videos ->
-                    (0 until videos.length()).mapNotNull { index ->
-                        val video = videos.optJSONObject(index) ?: return@mapNotNull null
-                        if (!video.has("season")) null else video.optInt("season", -1).takeIf { it >= 0 }
-                    }.distinct().size
-                } ?: 0
-        )
-    }
-
-    /** Reads episode descriptors embedded in a standard Stremio-style meta response. */
-    fun fetchEpisodes(addon: Installed, type: String, id: String): List<EpisodeItem> {
+    /** Loads metadata and its embedded episode descriptors with one network request. */
+    fun fetchMetaDetails(addon: Installed, type: String, id: String): MetaDetails {
         require("meta" in addon.resources || addon.resources.isEmpty()) {
             "Bu eklenti metadata kaynağı sunmuyor."
         }
@@ -155,8 +121,12 @@ object Addons {
         val address = addon.baseUrl.trimEnd('/') + "/meta/$type/$encodedId.json"
         val root = JSONObject(getText(address))
         val meta = root.optJSONObject("meta") ?: root
+        val genres = meta.optJSONArray("genres")?.let { array ->
+            (0 until array.length()).map { array.optString(it) }
+                .filter { it.isNotBlank() }.take(12)
+        }.orEmpty()
         val videos = meta.optJSONArray("videos") ?: JSONArray()
-        return (0 until videos.length()).mapNotNull { index ->
+        val episodes = (0 until videos.length()).mapNotNull { index ->
             val video = videos.optJSONObject(index) ?: return@mapNotNull null
             val season = video.optInt("season", -1)
             val number = video.optInt("episode", -1)
@@ -170,7 +140,30 @@ object Addons {
                 thumbnail = video.optString("thumbnail")
             )
         }.sortedWith(compareBy<EpisodeItem> { it.season }.thenBy { it.episode })
+        val seasonCount = meta.optInt("seasonCount", 0).takeIf { it > 0 }
+            ?: episodes.map { it.season }.distinct().size
+        val item = CatalogItem(
+            id = meta.optString("id").ifBlank { id },
+            type = meta.optString("type").ifBlank { type },
+            name = meta.optString("name"),
+            poster = meta.optString("poster"),
+            background = meta.optString("background"),
+            description = meta.optString("description"),
+            releaseInfo = meta.optString("releaseInfo"),
+            imdbRating = meta.optDouble("imdbRating", 0.0),
+            genres = genres,
+            runtime = meta.optString("runtime").substringBefore(' ').toIntOrNull() ?: 0,
+            seasons = seasonCount
+        )
+        return MetaDetails(item, episodes)
     }
+
+    /** Convenience accessors retained for callers that need only one part of the response. */
+    fun fetchMeta(addon: Installed, type: String, id: String): CatalogItem =
+        fetchMetaDetails(addon, type, id).item
+
+    fun fetchEpisodes(addon: Installed, type: String, id: String): List<EpisodeItem> =
+        fetchMetaDetails(addon, type, id).episodes
 
     /** Fetches only catalogue metadata. Addon stream/source resources are never requested. */
     fun fetchCatalog(addon: Installed, catalog: Catalog, skip: Int = 0): List<CatalogItem> {
@@ -233,10 +226,21 @@ object Addons {
                 connection.instanceFollowRedirects = false
                 val code = connection.responseCode
                 if (code in 200..299) {
-                    val stream = connection.inputStream
-                    val output = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                    require(output.length <= 4 * 1024 * 1024) { "Yanıt boyutu 4 MB sınırını aşıyor." }
-                    return output
+                    val output = ByteArrayOutputStream()
+                    connection.inputStream.use { input ->
+                        val buffer = ByteArray(8 * 1024)
+                        var total = 0
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 4 * 1024 * 1024) {
+                                "Yanıt boyutu 4 MB sınırını aşıyor."
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    return output.toString(Charsets.UTF_8.name())
                 }
                 if (code in 301..308) {
                     require(redirectCount < 5) { "Çok fazla yönlendirme." }

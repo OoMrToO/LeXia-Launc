@@ -114,31 +114,32 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             try {
                 val addon = Addons.fetchManifest(address)
-                val entries = mutableListOf<Pair<Addons.Catalog, Addons.CatalogItem>>()
-                val summary = buildString {
-                    append(addon.name)
-                    if (addon.version.isNotBlank()) append(" · v${addon.version}")
-                    append("\\n")
-                    if (addon.catalogs.isEmpty()) {
-                        append("Katalog bulunamadı.")
-                    } else {
-                        append("${addon.catalogs.size} katalog bulundu.")
-                        addon.catalogs.forEach { catalog ->
-                            val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\\n\\n• ${catalog.name}: ")
-                            if (items == null) {
-                                append("katalog okunamadı")
-                            } else {
-                                append("${items.size} kayıt")
-                                entries.addAll(items.map { catalog to it })
-                            }
-                        }
-                    }
-                    append("\\n\\nKayıt seçildiğinde standart metadata ayrıntısı açılır. Yayın/kaynak uçları çağrılmaz.")
+                val results = addon.catalogs.map { catalog ->
+                    catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
                 }
                 runOnUiThread {
-                    status.text = summary
-                    if (entries.isNotEmpty()) showCatalogItems(addon, entries)
+                    status.text = if (results.isEmpty()) {
+                        addon.name + " · Katalog bulunamadı."
+                    } else {
+                        addon.name + " · " + results.size + " katalog hazır."
+                    }
+                    if (results.isNotEmpty()) {
+                        val labels = results.map { (catalog, items) ->
+                            catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                        }.toTypedArray()
+                        AlertDialog.Builder(this)
+                            .setTitle(addon.name + " · Kataloglar")
+                            .setItems(labels) { _, index ->
+                                val (catalog, items) = results[index]
+                                if (items.isNullOrEmpty()) {
+                                    Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    showCatalogItems(addon, catalog, items)
+                                }
+                            }
+                            .setNegativeButton("Kapat", null)
+                            .show()
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = e.message ?: "Eklenti okunamadı." }
@@ -148,32 +149,34 @@ class AddonManagerActivity : Activity() {
 
     private fun showCatalogItems(
         addon: Addons.Installed,
-        entries: List<Pair<Addons.Catalog, Addons.CatalogItem>>
+        catalog: Addons.Catalog,
+        entries: List<Addons.CatalogItem>,
+        nextSkip: Int = entries.size
     ) {
-        val labels = entries.map { (_, item) ->
-            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · ${item.releaseInfo}" else ""
+        val labels = entries.map { item ->
+            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · " + item.releaseInfo else ""
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("${addon.name} · Katalog")
+            .setTitle(addon.name + " · " + catalog.name)
             .setItems(labels) { _, which ->
-                val (catalog, item) = entries[which]
-                status.text = "${item.name.ifBlank { item.id }} yükleniyor…"
+                val item = entries[which]
+                status.text = item.name.ifBlank { item.id } + " yükleniyor…"
                 worker.execute {
                     try {
-                        val meta = Addons.fetchMeta(addon, item.type.ifBlank { catalog.type }, item.id)
+                        val details = Addons.fetchMetaDetails(addon, item.type.ifBlank { catalog.type }, item.id)
+                        val meta = details.item
+                        val seriesProgressId = addon.baseUrl + "|" + meta.id.ifBlank { item.id }
                         val isSeries = meta.type.equals("series", true) ||
                             meta.type.equals("tv", true) || catalog.type.equals("series", true) ||
                             catalog.type.equals("tv", true)
-                        val episodes = if (isSeries) {
-                            Addons.fetchEpisodes(addon, item.type.ifBlank { catalog.type }, item.id)
-                        } else emptyList()
+                        val episodes = if (isSeries) details.episodes else emptyList()
                         val film = Pick(
                             title = meta.name.ifBlank { item.name.ifBlank { item.id } },
                             meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
                                 .filter { it.isNotBlank() }.joinToString(" · "),
                             overview = meta.description,
                             backdrop = meta.background.ifBlank { meta.poster },
-                            reason = "Eklenti kataloğu · ${addon.name}",
+                            reason = "Eklenti kataloğu · " + addon.name,
                             trailer = "",
                             logo = "",
                             imdb = meta.imdbRating,
@@ -185,17 +188,12 @@ class AddonManagerActivity : Activity() {
                             seasons = meta.seasons
                         )
                         runOnUiThread {
-                            status.text = "Metadata yüklendi: ${film.title}"
+                            status.text = "Metadata yüklendi: " + film.title
                             if (isSeries) {
-                                status.text = if (episodes.isEmpty()) {
-                                    "Metadata yüklendi; sağlayıcı bölüm listesi sunmuyor."
-                                } else {
-                                    "${episodes.size} bölüm bulundu."
-                                }
-                                if (episodes.isNotEmpty()) showEpisodes(addon, item.id, episodes)
-                                else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
+                                status.text = episodes.size.toString() + " bölüm bulundu."
+                                showSeriesOverview(film, addon.name, seriesProgressId, episodes)
                             } else {
-                                DetailActivity.open(this, film)
+                                askMovieSource(film, seriesProgressId)
                             }
                         }
                     } catch (e: Exception) {
@@ -206,12 +204,86 @@ class AddonManagerActivity : Activity() {
                     }
                 }
             }
+            .setPositiveButton("Daha fazla yükle") { _, _ ->
+                status.text = "Sonraki katalog sayfası yükleniyor…"
+                worker.execute {
+                    try {
+                        val more = Addons.fetchCatalog(addon, catalog, skip = nextSkip)
+                        val known = entries.map { it.id }.toSet()
+                        val unique = more.filterNot { it.id in known }
+                        runOnUiThread {
+                            if (unique.isEmpty()) {
+                                Toast.makeText(this, "Başka kayıt bulunamadı.", Toast.LENGTH_LONG).show()
+                            } else {
+                                showCatalogItems(addon, catalog, entries + unique, nextSkip + more.size)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(this, e.message ?: "Sonraki sayfa yüklenemedi.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showSeriesOverview(
+        film: Pick,
+        addonName: String,
+        progressId: String,
+        episodes: List<Addons.EpisodeItem>
+    ) {
+        val message = buildString {
+            if (film.meta.isNotBlank()) append(film.meta)
+            if (film.runtime > 0) {
+                if (isNotEmpty()) append(" · ")
+                append(film.runtime.toString() + " dk")
+            }
+            if (film.seasons > 0) {
+                if (isNotEmpty()) append(" · ")
+                append(film.seasons.toString() + " sezon")
+            }
+            if (film.overview.isNotBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append(film.overview)
+            }
+            if (isNotEmpty()) append("\n\n")
+            append(episodes.size.toString() + " bölüm metadata kaydı")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(film.title)
+            .setMessage(message)
+            .setPositiveButton(if (episodes.isEmpty()) "Tamam" else "Bölümler") { _, _ ->
+                if (episodes.isNotEmpty()) showEpisodes(addonName, progressId, episodes)
+            }
+            .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun askMovieSource(film: Pick, progressId: String) {
+        val input = EditText(this).apply {
+            hint = "https://ornek.com/video.mp4"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle(film.title)
+            .setMessage("Yalnızca kullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir. Eklenti kaynak uçları çağrılmaz.")
+            .setView(input)
+            .setPositiveButton("Oynat") { _, _ ->
+                openDirectPlayer(input.text.toString(), progressId, 0, 1)
+            }
+            .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
             .show()
     }
 
     private fun showEpisodes(
-        addon: Addons.Installed,
+        addonName: String,
         seriesId: String,
         episodes: List<Addons.EpisodeItem>
     ) {
@@ -222,50 +294,57 @@ class AddonManagerActivity : Activity() {
                 progress != null && progress.positionMs > 0 -> " · Devam"
                 else -> ""
             }
-            "S${episode.season} · B${episode.episode}  ${episode.title}$marker"
+            val release = episode.released.take(10).takeIf { it.isNotBlank() }?.let { " · " + it }.orEmpty()
+            "S" + episode.season + " · B" + episode.episode + "  " + episode.title + release + marker
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("${addon.name} · Bölümler")
+            .setTitle(addonName + " · Bölümler")
             .setItems(labels) { _, index ->
                 val episode = episodes[index]
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
-                val message = buildString {
-                    append("Sezon ${episode.season}, bölüm ${episode.episode}")
-                    if (episode.released.isNotBlank()) append("\\nYayın: ${episode.released}")
-                    if (saved != null && saved.durationMs > 0) {
-                        append("\\nİlerleme: ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%")
-                    }
-                    append("\\n\\nBölüm bilgisi sağlayıcıdan alındı. Oynatma kaynağı bu sağlayıcı tarafından sunulmuyor.")
-                }
-                val sourceInput = EditText(this).apply {
+                val progressText = if (saved != null && saved.durationMs > 0) {
+                    "İlerleme: " + (saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100) + "%"
+                } else "Henüz izleme ilerlemesi yok."
+                val input = EditText(this).apply {
                     hint = "https://ornek.com/video.mp4"
                     setSingleLine(true)
                     setTextColor(-1)
                     setHintTextColor(0xFF8B929E.toInt())
                 }
-                val dialog = AlertDialog.Builder(this)
+                val message = buildString {
+                    append("Sezon " + episode.season + ", bölüm " + episode.episode + "\n")
+                    if (episode.released.isNotBlank()) append("Yayın: " + episode.released + "\n")
+                    append(progressText)
+                    append("\n\nKullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir.")
+                }
+                AlertDialog.Builder(this)
                     .setTitle(episode.title)
                     .setMessage(message)
-                    .setView(sourceInput)
+                    .setView(input)
                     .setPositiveButton("Oynat") { _, _ ->
-                        val source = sourceInput.text.toString().trim()
-                        val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
-                        if (uri?.scheme != "https" || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) {
-                            Toast.makeText(this, "Yalnızca doğrudan HTTPS medya adresi kabul edilir.", Toast.LENGTH_LONG).show()
-                        } else {
-                            startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
-                                putExtra(AddonPlayerActivity.EXTRA_URL, source)
-                                putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, seriesId)
-                                putExtra(AddonPlayerActivity.EXTRA_SEASON, episode.season)
-                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode.episode)
-                            })
-                        }
+                        openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
                     }
                     .setNegativeButton("Kapat", null)
                     .show()
             }
             .setNegativeButton("Kapat", null)
             .show()
+    }
+
+    private fun openDirectPlayer(rawUrl: String, progressId: String, season: Int, episode: Int) {
+        val source = rawUrl.trim()
+        val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
+        if (uri == null || !uri.scheme.equals("https", true) ||
+            uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) {
+            Toast.makeText(this, "Yalnızca doğrudan HTTPS medya adresi kabul edilir.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+            putExtra(AddonPlayerActivity.EXTRA_URL, source)
+            putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, progressId)
+            putExtra(AddonPlayerActivity.EXTRA_SEASON, season)
+            putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode)
+        })
     }
 
     override fun onDestroy() {

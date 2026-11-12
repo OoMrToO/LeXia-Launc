@@ -62,7 +62,7 @@ android {
         }
     }
 
-    // The app has no libraries and no translations; lint's release check would only slow the build.
+    // The app has no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -81,3 +81,9 @@ android {
     }
 }
 
+
+dependencies {
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+}
