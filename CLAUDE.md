@@ -17,7 +17,9 @@ Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `
 - **İş akışları:** `build.yml` (main'e push: anahtar → site adresi → iki APK → `latest` sürümü → yayın), `daily-pick.yml` (02:17 UTC film listesi → yayın), `publish.yml` (dosya sitesini kurar).
 - **Depo sırları (4):** `KEYSTORE_PASSWORD` (kullanıcının seçtiği yeni parola), `TMDB_KEY`, `CLOUDFLARE_API_TOKEN` (Pages: Edit; Kasım 2027'de bitiyor), `CLOUDFLARE_ACCOUNT_ID`.
 - **İlk kurulum:** TV'de Downloader ile `<site adresi>/kur.apk`; sihirbaz tam sürüme günceller. Sonraki güncellemeler uygulama içinden.
-- **Durum (12 Kasım):** kod aktarıldı, tip kontrolü temiz; gerçek derleme ve TV denemesi **henüz yapılmadı**.
+- **Dosya sitesi adresi: https://lexia-tv.pages.dev** (kurulum: `/kur.apk`). Bu oturum ortamından erişim kapalı (proxy reddediyor), dosyalar buradan doğrulanamaz.
+- **Durum (12 Kasım gecesi):** dört sır eklendi; ilk derleme (#3) ve film listesi yeşil, imza anahtarı oluştu, site yayınlandı. TV'ye kurulum **henüz denenmedi**.
+- **Dikkat (eski notlardan):** kullanıcının ev Wi-Fi'sinin DNS'i `pages.dev`'i açmıyordu (telefonda DNS 1.1.1.1 yapınca düzeldi); eski uygulama bunun için herkese açık GitHub kopyasına düşüyordu, burada kopya yok. TV ulaşamazsa: TV'nin DNS'ini 1.1.1.1 yapmak ya da kendi alan adı.
 
 Aşağısı eski projenin notlarıdır (çalışma biçimi, özellikler, kararlar geçerli; site, kurulum adresleri, arkadaşlar, PR numaraları **tarihçe**; dosya yollarındaki `com/oomrtoo/tvlauncher` burada `tv/lexia/launcher`).
 
