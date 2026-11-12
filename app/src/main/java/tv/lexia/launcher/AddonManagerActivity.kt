@@ -173,9 +173,8 @@ class AddonManagerActivity : Activity() {
                                 status.text = if (episodes.isEmpty()) {
                                     "Metadata açıldı; bu sağlayıcı bölüm listesi sunmuyor."
                                 } else {
-                                    " ${episodes.size} bölüm bulundu."
+                                    "${episodes.size} bölüm bulundu."
                                 }
-                                if (episodes.isNotEmpty()) showEpisodes(addon, item.id, episodes)
                             }
                         }
                         val film = Pick(
@@ -197,7 +196,15 @@ class AddonManagerActivity : Activity() {
                         )
                         runOnUiThread {
                             status.text = "Metadata yüklendi: ${film.title}"
-                            DetailActivity.open(this, film)
+                            if (isSeries) {
+                                val episodes = runCatching {
+                                    Addons.fetchEpisodes(addon, item.type.ifBlank { catalog.type }, item.id)
+                                }.getOrDefault(emptyList())
+                                if (episodes.isNotEmpty()) showEpisodes(addon, item.id, episodes)
+                                else Toast.makeText(this, "Bu sağlayıcı bölüm listesi sunmuyor.", Toast.LENGTH_LONG).show()
+                            } else {
+                                DetailActivity.open(this, film)
+                            }
                         }
                     } catch (e: Exception) {
                         runOnUiThread {
