@@ -117,19 +117,19 @@ class AddonManagerActivity : Activity() {
                 val entries = mutableListOf<Pair<Addons.Catalog, Addons.CatalogItem>>()
                 val summary = buildString {
                     append(addon.name)
-                    if (addon.version.isNotBlank()) append(" · v\${addon.version}")
+                    if (addon.version.isNotBlank()) append(" · v${addon.version}")
                     append("\n")
                     if (addon.catalogs.isEmpty()) {
                         append("Katalog bulunamadı.")
                     } else {
-                        append("\${addon.catalogs.size} katalog bulundu.")
+                        append("${addon.catalogs.size} katalog bulundu.")
                         addon.catalogs.forEach { catalog ->
                             val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\n\n• \${catalog.name}: ")
+                            append("\n\n• ${catalog.name}: ")
                             if (items == null) {
                                 append("katalog okunamadı")
                             } else {
-                                append("\${items.size} kayıt")
+                                append("${items.size} kayıt")
                                 entries.addAll(items.map { catalog to it })
                             }
                         }
@@ -151,13 +151,13 @@ class AddonManagerActivity : Activity() {
         entries: List<Pair<Addons.Catalog, Addons.CatalogItem>>
     ) {
         val labels = entries.map { (_, item) ->
-            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · \${item.releaseInfo}" else ""
+            item.name.ifBlank { item.id } + if (item.releaseInfo.isNotBlank()) " · ${item.releaseInfo}" else ""
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("\${addon.name} · Katalog")
+            .setTitle("${addon.name} · Katalog")
             .setItems(labels) { _, which ->
                 val (catalog, item) = entries[which]
-                status.text = "\${item.name.ifBlank { item.id }} yükleniyor…"
+                status.text = "${item.name.ifBlank { item.id }} yükleniyor…"
                 worker.execute {
                     try {
                         val meta = Addons.fetchMeta(addon, item.type.ifBlank { catalog.type }, item.id)
@@ -170,7 +170,7 @@ class AddonManagerActivity : Activity() {
                                 .filter { it.isNotBlank() }.joinToString(" · "),
                             overview = meta.description,
                             backdrop = meta.background.ifBlank { meta.poster },
-                            reason = "Eklenti kataloğu · \${addon.name}",
+                            reason = "Eklenti kataloğu · ${addon.name}",
                             trailer = "",
                             logo = "",
                             imdb = meta.imdbRating,
@@ -182,7 +182,7 @@ class AddonManagerActivity : Activity() {
                             seasons = meta.seasons
                         )
                         runOnUiThread {
-                            status.text = "Metadata yüklendi: \${film.title}"
+                            status.text = "Metadata yüklendi: ${film.title}"
                             DetailActivity.open(this, film)
                         }
                     } catch (e: Exception) {
