@@ -191,7 +191,7 @@ class AddonManagerActivity : Activity() {
                             status.text = "Metadata yüklendi: " + film.title
                             if (isSeries) {
                                 status.text = episodes.size.toString() + " bölüm bulundu."
-                                showSeriesOverview(film, seriesProgressId, episodes)
+                                showSeriesOverview(film, addon.name, seriesProgressId, episodes)
                             } else {
                                 askMovieSource(film, seriesProgressId)
                             }
@@ -231,6 +231,7 @@ class AddonManagerActivity : Activity() {
 
     private fun showSeriesOverview(
         film: Pick,
+        addonName: String,
         progressId: String,
         episodes: List<Addons.EpisodeItem>
     ) {
@@ -255,20 +256,7 @@ class AddonManagerActivity : Activity() {
             .setTitle(film.title)
             .setMessage(message)
             .setPositiveButton(if (episodes.isEmpty()) "Tamam" else "Bölümler") { _, _ ->
-                if (episodes.isNotEmpty()) showEpisodes(
-                    Addons.Installed(
-                        baseUrl = "",
-                        id = "",
-                        name = "",
-                        version = "",
-                        description = "",
-                        types = emptyList(),
-                        catalogs = emptyList(),
-                        resources = emptySet()
-                    ),
-                    progressId,
-                    episodes
-                )
+                if (episodes.isNotEmpty()) showEpisodes(addonName, progressId, episodes)
             }
             .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
@@ -295,7 +283,7 @@ class AddonManagerActivity : Activity() {
     }
 
     private fun showEpisodes(
-        addon: Addons.Installed,
+        addonName: String,
         seriesId: String,
         episodes: List<Addons.EpisodeItem>
     ) {
@@ -310,7 +298,7 @@ class AddonManagerActivity : Activity() {
             "S" + episode.season + " · B" + episode.episode + "  " + episode.title + release + marker
         }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle(addon.name + " · Bölümler")
+            .setTitle(addonName + " · Bölümler")
             .setItems(labels) { _, index ->
                 val episode = episodes[index]
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
