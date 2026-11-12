@@ -124,8 +124,15 @@ class AddonManagerActivity : Activity() {
                         append("${addon.catalogs.size} katalog bulundu.")
                         addon.catalogs.forEach { catalog ->
                             val items = runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                            append("\n• ${catalog.name}: ")
-                            append(items?.size?.let { "$it kayıt" } ?: "katalog okunamadı")
+                            append("\n\n• ${catalog.name}: ")
+                            if (items == null) {
+                                append("katalog okunamadı")
+                            } else {
+                                append("${items.size} kayıt")
+                                items.take(12).forEach { item ->
+                                    append("\n   – ${item.name.ifBlank { item.id }}")
+                                }
+                            }
                         }
                     }
                     append("\n\nYalnızca katalog/metadata okunur; yayın kaynağı uçları çağrılmaz.")
