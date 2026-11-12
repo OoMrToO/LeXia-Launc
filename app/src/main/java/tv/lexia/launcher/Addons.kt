@@ -124,8 +124,8 @@ object Addons {
             releaseInfo = m.optString("releaseInfo"),
             imdbRating = m.optDouble("imdbRating", 0.0),
             genres = genres,
-            runtime = m.optString("runtime").filter { it.isDigit() }.toIntOrNull() ?: 0,
-            seasons = m.optInt("seasonCount", 0)
+            runtime = m.optString("runtime").toIntOrNull() ?: 0,
+            seasons = 0
         )
     }
 
