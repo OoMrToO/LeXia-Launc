@@ -134,7 +134,11 @@ object Addons {
             imdbRating = m.optDouble("imdbRating", 0.0),
             genres = genres,
             runtime = m.optString("runtime").toIntOrNull() ?: 0,
-            seasons = 0
+            seasons = m.optInt("seasonCount", 0).takeIf { it > 0 }
+                ?: m.optJSONArray("videos")?.let { videos ->
+                    (0 until videos.length()).mapNotNull { videos.optJSONObject(it)?.optInt("season") }
+                        .distinct().size
+                } ?: 0
         )
     }
 
@@ -186,7 +190,14 @@ object Addons {
                 poster = m.optString("poster"),
                 background = m.optString("background"),
                 description = m.optString("description"),
-                releaseInfo = m.optString("releaseInfo")
+                releaseInfo = m.optString("releaseInfo"),
+                imdbRating = m.optDouble("imdbRating", 0.0),
+                genres = m.optJSONArray("genres")?.let { genres ->
+                    (0 until genres.length()).map { genres.optString(it) }
+                        .filter { it.isNotBlank() }.take(12)
+                }.orEmpty(),
+                runtime = m.optString("runtime").toIntOrNull() ?: 0,
+                seasons = m.optInt("seasonCount", 0)
             )
         }
     }
@@ -199,18 +210,40 @@ object Addons {
     }
 
     private fun getText(address: String): String {
-        val connection = URL(address).openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "GET"
-            connection.connectTimeout = TIMEOUT
-            connection.readTimeout = TIMEOUT
-            connection.setRequestProperty("Accept", "application/json")
-            connection.instanceFollowRedirects = false
-            val code = connection.responseCode
-            require(code in 200..299) { "Sunucu HTTP $code yanıtı verdi." }
-            return connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        } finally {
-            connection.disconnect()
+        var current = URL(address)
+        repeat(6) { redirectCount ->
+            require(current.protocol.equals("https", true)) {
+                "Güvenlik nedeniyle HTTPS dışına yönlendirme kabul edilmez."
+            }
+            val connection = current.openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.connectTimeout = TIMEOUT
+                connection.readTimeout = TIMEOUT
+                connection.setRequestProperty("Accept", "application/json")
+                connection.instanceFollowRedirects = false
+                val code = connection.responseCode
+                if (code in 200..299) {
+                    val stream = connection.inputStream
+                    val output = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    require(output.length <= 4 * 1024 * 1024) { "Yanıt boyutu 4 MB sınırını aşıyor." }
+                    return output
+                }
+                if (code in 301..308) {
+                    require(redirectCount < 5) { "Çok fazla yönlendirme." }
+                    val location = connection.getHeaderField("Location")
+                        ?: error("Yönlendirme adresi eksik.")
+                    current = URL(current, location)
+                    require(current.protocol.equals("https", true)) {
+                        "HTTP adresine yönlendirme güvenlik nedeniyle engellendi."
+                    }
+                } else {
+                    error("Sunucu HTTP $code yanıtı verdi.")
+                }
+            } finally {
+                connection.disconnect()
+            }
         }
+        error("Yönlendirme tamamlanamadı.")
     }
 }
