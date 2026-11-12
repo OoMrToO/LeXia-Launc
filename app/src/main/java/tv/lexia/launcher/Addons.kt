@@ -32,7 +32,11 @@ object Addons {
         val poster: String,
         val background: String,
         val description: String,
-        val releaseInfo: String
+        val releaseInfo: String,
+        val imdbRating: Double = 0.0,
+        val genres: List<String> = emptyList(),
+        val runtime: Int = 0,
+        val seasons: Int = 0
     )
 
     private const val PREFS = "lexia_addons"
@@ -93,6 +97,35 @@ object Addons {
             types = types,
             catalogs = catalogs,
             resources = resourceSet
+        )
+    }
+
+    /** Loads a single standard meta resource; it never requests stream/source resources. */
+    fun fetchMeta(addon: Installed, type: String, id: String): CatalogItem {
+        require("meta" in addon.resources || addon.resources.isEmpty()) {
+            "Bu eklenti metadata kaynağı sunmuyor."
+        }
+        require(type.matches(Regex("^[A-Za-z0-9_-]{1,32}$"))) { "İçerik türü geçersiz." }
+        require(id.isNotBlank() && id.length <= 256 && !id.contains('/')) { "İçerik kimliği geçersiz." }
+        val encodedId = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+        val address = addon.baseUrl.trimEnd('/') + "/meta/$type/$encodedId.json"
+        val root = JSONObject(getText(address))
+        val m = root.optJSONObject("meta") ?: root
+        val genres = m.optJSONArray("genres")?.let { a ->
+            (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.take(12)
+        }.orEmpty()
+        return CatalogItem(
+            id = m.optString("id", id),
+            type = m.optString("type", type),
+            name = m.optString("name"),
+            poster = m.optString("poster"),
+            background = m.optString("background"),
+            description = m.optString("description"),
+            releaseInfo = m.optString("releaseInfo"),
+            imdbRating = m.optDouble("imdbRating", 0.0),
+            genres = genres,
+            runtime = m.optString("runtime").filter { it.isDigit() }.toIntOrNull() ?: 0,
+            seasons = m.optInt("seasonCount", 0)
         )
     }
 
