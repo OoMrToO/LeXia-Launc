@@ -68,3 +68,5 @@ jobs:
             curl -sS -o /dev/null -w "$p %{http_code} %{content_type} %{size_download}\n" "https://$HOST/$p?t=$(date +%s)" || echo "$p FAILED"
           done
           echo "version.txt: $(curl -sS "https://$HOST/version.txt?t=$(date +%s)")"
+          echo "---- Sertifika zinciri ----"
+          openssl s_client -connect "$HOST:443" -servername "$HOST" -showcerts </dev/null 2>/dev/null | grep -E "^ *[0-9]+ s:|^ +i:|NotAfter" || true
