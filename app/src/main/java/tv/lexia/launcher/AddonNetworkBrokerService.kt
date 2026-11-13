@@ -42,7 +42,7 @@ class AddonNetworkBrokerService : Service() {
         var current = URL(rawUrl)
         val headers = request.optJSONObject("headers") ?: JSONObject()
         val body = request.optString("body")
-        val bodyBytes = if (request.optString("bodyKind") == "base64") java.util.Base64.getDecoder().decode(body) else body.toByteArray(Charsets.UTF_8)
+        val bodyBytes = if (request.optString("bodyKind") == "base64") android.util.Base64.decode(body, android.util.Base64.DEFAULT) else body.toByteArray(Charsets.UTF_8)
         require(bodyBytes.size <= MAX_BODY) { "Request body too large." }
         var redirects = 0
         while (true) {
@@ -108,7 +108,7 @@ class AddonNetworkBrokerService : Service() {
                 return JSONObject().put("ok", status in 200..299).put("status", status)
                     .put("statusText", connection.responseMessage ?: "")
                     .put("url", current.toString()).put("body", text)
-                    .put("bodyBase64", java.util.Base64.getEncoder().encodeToString(responseBytes))
+                    .put("bodyBase64", android.util.Base64.encodeToString(responseBytes, android.util.Base64.NO_WRAP))
                     .put("headers", responseHeaders).toString()
             } finally {
                 connection.disconnect()
