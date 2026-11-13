@@ -159,17 +159,17 @@ class AddonSandboxService : Service() {
         """
 
         private const val COMMON_JS_WRAPPER = """
-            (async function() {
-              const module = { exports: {} };
-              const exports = module.exports;
-              __PROVIDER_SOURCE__
-              const api = module.exports || {};
-              const getStreams = api.getStreams || globalThis.getStreams;
-              if (typeof getStreams !== "function") return "[]";
+            const module = { exports: {} };
+            const exports = module.exports;
+            __PROVIDER_SOURCE__
+            const api = module.exports || {};
+            const getStreams = api.getStreams || globalThis.getStreams;
+            if (typeof getStreams !== "function") "[]";
+            else {
               const args = JSON.parse(__CALL_ARGS__);
               const streams = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
-              return JSON.stringify(Array.isArray(streams) ? streams : []);
-            })()
+              JSON.stringify(Array.isArray(streams) ? streams : []);
+            }
         """
     }
 }
