@@ -105,7 +105,7 @@ class AddonSandboxService : Service() {
                         function("__cheerio_select") { args ->
                             val docId = args.getOrNull(0)?.toString().orEmpty()
                             val rawSelector = args.getOrNull(1)?.toString().orEmpty()
-                            val selector = rawSelector.replace(Regex(""":contains\\(["']([^"']+)["']\\)"""), ":contains($1)")
+                            val selector = rawSelector.replace(Regex(""":contains\(["']([^"']+)["']\)"""), ":contains($1)")
                             val ids = runCatching {
                                 documentCache[docId]?.select(selector)?.mapIndexed { index, element ->
                                     val id = "$docId:$index:${element.hashCode()}"
@@ -119,7 +119,7 @@ class AddonSandboxService : Service() {
                             val docId = args.getOrNull(0)?.toString().orEmpty()
                             val parentId = args.getOrNull(1)?.toString().orEmpty()
                             val rawSelector = args.getOrNull(2)?.toString().orEmpty()
-                            val selector = rawSelector.replace(Regex(""":contains\\(["']([^"']+)["']\\)"""), ":contains($1)")
+                            val selector = rawSelector.replace(Regex(""":contains\(["']([^"']+)["']\)"""), ":contains($1)")
                             val ids = runCatching {
                                 elementCache[parentId]?.select(selector)?.mapIndexed { index, element ->
                                     val id = "$docId:find:$index:${element.hashCode()}"
