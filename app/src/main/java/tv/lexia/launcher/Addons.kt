@@ -51,6 +51,8 @@ object Addons {
 
     data class MetaDetails(val item: CatalogItem, val episodes: List<EpisodeItem>)
 
+    data class ProviderStream(val name: String, val title: String, val url: String, val quality: String, val format: String, val headers: Map<String, String>)
+
     data class CatalogItem(
         val id: String,
         val type: String,
@@ -267,6 +269,48 @@ object Addons {
                 seasons = m.optInt("seasonCount", 0)
             )
         }
+    }
+
+    /** Download the provider JavaScript entry file from its repository. */
+    fun fetchScraperSource(addon: Installed, provider: ScraperProvider): String {
+        require(addon.format == "nuvio-js") { "Bu depo Nuvio JavaScript deposu değil." }
+        require(provider.enabled) { "Bu sağlayıcı manifestte devre dışı." }
+        val filename = provider.filename.trim()
+        require(filename.length in 1..240 && !filename.startsWith("/") && !filename.contains("..") &&
+            !filename.contains('\\\\') && filename.matches(Regex("^[A-Za-z0-9_./-]+\\\\.js$"))) {
+            "Sağlayıcı dosya yolu geçersiz."
+        }
+        val source = getText(addon.baseUrl.trimEnd('/') + "/" + filename)
+        require(source.isNotBlank() && source.length <= 256 * 1024) {
+            "Sağlayıcı JavaScript dosyası boş veya 256 KB sınırını aşıyor."
+        }
+        return source
+    }
+
+    fun parseProviderStreams(json: String): List<ProviderStream> {
+        val array = JSONArray(json)
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val url = item.optString("url")
+            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
+            if (uri == null || !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) return@mapNotNull null
+            val headersJson = item.optJSONObject("headers") ?: JSONObject()
+            val headers = buildMap {
+                val names = headersJson.names() ?: JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = headersJson.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 && !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+            ProviderStream(
+                name = item.optString("name").ifBlank { "Sağlayıcı" },
+                title = item.optString("title").ifBlank { item.optString("name").ifBlank { "Oynat" } },
+                url = url, quality = item.optString("quality"),
+                format = item.optString("format").ifBlank { item.optString("type") },
+                headers = headers
+            )
+        }.take(30)
     }
 
     private fun normalize(raw: String): String {
