@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.UUID
 
 /**
  * Small IPC client for the isolated addon process.
@@ -25,12 +26,15 @@ object AddonSandbox {
         }
         val appContext = context.applicationContext
         val requestId = nextRequestId.incrementAndGet()
+        val sessionToken = UUID.randomUUID().toString()
+        AddonNetworkPermissions.registerSession(appContext, repository, providerId, sessionToken)
         var connection: ServiceConnection? = null
         val response = Messenger(Handler(Looper.getMainLooper()) { message ->
             val data = message.data
             if (message.what == AddonSandboxService.MSG_RESULT &&
                 data.getInt(AddonSandboxService.KEY_REQUEST_ID) == requestId) {
                 runCatching { connection?.let(appContext::unbindService) }
+                AddonNetworkPermissions.clearSession(appContext, sessionToken)
                 callback(
                     Result(
                         data.getBoolean(AddonSandboxService.KEY_SUCCESS),
@@ -51,31 +55,37 @@ object AddonSandbox {
                             putString(AddonSandboxService.KEY_REPOSITORY, repository)
                             putString(AddonSandboxService.KEY_PROVIDER_ID, providerId)
                             putString(AddonSandboxService.KEY_CALL_ARGS, callArgs)
+                            putString(AddonSandboxService.KEY_SESSION_TOKEN, sessionToken)
                         }
                     }
                     Messenger(binder!!).send(request)
                 }.onFailure {
                     runCatching { appContext.unbindService(this) }
+                    AddonNetworkPermissions.clearSession(appContext, sessionToken)
                     callback(Result(false, it.message ?: "Sandbox request failed."))
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
+                AddonNetworkPermissions.clearSession(appContext, sessionToken)
                 callback(Result(false, "JavaScript sandbox stopped (possible execution timeout)."))
             }
 
             override fun onBindingDied(name: ComponentName?) {
                 runCatching { appContext.unbindService(this) }
+                AddonNetworkPermissions.clearSession(appContext, sessionToken)
                 callback(Result(false, "JavaScript sandbox process died."))
             }
 
             override fun onNullBinding(name: ComponentName?) {
                 runCatching { appContext.unbindService(this) }
+                AddonNetworkPermissions.clearSession(appContext, sessionToken)
                 callback(Result(false, "JavaScript sandbox could not be started."))
             }
         }
         val intent = Intent(appContext, AddonSandboxService::class.java)
         if (!appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
+            AddonNetworkPermissions.clearSession(appContext, sessionToken)
             callback(Result(false, "Could not bind to JavaScript sandbox."))
         }
     }
