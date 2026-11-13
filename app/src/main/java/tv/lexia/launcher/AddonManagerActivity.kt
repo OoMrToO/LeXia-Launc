@@ -14,6 +14,20 @@ import java.util.concurrent.Executors
 
 /** TV-friendly manager for HTTPS addon repositories and their metadata catalogues. */
 class AddonManagerActivity : Activity() {
+    companion object {
+        private const val EXTRA_MATCH_REPOSITORY = "addon_match_repository"
+        private const val EXTRA_MATCH_TYPE = "addon_match_type"
+        private const val EXTRA_MATCH_ID = "addon_match_id"
+
+        fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String) {
+            context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
+                putExtra(EXTRA_MATCH_REPOSITORY, repository)
+                putExtra(EXTRA_MATCH_TYPE, type)
+                putExtra(EXTRA_MATCH_ID, itemId)
+            })
+        }
+    }
+
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
@@ -50,6 +64,53 @@ class AddonManagerActivity : Activity() {
         setContentView(root)
         add.requestFocus()
         render(list)
+        val matchedRepository = intent.getStringExtra(EXTRA_MATCH_REPOSITORY).orEmpty()
+        val matchedType = intent.getStringExtra(EXTRA_MATCH_TYPE).orEmpty()
+        val matchedId = intent.getStringExtra(EXTRA_MATCH_ID).orEmpty()
+        if (matchedRepository.isNotBlank() && matchedType.isNotBlank() && matchedId.isNotBlank()) {
+            openMatchedItem(matchedRepository, matchedType, matchedId)
+        }
+    }
+
+    private fun openMatchedItem(repository: String, type: String, itemId: String) {
+        status.text = "Eklentideki içerik yükleniyor…"
+        worker.execute {
+            try {
+                val addon = Addons.fetchManifest(repository)
+                val details = Addons.fetchMetaDetails(addon, type, itemId)
+                val meta = details.item
+                val isSeries = meta.type.equals("series", true) || meta.type.equals("tv", true) ||
+                    type.equals("series", true) || type.equals("tv", true)
+                val progressId = addon.baseUrl + "|" + meta.id.ifBlank { itemId }
+                val film = Pick(
+                    title = meta.name.ifBlank { itemId },
+                    meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
+                        .filter { it.isNotBlank() }.joinToString(" · "),
+                    overview = meta.description,
+                    backdrop = meta.background.ifBlank { meta.poster },
+                    reason = "Ana ekranda eşleşti · " + addon.name,
+                    trailer = "",
+                    logo = "",
+                    imdb = meta.imdbRating,
+                    year = meta.releaseInfo.take(4),
+                    genres = meta.genres,
+                    runtime = meta.runtime,
+                    poster = meta.poster,
+                    kind = if (isSeries) "tv" else "movie",
+                    seasons = meta.seasons
+                )
+                runOnUiThread {
+                    status.text = "Eşleşme bulundu: " + film.title
+                    if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes)
+                    else askMovieSource(film, progressId)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = e.message ?: "Eklenti içeriği açılamadı."
+                    Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun render(list: LinearLayout) {
