@@ -432,6 +432,132 @@ class AddonManagerActivity : Activity() {
             actions.addView(remove)
             card.addView(actions)
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (resources.displayMetrics.density * 14).toInt() })
+            loadProviderCards(address, card)
+        }
+    }
+
+    /** Render Nuvio scraper providers inside each installed repository card. */
+    private fun loadProviderCards(repository: String, card: LinearLayout) {
+        val density = resources.displayMetrics.density
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((density * 12).toInt(), (density * 12).toInt(), (density * 12).toInt(), (density * 8).toInt())
+            background = buttonBackground(0xFF141A24.toInt(), 0xFF303B49.toInt())
+        }
+        section.addView(TextView(this).apply {
+            text = "SAĞLAYICILAR"
+            textSize = 12f
+            letterSpacing = 0.1f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFFB9A5FF.toInt())
+        })
+        section.addView(TextView(this).apply {
+            text = "Sağlayıcı listesi yükleniyor…"
+            textSize = 13f
+            setTextColor(0xFF9BA7B8.toInt())
+        })
+        card.addView(section, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (density * 12).toInt() })
+        worker.execute {
+            val result = runCatching { Addons.fetchManifest(repository) }
+            runOnUiThread {
+                section.removeAllViews()
+                section.addView(TextView(this).apply {
+                    text = "SAĞLAYICILAR"
+                    textSize = 12f
+                    letterSpacing = 0.1f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(0xFFB9A5FF.toInt())
+                })
+                val addon = result.getOrNull()
+                if (addon == null) {
+                    section.addView(TextView(this).apply {
+                        text = "Sağlayıcı listesi alınamadı: " + (result.exceptionOrNull()?.message ?: "Manifest okunamadı")
+                        textSize = 13f
+                        setTextColor(0xFFFFB4AB.toInt())
+                    })
+                    return@runOnUiThread
+                }
+                if (addon.format != "nuvio-js") {
+                    section.addView(TextView(this).apply {
+                        text = "Bu depo Stremio kataloğu sunuyor; Nuvio sağlayıcı listesi içermiyor. " + addon.catalogs.size + " katalog mevcut."
+                        textSize = 13f
+                        setTextColor(0xFFB8BEC9.toInt())
+                    })
+                    return@runOnUiThread
+                }
+                section.addView(TextView(this).apply {
+                    text = addon.scrapers.size.toString() + " sağlayıcı bulundu"
+                    textSize = 13f
+                    setTextColor(0xFF9BA7B8.toInt())
+                    setPadding(0, (density * 4).toInt(), 0, (density * 8).toInt())
+                })
+                if (addon.scrapers.isEmpty()) {
+                    section.addView(TextView(this).apply {
+                        text = "Manifestte sağlayıcı tanımı yok."
+                        setTextColor(0xFFFFD27A.toInt())
+                    })
+                }
+                addon.scrapers.forEach { provider ->
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding((density * 10).toInt(), (density * 9).toInt(), (density * 10).toInt(), (density * 9).toInt())
+                        background = buttonBackground(0xFF202938.toInt(), 0xFF354154.toInt())
+                    }
+                    row.addView(TextView(this).apply {
+                        text = provider.name
+                        textSize = 15f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        setTextColor(0xFFF1F4F8.toInt())
+                    })
+                    row.addView(TextView(this).apply {
+                        text = (if (provider.supportedTypes.isEmpty()) "Film / Dizi" else provider.supportedTypes.joinToString(" · ")) +
+                            "  |  " + provider.catalogs.size + " katalog" +
+                            (if (provider.version.isNotBlank()) "  |  v" + provider.version else "")
+                        textSize = 12f
+                        setTextColor(0xFF9BA7B8.toInt())
+                        setPadding(0, (density * 3).toInt(), 0, (density * 6).toInt())
+                    })
+                    row.addView(TextView(this).apply {
+                        text = provider.description.ifBlank { "Açıklama bulunmuyor." }
+                        textSize = 12f
+                        maxLines = 2
+                        setTextColor(0xFFB8BEC9.toInt())
+                    })
+                    val enabled = Addons.isProviderEnabled(this, repository, provider)
+                    val controls = LinearLayout(this).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+                    fun providerButton(label: String, action: () -> Unit) = Button(this).apply {
+                        text = label
+                        isAllCaps = false
+                        textSize = 12f
+                        minHeight = (density * 40).toInt()
+                        setTextColor(0xFFFFFFFF.toInt())
+                        background = buttonBackground(0xFF394B66.toInt())
+                        setOnClickListener { action() }
+                        applyRemoteFocusStyle()
+                    }
+                    controls.addView(providerButton(if (enabled) "Etkin" else "Devre dışı") {
+                        Addons.setProviderEnabled(this@AddonManagerActivity, repository, provider, !enabled)
+                        loadProviderCards(repository, card)
+                    })
+                    controls.addView(providerButton("Ayarlar") {
+                        AlertDialog.Builder(this@AddonManagerActivity)
+                            .setTitle(provider.name)
+                            .setMessage(provider.description.ifBlank { "Açıklama yok." } + "\\n\\nSürüm: " + provider.version +
+                                "\\nDosya: " + provider.filename + "\\nFormatlar: " + provider.formats.joinToString(", ") +
+                                "\\nKataloglar: " + provider.catalogs.joinToString(", ") { it.name })
+                            .setPositiveButton("Sağlayıcı ayarları") { _, _ -> manageProviderSettings(repository, provider.id) }
+                            .setNeutralButton("Ağ izinleri") { _, _ -> manageProviderNetworkPermissions(repository, provider.id) }
+                            .setNegativeButton("Kapat", null)
+                            .show()
+                    })
+                    controls.addView(providerButton("Kaynakları dene") {
+                        if (!enabled) Toast.makeText(this@AddonManagerActivity, "Önce sağlayıcıyı etkinleştir.", Toast.LENGTH_SHORT).show()
+                        else promptProviderTest(repository, addon, provider)
+                    })
+                    row.addView(controls)
+                    section.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (density * 7).toInt() })
+                }
+            }
         }
     }
 
@@ -872,7 +998,7 @@ class AddonManagerActivity : Activity() {
                     connectionPrefs.edit().putLong("latency:$repository", manifestLatency).apply()
                 }
                 addon.scrapers.filter { provider ->
-                    provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
+                    Addons.isProviderEnabled(this, repository, provider) && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
                 }.forEach { provider ->
                     val providerLatency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
                         .getLong(providerLatencyKey(repository, provider.id), manifestLatency)

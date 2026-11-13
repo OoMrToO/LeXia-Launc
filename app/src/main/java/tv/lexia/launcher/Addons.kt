@@ -316,6 +316,20 @@ object Addons {
         }
     }
 
+    private fun providerEnabledKey(repository: String, providerId: String) =
+        "provider_enabled:" + repository.trimEnd('/') + ":" + providerId
+
+    fun isProviderEnabled(context: Context, repository: String, provider: ScraperProvider): Boolean {
+        if (!provider.enabled) return false
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(providerEnabledKey(repository, provider.id), true)
+    }
+
+    fun setProviderEnabled(context: Context, repository: String, provider: ScraperProvider, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(providerEnabledKey(repository, provider.id), enabled).apply()
+    }
+
     fun providerSettings(context: Context, repository: String, providerId: String): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(providerSettingsKey(repository, providerId), "{}") ?: "{}"
