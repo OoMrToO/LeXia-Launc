@@ -752,9 +752,19 @@ class MainActivity : Activity() {
         listBtn.setOnClickListener { toggleList() }
         val infoBtn = ui.pill("Detaylar", 64, 23)
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
+        val addonBtn = ui.pill("Eklentide bul", 64, 23)
+        addonBtn.visibility = if (prefs.addonMatchMode == 0) View.GONE else View.VISIBLE
+        addonBtn.setOnClickListener {
+            picks.getOrNull(pickIndex)?.let { current ->
+                startActivity(Intent(this, AddonManagerActivity::class.java).apply {
+                    putExtra(AddonManagerActivity.EXTRA_SEARCH_TITLE, current.title)
+                    putExtra(AddonManagerActivity.EXTRA_SEARCH_TYPE, if (current.isSeries) "tv" else "movie")
+                })
+            }
+        }
         val nextBtn = ui.pill("Sonraki", 64, 23)
         nextBtn.setOnClickListener { next() }
-        for (b in listOf(trailerBtn, infoBtn, listBtn, nextBtn)) {
+        for (b in listOf(trailerBtn, infoBtn, listBtn, addonBtn, nextBtn)) {
             val old = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 old?.onFocusChange(v, f)
@@ -768,6 +778,7 @@ class MainActivity : Activity() {
         buttons.addView(trailerBtn)
         buttons.addView(infoBtn)
         buttons.addView(listBtn)
+        buttons.addView(addonBtn)
         buttons.addView(nextBtn)
         buttons.addView(progress, ui.ll(ui.wrap, ui.wrap, left = 22))
         hero.addView(buttons, ui.ll(ui.wrap, ui.wrap, top = 30))
@@ -3544,6 +3555,7 @@ class MainActivity : Activity() {
             whyView.visibility = if (p.reason.isEmpty()) View.GONE else View.VISIBLE
             descView.text = p.overview
             trailerBtn.visibility = if (p.trailer.isEmpty()) View.GONE else View.VISIBLE
+            addonBtn.visibility = if (prefs.addonMatchMode == 0 || Addons.urls(this).isEmpty()) View.GONE else View.VISIBLE
             updateListBtn()
         }
         heroText.animate().cancel()
