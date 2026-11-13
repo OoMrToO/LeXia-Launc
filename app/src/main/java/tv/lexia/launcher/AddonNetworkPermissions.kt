@@ -7,7 +7,7 @@ import java.util.Locale
 /**
  * Explicit, per-repository and per-provider HTTPS host grants.
  * Grants are exact hostnames: wildcards, URL paths, ports and IP literals are rejected.
- * This is policy storage only; network access is not exposed to QuickJS yet.
+ * The isolated runtime accesses the network through a provider-scoped Binder broker.
  */
 object AddonNetworkPermissions {
     private const val PREFS = "lexia_addon_network_permissions"
