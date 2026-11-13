@@ -3234,8 +3234,8 @@ class MainActivity : Activity() {
                     applyGenres()
                 }
                 if (AddonMatcher.enabled(this@MainActivity)) {
-                    val matchCandidates = (list + top + topTv + nowList + soonList + plat + localTitles)
-                        .distinctBy { it.key }
+                    val matchCandidates = (list + top + topTv + nowList + soonList + plat + localTitles +
+                        genres.flatMap { it.second }).distinctBy { it.key }
                     Thread {
                         AddonMatcher.refresh(this@MainActivity, matchCandidates)
                         runOnUiThread {
@@ -3949,8 +3949,8 @@ class MainActivity : Activity() {
         showTopRows()
         applyGenres()
         val now = System.currentTimeMillis()
-        val addonCandidates = (allPicks + top10 + top10tv + cinema + soon + platformList + localList)
-            .distinctBy { it.key }
+        val addonCandidates = (allPicks + top10 + top10tv + cinema + soon + platformList + localList +
+            genrePools.flatMap { it.second }).distinctBy { it.key }
         if (AddonMatcher.enabled(this) && addonCandidates.isNotEmpty() &&
             AddonMatcher.needsRefresh(this, addonCandidates)) {
             Thread {
