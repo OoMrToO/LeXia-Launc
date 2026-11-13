@@ -205,6 +205,11 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".HomePlaybackActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".AddonManagerActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
