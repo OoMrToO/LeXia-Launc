@@ -1,6 +1,5 @@
 package tv.lexia.launcher
 
-import android.app.ActivityManager
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
@@ -18,10 +17,8 @@ import java.util.Locale
  */
 class AddonNetworkBrokerService : Service() {
     private val binder = AddonNetworkBrokerBinder { repository, providerId, requestJson ->
-        val callerPid = android.os.Binder.getCallingPid()
-        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        val caller = manager.runningAppProcesses?.firstOrNull { it.pid == callerPid }
-        check(caller?.processName == "$packageName:addon_sandbox") {
+        val callerUid = android.os.Binder.getCallingUid()
+        check(android.os.Process.isIsolated(callerUid)) {
             "Only the isolated addon runtime may use this broker."
         }
         runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
