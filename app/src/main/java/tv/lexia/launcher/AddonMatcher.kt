@@ -46,7 +46,11 @@ object AddonMatcher {
         val prefs = Prefs(context)
         val repositories = when (prefs.addonMatchMode) {
             "all" -> Addons.urls(context)
-            "selected" -> listOf(prefs.addonMatchRepository).filter { it in Addons.urls(context) }
+            "selected" -> {
+                val urls = Addons.urls(context)
+                listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
+                    .filter { it.isNotBlank() }
+            }
             else -> emptyList()
         }
         if (repositories.isEmpty()) {
