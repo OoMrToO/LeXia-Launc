@@ -38,7 +38,8 @@ class AddonNetworkBrokerService : Service() {
         var current = URL(rawUrl)
         val headers = request.optJSONObject("headers") ?: JSONObject()
         val body = request.optString("body")
-        require(body.length <= MAX_BODY) { "Request body too large." }
+        val bodyBytes = if (request.optString("bodyKind") == "base64") java.util.Base64.getDecoder().decode(body) else body.toByteArray(Charsets.UTF_8)
+        require(bodyBytes.size <= MAX_BODY) { "Request body too large." }
         var redirects = 0
         while (true) {
             require(current.protocol.equals("https", true) && current.userInfo == null) {
@@ -61,7 +62,7 @@ class AddonNetworkBrokerService : Service() {
                 connection.readTimeout = 15000
                 connection.requestMethod = method
                 connection.setRequestProperty("Accept", "*/*")
-                val allowedHeaders = setOf("accept", "content-type", "user-agent", "referer", "origin", "accept-language")
+                val allowedHeaders = setOf("accept", "content-type", "user-agent", "referer", "origin", "accept-language", "authorization", "cookie", "x-requested-with", "x-csrf-token", "x-api-key")
                 val headerNames = headers.names() ?: org.json.JSONArray()
                 for (i in 0 until headerNames.length()) {
                     val name = headerNames.optString(i)
@@ -72,7 +73,7 @@ class AddonNetworkBrokerService : Service() {
                 }
                 if (method == "POST" && body.isNotEmpty()) {
                     connection.doOutput = true
-                    connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                    connection.outputStream.use { it.write(bodyBytes) }
                 }
                 val status = connection.responseCode
                 if (status in 300..399) {
@@ -94,6 +95,7 @@ class AddonNetworkBrokerService : Service() {
                         output.write(buffer, 0, count)
                     }
                 }
+                val responseBytes = output.toByteArray()
                 val text = output.toString(Charsets.UTF_8.name())
                 val responseHeaders = JSONObject()
                 connection.headerFields.filterKeys { it != null }.forEach { (key, values) ->
@@ -102,6 +104,7 @@ class AddonNetworkBrokerService : Service() {
                 return JSONObject().put("ok", status in 200..299).put("status", status)
                     .put("statusText", connection.responseMessage ?: "")
                     .put("url", current.toString()).put("body", text)
+                    .put("bodyBase64", java.util.Base64.getEncoder().encodeToString(responseBytes))
                     .put("headers", responseHeaders).toString()
             } finally {
                 connection.disconnect()
