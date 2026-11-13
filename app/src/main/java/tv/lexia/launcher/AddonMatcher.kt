@@ -21,8 +21,21 @@ object AddonMatcher {
 
     private const val PREFS = "lexia_addon_matches"
     private const val DATA = "matches"
+    private const val SIGNATURE = "signature"
 
     fun enabled(context: Context): Boolean = Prefs(context).addonMatchMode != "off"
+
+    fun needsRefresh(context: Context, picks: List<Pick>): Boolean {
+        val prefs = Prefs(context)
+        val repositories = when (prefs.addonMatchMode) {
+            "all" -> Addons.urls(context).sorted()
+            "selected" -> listOf(prefs.addonMatchRepository)
+            else -> emptyList()
+        }
+        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" +
+            picks.map { it.key.ifBlank { it.title } }.sorted().joinToString("|")
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(SIGNATURE, "") != signature
+    }
 
     fun find(context: Context, pick: Pick): Match? = try {
         val root = JSONObject(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -53,8 +66,11 @@ object AddonMatcher {
             }
             else -> emptyList()
         }
+        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" +
+            picks.map { it.key.ifBlank { it.title } }.sorted().joinToString("|")
         if (repositories.isEmpty()) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(DATA, "{}").apply()
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(DATA, "{}").putString(SIGNATURE, signature).apply()
             return
         }
 
@@ -99,7 +115,7 @@ object AddonMatcher {
         val json = JSONObject()
         found.forEach { (key, value) -> json.put(key, value) }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(DATA, json.toString()).apply()
+            .putString(DATA, json.toString()).putString(SIGNATURE, signature).apply()
     }
 
     private fun normalize(value: String): String {
