@@ -55,6 +55,7 @@ class AddonSandboxService : Service() {
         val repository = data.getString(KEY_REPOSITORY).orEmpty()
         val providerId = data.getString(KEY_PROVIDER_ID).orEmpty()
         val callArgs = data.getString(KEY_CALL_ARGS).orEmpty()
+        val settingsJson = data.getString(KEY_SETTINGS).orEmpty().ifBlank { "{}" }
         val sessionToken = data.getString(KEY_SESSION_TOKEN).orEmpty()
         if (source.isBlank() || source.length > MAX_SOURCE_CHARS) {
             sendReply(reply, requestId, false, "JavaScript source is empty or exceeds the size limit.")
@@ -166,7 +167,7 @@ class AddonSandboxService : Service() {
                         }
                         function("__get_call_args") { callArgs }
                         function("__get_scraper_id") { providerId }
-                        function("__get_scraper_settings") { "{}" }
+                        function("__get_scraper_settings") { settingsJson }
                         evaluate<Any?>(providerScript(source))
                         evaluate<Any?>(providerCallScript())
                         resultJson
@@ -316,6 +317,7 @@ class AddonSandboxService : Service() {
         const val KEY_REPOSITORY = "repository"
         const val KEY_PROVIDER_ID = "provider_id"
         const val KEY_CALL_ARGS = "call_args"
+        const val KEY_SETTINGS = "settings_json"
         const val KEY_SESSION_TOKEN = "session_token"
         const val KEY_SUCCESS = "success"
         const val KEY_VALUE = "value"
