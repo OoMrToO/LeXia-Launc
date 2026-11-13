@@ -210,6 +210,9 @@ class AddonManagerActivity : Activity() {
                                             }
                                     )
                                     .setPositiveButton("Tamam", null)
+                                    .setNeutralButton("Ağ izinleri") {
+                                        _, _ -> manageProviderNetworkPermissions(address, provider.id)
+                                    }
                                     .show()
                             }
                             .setNegativeButton("Kapat", null)
@@ -248,6 +251,44 @@ class AddonManagerActivity : Activity() {
                 runOnUiThread { status.text = e.message ?: "Eklenti okunamadı." }
             }
         }
+    }
+
+
+    private fun manageProviderNetworkPermissions(repository: String, providerId: String) {
+        val current = AddonNetworkPermissions.grantedHosts(this, repository, providerId)
+        val input = EditText(this).apply {
+            hint = "api.example.com"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Sağlayıcı ağ izinleri")
+            .setMessage(
+                "Sağlayıcı: " + providerId + "\\n" +
+                    "İzinli HTTPS alan adları: " +
+                    if (current.isEmpty()) "Henüz yok" else current.sorted().joinToString(", ") +
+                    "\\n\\nYalnızca tam alan adı eklenir. Joker karakter, IP ve HTTP kabul edilmez. " +
+                    "Bu izin listesi hazırlanmıştır; JavaScript ağ köprüsü henüz etkin değildir."
+            )
+            .setView(input)
+            .setPositiveButton("Alan adı ekle") { _, _ ->
+                try {
+                    AddonNetworkPermissions.grant(this, repository, providerId, input.text.toString())
+                    Toast.makeText(this, "Alan adı izin listesine eklendi.", Toast.LENGTH_LONG).show()
+                    manageProviderNetworkPermissions(repository, providerId)
+                } catch (e: Exception) {
+                    Toast.makeText(this, e.message ?: "Alan adı eklenemedi.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("İzinleri temizle") { _, _ ->
+                current.forEach { host ->
+                    AddonNetworkPermissions.revoke(this, repository, providerId, host)
+                }
+                Toast.makeText(this, "Sağlayıcı ağ izinleri temizlendi.", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     private fun showCatalogItems(
