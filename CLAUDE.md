@@ -70,6 +70,8 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 
 ## 8. Açık işler
 
+- **13 Kasım, ChatGPT:** `codex/home-watch-button-v25` dalında ana ekran kahraman alanına, yalnızca katalog eşleşmesi bulunduğunda görünen `▶ İzle` düğmesi eklendi; katalog eşleştirme yeni kurulumlarda varsayılan olarak `all`. Bu ilk arayüz adımıdır; TMDB kimliğini otomatik sağlayıcı aramasına bağlama, kalite tercihi ve sağlayıcı sabitleme sonraki aşamalardır.
+
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
 - GitHub Actions dakikası takip edilmeli (bölüm 4).
