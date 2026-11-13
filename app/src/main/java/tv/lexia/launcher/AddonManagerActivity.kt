@@ -183,15 +183,17 @@ class AddonManagerActivity : Activity() {
                             provider.name + " · " +
                                 (if (provider.supportedTypes.isEmpty()) "Tür belirtilmemiş"
                                 else provider.supportedTypes.joinToString(", ")) +
+                                " · " + provider.catalogs.size + " katalog" +
                                 (if (provider.enabled) "" else " · devre dışı")
                         }.toTypedArray()
                         AlertDialog.Builder(this)
                             .setTitle(addon.name + " · Sağlayıcılar")
                             .setMessage(
-                                "Manifest başarıyla okundu. Bu depo JavaScript sağlayıcıları kullanıyor. " +
-                                    "LeXia'da Nuvio JavaScript çalışma motoru henüz bulunmadığından " +
-                                    "sağlayıcı kodları çalıştırılmıyor; bu nedenle katalog ve oynatma " +
-                                    "kaynakları henüz yüklenemez."
+                                "Manifest ve sağlayıcı katalog tanımları okundu. " +
+                                    "Kataloglar sağlayıcı JavaScript koduyla üretildiği için " +
+                                    "LeXia'da henüz çalıştırılamıyor. Bu ekranda katalog adları " +
+                                    "ve desteklenen içerik türleri gösterilir; oynatma kaynakları " +
+                                    "yüklenmez."
                             )
                             .setItems(labels) { _, index ->
                                 val provider = addon.scrapers[index]
@@ -201,7 +203,11 @@ class AddonManagerActivity : Activity() {
                                         provider.description.ifBlank { "Açıklama yok." } + "\\n\\n" +
                                             "Sürüm: " + provider.version + "\\n" +
                                             "Dosya: " + provider.filename + "\\n" +
-                                            "Formatlar: " + provider.formats.joinToString(", ")
+                                            "Formatlar: " + provider.formats.joinToString(", ") + "\n" +
+                                            "Kataloglar: " + provider.catalogs.joinToString("\n") { catalog ->
+                                                catalog.name + " (" + catalog.type + ")" +
+                                                    if (catalog.extras.isEmpty()) "" else " · " + catalog.extras.joinToString(", ")
+                                            }
                                     )
                                     .setPositiveButton("Tamam", null)
                                     .show()
