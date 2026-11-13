@@ -1,22 +1,28 @@
 package tv.lexia.launcher
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.TrackSelectionDialogBuilder
 
 /** Plays a direct HTTPS media URL supplied by the user or an authorized provider. */
+@UnstableApi
 class AddonPlayerActivity : Activity() {
     private lateinit var playerView: PlayerView
     private var player: ExoPlayer? = null
@@ -55,6 +61,7 @@ class AddonPlayerActivity : Activity() {
             controllerShowTimeoutMs = 5_000
             setBackgroundColor(android.graphics.Color.BLACK)
             keepScreenOn = true
+            isFocusable = true
         }
         setContentView(playerView)
         playerView.requestFocus()
@@ -116,6 +123,57 @@ class AddonPlayerActivity : Activity() {
         current.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
         current.prepare()
         current.playWhenReady = true
+    }
+
+    /** Android TV remotes commonly expose MENU or INFO for playback options. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
+            showPlaybackMenu()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun showPlaybackMenu() {
+        val current = player ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Oynatma seçenekleri")
+            .setItems(arrayOf("Ses dili", "Altyazı", "Oynatma hızı")) { _, which ->
+                when (which) {
+                    0 -> showTrackDialog(current, C.TRACK_TYPE_AUDIO, "Ses dili")
+                    1 -> showTrackDialog(current, C.TRACK_TYPE_TEXT, "Altyazı")
+                    2 -> showPlaybackSpeedDialog(current)
+                }
+            }
+            .show()
+    }
+
+    private fun showTrackDialog(current: ExoPlayer, trackType: Int, title: String) {
+        val hasTracks = current.currentTracks.groups.any { it.type == trackType }
+        if (!hasTracks) {
+            Toast.makeText(this, "Bu içerikte kullanılabilir " + title.lowercase() + " bulunamadı.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        TrackSelectionDialogBuilder(this, title, current, trackType)
+            .setShowDisableOption(trackType == C.TRACK_TYPE_TEXT)
+            .build()
+            .show()
+    }
+
+    private fun showPlaybackSpeedDialog(current: ExoPlayer) {
+        val speeds = floatArrayOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        val labels = speeds.map { it.toString() + "x" }.toTypedArray()
+        val selected = speeds.indices.minByOrNull {
+            kotlin.math.abs(speeds[it] - current.playbackParameters.speed)
+        } ?: 1
+        AlertDialog.Builder(this)
+            .setTitle("Oynatma hızı")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                current.playbackParameters = PlaybackParameters(speeds[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     private fun saveProgress() {
