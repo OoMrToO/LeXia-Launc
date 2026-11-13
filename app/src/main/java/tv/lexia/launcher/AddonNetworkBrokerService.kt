@@ -20,10 +20,14 @@ class AddonNetworkBrokerService : Service() {
         val callerUid = android.os.Binder.getCallingUid()
         // Android assigns isolated service processes UIDs in this reserved range.
         // Process.isIsolated() only checks the current (broker) process, not the Binder caller.
+        val request = JSONObject(requestJson)
         check(callerUid in 99_000..99_999) {
             "Only the isolated addon runtime may use this broker."
         }
-        runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
+        check(AddonNetworkPermissions.isSessionAllowed(this, repository, providerId, request.optString("sessionToken"))) {
+            "Addon runtime session is invalid or expired."
+        }
+        runCatching { performFetch(repository, providerId, request) }
             .getOrElse { JSONObject().put("ok", false).put("status", 0)
                 .put("statusText", (it.message ?: "Request failed").take(500))
                 .put("body", "").put("url", "").toString() }
