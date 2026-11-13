@@ -140,7 +140,8 @@ class AddonManagerActivity : Activity() {
                 val meta = details.item
                 val isSeries = meta.type.equals("series", true) || meta.type.equals("tv", true) ||
                     type.equals("series", true) || type.equals("tv", true)
-                val progressId = addon.baseUrl + "|" + meta.id.ifBlank { itemId }
+                val progressKey = if (tmdbId > 0) tmdbId.toString() else meta.id.ifBlank { itemId }
+                val progressId = addon.baseUrl + "|" + progressKey
                 val film = Pick(
                     title = meta.name.ifBlank { itemId },
                     meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
@@ -291,7 +292,7 @@ class AddonManagerActivity : Activity() {
             .setTitle("Son izlenenler")
             .setItems(labels) { _, index ->
                 val item = recent[index]
-                val tmdbId = item.seriesId.substringAfterLast("|").toIntOrNull()
+                val tmdbId = item.tmdbId.takeIf { it > 0 } ?: item.seriesId.substringAfterLast("|").toIntOrNull()
                 if (tmdbId != null && tmdbId > 0 && item.title.isNotBlank()) {
                     startAutoSearch(item.title, tmdbId, item.mediaType, item.season, item.episode)
                 } else {
@@ -644,7 +645,7 @@ class AddonManagerActivity : Activity() {
                 .show()
             return
         }
-        showProviderOptions(options, title, tmdbId, mediaType, season, episode)
+        showProviderOptions(options, title, tmdbId, mediaType, season, episode, nextEpisodes)
     }
 
     private fun showProviderOptions(
