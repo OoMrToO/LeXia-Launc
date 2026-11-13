@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -257,13 +259,53 @@ class AddonManagerActivity : Activity() {
         val idInput = EditText(this).apply {
             hint = "TMDB ID (ör. 550)"
             setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setTextColor(-1)
             setHintTextColor(0xFF8B929E.toInt())
         }
+        val seasonInput = EditText(this).apply {
+            hint = "Sezon (ör. 1)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val episodeInput = EditText(this).apply {
+            hint = "Bölüm (ör. 1)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val mediaGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val movie = RadioButton(this).apply { text = "Film"; setTextColor(-1); id = android.view.View.generateViewId() }
+        val tv = RadioButton(this).apply { text = "Dizi"; setTextColor(-1); id = android.view.View.generateViewId() }
+        val supportsMovie = provider.supportedTypes.isEmpty() || "movie" in provider.supportedTypes
+        val supportsTv = provider.supportedTypes.isEmpty() || "tv" in provider.supportedTypes
+        if (supportsMovie) mediaGroup.addView(movie)
+        if (supportsTv) mediaGroup.addView(tv)
+        val defaultTv = !supportsMovie && supportsTv
+        mediaGroup.check(if (defaultTv) tv.id else movie.id)
+        val episodeFields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(seasonInput)
+            addView(episodeInput)
+            visibility = if (defaultTv) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        mediaGroup.setOnCheckedChangeListener { _, checkedId ->
+            episodeFields.visibility = if (checkedId == tv.id) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(mediaGroup)
+            addView(idInput)
+            addView(episodeFields)
+        }
         AlertDialog.Builder(this)
             .setTitle(provider.name + " · İçerik ara")
-            .setMessage("Film için TMDB numarasını gir. Sağlayıcı yetkili ağ izinleriyle çalıştırılacak.")
-            .setView(idInput)
+            .setMessage("TMDB numarasını gir. Dizi için sezon ve bölüm bilgisi de gereklidir.")
+            .setView(content)
             .setNegativeButton("Vazgeç", null)
             .setPositiveButton("Kaynakları bul") { _, _ ->
                 val tmdbId = idInput.text.toString().trim()
@@ -271,12 +313,27 @@ class AddonManagerActivity : Activity() {
                     Toast.makeText(this, "Geçerli bir TMDB numarası gir.", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-                runProvider(repository, addon, provider, tmdbId)
+                val isTv = mediaGroup.checkedRadioButtonId == tv.id
+                val season = if (isTv) seasonInput.text.toString().toIntOrNull() else null
+                val episode = if (isTv) episodeInput.text.toString().toIntOrNull() else null
+                if (isTv && (season == null || season < 0 || episode == null || episode < 1)) {
+                    Toast.makeText(this, "Geçerli sezon ve bölüm numarası gir.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                runProvider(repository, addon, provider, tmdbId, if (isTv) "tv" else "movie", season, episode)
             }
             .show()
     }
 
-    private fun runProvider(repository: String, addon: Addons.Installed, provider: Addons.ScraperProvider, tmdbId: String) {
+    private fun runProvider(
+        repository: String,
+        addon: Addons.Installed,
+        provider: Addons.ScraperProvider,
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ) {
         status.text = provider.name + " çalıştırılıyor…"
         worker.execute {
             val source = runCatching { Addons.fetchScraperSource(addon, provider) }
@@ -286,9 +343,9 @@ class AddonManagerActivity : Activity() {
             }
             val args = org.json.JSONObject()
                 .put("tmdbId", tmdbId)
-                .put("mediaType", "movie")
-                .put("season", org.json.JSONObject.NULL)
-                .put("episode", org.json.JSONObject.NULL)
+                .put("mediaType", mediaType)
+                .put("season", season ?: org.json.JSONObject.NULL)
+                .put("episode", episode ?: org.json.JSONObject.NULL)
                 .toString()
             runOnUiThread {
                 status.text = provider.name + " kaynakları taranıyor…"
@@ -318,8 +375,8 @@ class AddonManagerActivity : Activity() {
                                 putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
                                 putExtra(AddonPlayerActivity.EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
                                 putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
-                                putExtra(AddonPlayerActivity.EXTRA_SEASON, 0)
-                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, 1)
+                                putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
+                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
                             })
                         }
                         .setNegativeButton("Kapat", null)
