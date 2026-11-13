@@ -56,64 +56,129 @@ class AddonManagerActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
+    private lateinit var urlInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pad = (resources.displayMetrics.density * 24).toInt()
+        val pad = (resources.displayMetrics.density * 20).toInt()
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad * 2, pad, pad * 2, pad)
-            setBackgroundColor(android.graphics.Color.rgb(14, 16, 20))
+            setBackgroundColor(android.graphics.Color.rgb(12, 14, 19))
+            descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+            isFocusable = false
         }
         val title = TextView(this).apply {
-            text = "EKLENTİLER"
+            text = "Eklentiler"
             textSize = 30f
-            letterSpacing = 0.08f
+            letterSpacing = -0.02f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(0xFFF5F7FA.toInt())
-            setPadding(0, 0, 0, pad / 3)
         }
         root.addView(title)
+        val subtitle = TextView(this).apply {
+            text = "İçerik kaynaklarını ve sağlayıcı depolarını yönet"
+            textSize = 15f
+            setTextColor(0xFF9BA7B8.toInt())
+            setPadding(0, 4, 0, pad)
+        }
+        root.addView(subtitle)
+
+        val installCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+            background = panelBackground()
+        }
+        installCard.addView(TextView(this).apply {
+            text = "Eklenti yükle"
+            textSize = 19f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFFF5F7FA.toInt())
+        })
+        installCard.addView(TextView(this).apply {
+            text = "Stremio veya Nuvio uyumlu HTTPS depo adresini ekle."
+            textSize = 13f
+            setTextColor(0xFF9BA7B8.toInt())
+            setPadding(0, 5, 0, pad / 2)
+        })
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        urlInput = EditText(this).apply {
+            hint = "https://ornek.com"
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(0xFFF5F7FA.toInt())
+            setHintTextColor(0xFF778294.toInt())
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            setPadding(pad / 2, pad / 2, pad / 2, pad / 2)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF111722.toInt())
+                cornerRadius = (pad / 2).toFloat()
+                setStroke(1, 0xFF394352.toInt())
+            }
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    addRepositoryFromInput()
+                    true
+                } else false
+            }
+        }
+        inputRow.addView(urlInput, LinearLayout.LayoutParams(0, pad * 2, 1f))
+        val add = Button(this).apply {
+            text = "Ekle"
+            isAllCaps = false
+            textSize = 15f
+            minHeight = pad * 2
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground(0xFF6750A4.toInt())
+            setOnClickListener { addRepositoryFromInput() }
+            applyRemoteFocusStyle()
+        }
+        inputRow.addView(add, LinearLayout.LayoutParams(-2, pad * 2).apply { leftMargin = pad / 2 })
+        installCard.addView(inputRow)
+        root.addView(installCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = pad / 2 })
+
+        status = TextView(this).apply {
+            textSize = 14f
+            setTextColor(0xFFB8BEC9.toInt())
+            setPadding(0, pad / 2, 0, pad / 2)
+        }
+        root.addView(status)
+
+        val section = TextView(this).apply {
+            text = "YÜKLÜ EKLENTİLER"
+            textSize = 17f
+            letterSpacing = 0.04f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFFF5F7FA.toInt())
+            setPadding(0, pad / 2, 0, pad / 2)
+        }
+        root.addView(section)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; isFocusable = false }
+        scroll.addView(list)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val history = Button(this).apply {
-            text = "◷  İZLEME GEÇMİŞİ"
+            text = "◷  İzleme geçmişi"
             isAllCaps = false
             textSize = 14f
             setTextColor(0xFFE9E4FF.toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF29243A.toInt())
-                cornerRadius = pad.toFloat()
-                setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF51466F.toInt())
-            }
+            background = buttonBackground(0xFF29243A.toInt())
             setOnClickListener { showWatchHistory() }
+            applyRemoteFocusStyle()
         }
-        root.addView(history)
-        status = TextView(this).apply {
-            textSize = 16f
-            setTextColor(0xFFB8BEC9.toInt())
-            setPadding(0, pad / 2, 0, pad)
-        }
-        root.addView(status)
-        val add = Button(this).apply {
-            text = "＋  EKLENTİ ADRESİ EKLE"
-            isAllCaps = false
-            textSize = 15f
-            setTextColor(0xFFFFFFFF.toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF6750A4.toInt())
-                cornerRadius = pad.toFloat()
-            }
-            minHeight = pad * 2
-            setPadding(pad, pad / 2, pad, pad / 2)
-            setOnClickListener { askUrl() }
-        }
-        root.addView(add)
-        val scroll = ScrollView(this)
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(list)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(history, LinearLayout.LayoutParams(-1, pad * 2).apply { topMargin = pad / 2 })
         setContentView(root)
-        add.requestFocus()
         render(list)
+        urlInput.requestFocus()
+        val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
         val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
         if (autoTmdbId > 0) {
             startAutoSearch(
@@ -175,6 +240,63 @@ class AddonManagerActivity : Activity() {
         }
     }
 
+    private fun panelBackground(): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFF1A202A.toInt())
+            cornerRadius = resources.displayMetrics.density * 18f
+            setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF303B49.toInt())
+        }
+
+    private fun buttonBackground(color: Int, stroke: Int = 0xFF3A4554.toInt()) =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = resources.displayMetrics.density * 12f
+            setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), stroke)
+        }
+
+    private fun Button.applyRemoteFocusStyle() {
+        isFocusable = true
+        isFocusableInTouchMode = true
+        setOnFocusChangeListener { view, focused ->
+            view.background = buttonBackground(
+                if (focused) 0xFF3A3156.toInt() else 0xFF292F3A.toInt(),
+                if (focused) 0xFFB9A5FF.toInt() else 0xFF3A4554.toInt()
+            )
+        }
+    }
+
+    private fun addRepositoryFromInput() {
+        val raw = urlInput.text.toString().trim()
+        if (raw.isBlank()) {
+            Toast.makeText(this, "Önce eklenti adresini gir.", Toast.LENGTH_SHORT).show()
+            urlInput.requestFocus()
+            return
+        }
+        try {
+            Addons.add(this, raw)
+            urlInput.setText("")
+            val content = root.getChildAt(5) as? ScrollView
+            val list = content?.getChildAt(0) as? LinearLayout
+            if (list != null) render(list)
+            Toast.makeText(this, "Eklenti adresi eklendi.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            status.text = e.message ?: "Adres eklenemedi."
+        }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+            event.keyCode in setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER,
+                android.view.KeyEvent.KEYCODE_NUMPAD_ENTER, android.view.KeyEvent.KEYCODE_BUTTON_A)) {
+            val focused = currentFocus
+            if (focused is Button && focused.isEnabled) {
+                focused.performClick()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun render(list: LinearLayout) {
         list.removeAllViews()
         val urls = Addons.urls(this)
@@ -189,7 +311,8 @@ class AddonManagerActivity : Activity() {
                     cornerRadius = resources.displayMetrics.density * 18f
                     setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF343C49.toInt())
                 }
-                isFocusable = true
+                isFocusable = false
+                descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
             }
             val heading = TextView(this).apply {
                 text = "BAĞLI DEPO"
@@ -237,7 +360,9 @@ class AddonManagerActivity : Activity() {
                     setColor(0xFF315B4A.toInt())
                     cornerRadius = resources.displayMetrics.density * 12f
                 }
+                background = buttonBackground(0xFF315B4A.toInt())
                 setOnClickListener { testRepository(address, connectionLine) }
+                applyRemoteFocusStyle()
             }
             val inspect = Button(this).apply {
                 text = "Katalogları yükle"
@@ -248,7 +373,9 @@ class AddonManagerActivity : Activity() {
                     setColor(0xFF394B66.toInt())
                     cornerRadius = resources.displayMetrics.density * 12f
                 }
+                background = buttonBackground(0xFF394B66.toInt())
                 setOnClickListener { loadCatalogs(address) }
+                applyRemoteFocusStyle()
             }
             val remove = Button(this).apply {
                 text = "Kaldır"
@@ -263,12 +390,13 @@ class AddonManagerActivity : Activity() {
                     Addons.remove(this@AddonManagerActivity, address)
                     render(list)
                 }
+                applyRemoteFocusStyle()
             }
             actions.addView(test)
             actions.addView(inspect)
             actions.addView(remove)
             card.addView(actions)
-            list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+            list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (resources.displayMetrics.density * 14).toInt() })
         }
     }
 
