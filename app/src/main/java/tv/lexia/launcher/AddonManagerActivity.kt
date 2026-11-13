@@ -49,7 +49,8 @@ class AddonManagerActivity : Activity() {
     private data class ProviderOption(
         val repository: String,
         val addon: Addons.Installed,
-        val provider: Addons.ScraperProvider
+        val provider: Addons.ScraperProvider,
+        val latencyMs: Long = 0L
     )
 
     private val worker = Executors.newSingleThreadExecutor()
@@ -73,6 +74,19 @@ class AddonManagerActivity : Activity() {
             setPadding(0, 0, 0, pad / 3)
         }
         root.addView(title)
+        val history = Button(this).apply {
+            text = "◷  İZLEME GEÇMİŞİ"
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(0xFFE9E4FF.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF29243A.toInt())
+                cornerRadius = pad.toFloat()
+                setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF51466F.toInt())
+            }
+            setOnClickListener { showWatchHistory() }
+        }
+        root.addView(history)
         status = TextView(this).apply {
             textSize = 16f
             setTextColor(0xFFB8BEC9.toInt())
@@ -148,7 +162,7 @@ class AddonManagerActivity : Activity() {
                     status.text = "Eşleşme bulundu: " + film.title
                     if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes, addon, tmdbId)
                     else if (tmdbId > 0 && addon.scrapers.isNotEmpty()) {
-                        chooseProviderAndSearch(addon, tmdbId, "movie", null, null)
+                        chooseProviderAndSearch(addon, tmdbId, "movie", null, null, film.title)
                     } else askMovieSource(film, progressId)
                 }
             } catch (e: Exception) {
@@ -199,7 +213,10 @@ class AddonManagerActivity : Activity() {
             val connectionLine = TextView(this).apply {
                 text = when {
                     lastError != null -> "● Bağlantı hatası · $lastError"
-                    lastSuccess > 0L -> "● Bağlantı başarılı · Son kontrol: $lastCheck"
+                    lastSuccess > 0L -> {
+                        val latency = connectionPrefs.getLong("latency:$address", 0L)
+                        "● Bağlantı başarılı" + (if (latency > 0L) " · ${latency} ms" else "") + " · Son kontrol: $lastCheck"
+                    }
                     else -> "● Bağlantı durumu bilinmiyor"
                 }
                 textSize = 12f
@@ -254,6 +271,37 @@ class AddonManagerActivity : Activity() {
         }
     }
 
+    private fun showWatchHistory() {
+        val recent = WatchProgress.recent(this, 50)
+        if (recent.isEmpty()) {
+            Toast.makeText(this, "Henüz izleme geçmişi yok.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = recent.map { item ->
+            val title = item.title.ifBlank { "İçerik" }
+            val detail = if (item.mediaType == "movie") "Film" else "S${item.season} B${item.episode}"
+            val progress = when {
+                item.isComplete -> "Tamamlandı"
+                item.durationMs > 0L -> "%${(item.positionMs * 100 / item.durationMs).coerceIn(0, 100)}"
+                else -> "İzleniyor"
+            }
+            "$title · $detail · $progress"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Son izlenenler")
+            .setItems(labels) { _, index ->
+                val item = recent[index]
+                val tmdbId = item.seriesId.substringAfterLast("|").toIntOrNull()
+                if (tmdbId != null && tmdbId > 0 && item.title.isNotBlank()) {
+                    startAutoSearch(item.title, tmdbId, item.mediaType, item.season, item.episode)
+                } else {
+                    Toast.makeText(this, "Bu kayıt için otomatik kaynak bilgisi bulunmuyor.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
     private fun askUrl() {
         val input = EditText(this).apply {
             hint = "https://ornek.com"
@@ -281,15 +329,19 @@ class AddonManagerActivity : Activity() {
         line.setTextColor(0xFFFFD27A.toInt())
         worker.execute {
             try {
+                Addons.clearCache(address)
+                val startedAt = System.nanoTime()
                 val manifest = Addons.fetchManifest(address)
+                val latencyMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
                 val now = System.currentTimeMillis()
                 getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putLong("latency:$address", latencyMs)
                     .putLong("success:$address", now)
                     .remove("error:$address")
                     .commit()
                 runOnUiThread {
                     val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
-                    line.text = "● Bağlantı başarılı · ${manifest.name} · $stamp"
+                    line.text = "● Bağlantı başarılı · ${manifest.name} · ${latencyMs} ms · $stamp"
                     line.setTextColor(0xFF8ED6A5.toInt())
                     Toast.makeText(this, "Eklenti deposuna erişim başarılı.", Toast.LENGTH_SHORT).show()
                 }
@@ -478,7 +530,13 @@ class AddonManagerActivity : Activity() {
     }
 
     /** Searches enabled Nuvio providers from the configured repository scope using the known TMDB ID. */
-    private fun startAutoSearch(title: String, tmdbId: Int, mediaType: String) {
+    private fun startAutoSearch(
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        initialSeason: Int? = null,
+        initialEpisode: Int? = null
+    ) {
         val urls = Addons.urls(this)
         val prefs = Prefs(this)
         val repositories = when (prefs.addonMatchMode) {
@@ -495,21 +553,28 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             val options = ArrayList<ProviderOption>()
             for (repository in repositories) {
+                val startedAt = System.nanoTime()
                 val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
+                val manifestLatency = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putLong("latency:$repository", manifestLatency).apply()
                 addon.scrapers.filter { provider ->
                     provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
                 }.forEach { provider ->
-                    options.add(ProviderOption(repository, addon, provider))
+                    val providerLatency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
+                        .getLong(providerLatencyKey(repository, provider.id), manifestLatency)
+                    options.add(ProviderOption(repository, addon, provider, providerLatency))
                 }
             }
+            options.sortBy { if (it.latencyMs > 0L) it.latencyMs else Long.MAX_VALUE }
             runOnUiThread {
                 if (options.isEmpty()) {
                     status.text = "Bu depolarda etkin ve uyumlu sağlayıcı bulunamadı."
                     Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
-                } else if (mediaType == "tv") {
+                } else if (mediaType == "tv" && (initialSeason == null || initialEpisode == null)) {
                     askSeriesEpisode(options, title, tmdbId)
                 } else {
-                    chooseProviderOptions(options, title, tmdbId, mediaType, null, null)
+                    chooseProviderOptions(options, title, tmdbId, mediaType, initialSeason, initialEpisode)
                 }
             }
         }
@@ -557,7 +622,8 @@ class AddonManagerActivity : Activity() {
         tmdbId: Int,
         mediaType: String,
         season: Int?,
-        episode: Int?
+        episode: Int?,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
     ) {
         val saved = rememberedProvider(mediaType, tmdbId)
         val savedOption = saved?.let { (repository, providerId) ->
@@ -569,10 +635,10 @@ class AddonManagerActivity : Activity() {
                 .setMessage(title + " için " + savedOption.provider.name + " daha önce seçilmiş.")
                 .setPositiveButton("Bununla devam et") { _, _ ->
                     runProvider(savedOption.repository, savedOption.addon, savedOption.provider,
-                        tmdbId.toString(), mediaType, season, episode)
+                        tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
                 }
                 .setNeutralButton("Başka sağlayıcı seç") { _, _ ->
-                    showProviderOptions(options, title, tmdbId, mediaType, season, episode)
+                    showProviderOptions(options, title, tmdbId, mediaType, season, episode, nextEpisodes)
                 }
                 .setNegativeButton("Kapat", null)
                 .show()
@@ -587,11 +653,13 @@ class AddonManagerActivity : Activity() {
         tmdbId: Int,
         mediaType: String,
         season: Int?,
-        episode: Int?
+        episode: Int?,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
     ) {
         val labels = options.map { option ->
             option.addon.name + " · " + option.provider.name + " · " +
-                option.repository.removePrefix("https://").removeSuffix("/")
+                option.repository.removePrefix("https://").removeSuffix("/") +
+                if (option.latencyMs > 0L) " · ~${option.latencyMs} ms" else ""
         }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Kaynak sağlayıcısı · " + title)
@@ -603,11 +671,11 @@ class AddonManagerActivity : Activity() {
                     .setPositiveButton("Hatırla") { _, _ ->
                         rememberProvider(mediaType, tmdbId, option)
                         runProvider(option.repository, option.addon, option.provider,
-                            tmdbId.toString(), mediaType, season, episode)
+                            tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
                     }
                     .setNegativeButton("Sadece bu kez") { _, _ ->
                         runProvider(option.repository, option.addon, option.provider,
-                            tmdbId.toString(), mediaType, season, episode)
+                            tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
                     }
                     .setNeutralButton("Vazgeç", null)
                     .show()
@@ -615,6 +683,9 @@ class AddonManagerActivity : Activity() {
             .setNegativeButton("Kapat", null)
             .show()
     }
+
+    private fun providerLatencyKey(repository: String, providerId: String) =
+        "provider_latency:" + repository.trimEnd('/') + ":" + providerId
 
     private fun rememberedProvider(mediaType: String, tmdbId: Int): Pair<String, String>? {
         val value = getSharedPreferences("addon_provider_preferences", MODE_PRIVATE)
@@ -638,7 +709,9 @@ class AddonManagerActivity : Activity() {
         tmdbId: Int,
         mediaType: String,
         season: Int?,
-        episode: Int?
+        episode: Int?,
+        contentTitle: String = addon.name,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
     ) {
         val providers = addon.scrapers.filter { provider ->
             provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
@@ -648,12 +721,18 @@ class AddonManagerActivity : Activity() {
             return
         }
         chooseProviderOptions(
-            providers.map { ProviderOption(addon.baseUrl, addon, it) },
-            addon.name,
+            providers.map { provider ->
+                val latency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
+                    .getLong(providerLatencyKey(addon.baseUrl, provider.id),
+                        getSharedPreferences("addon_connection_status", MODE_PRIVATE).getLong("latency:${addon.baseUrl}", 0L))
+                ProviderOption(addon.baseUrl, addon, provider, latency)
+            }.sortedBy { if (it.latencyMs > 0L) it.latencyMs else Long.MAX_VALUE },
+            contentTitle,
             tmdbId,
             mediaType,
             season,
-            episode
+            episode,
+            nextEpisodes
         )
     }
 
@@ -664,10 +743,13 @@ class AddonManagerActivity : Activity() {
         tmdbId: String,
         mediaType: String,
         season: Int?,
-        episode: Int?
+        episode: Int?,
+        contentTitle: String = addon.name,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
     ) {
         status.text = provider.name + " çalıştırılıyor…"
         worker.execute {
+            val startedAt = System.nanoTime()
             val source = runCatching { Addons.fetchScraperSource(addon, provider) }
             if (source.isFailure) {
                 runOnUiThread { status.text = source.exceptionOrNull()?.message ?: "Sağlayıcı dosyası alınamadı." }
@@ -683,6 +765,9 @@ class AddonManagerActivity : Activity() {
                 status.text = provider.name + " kaynakları taranıyor…"
                 val settingsJson = Addons.providerSettings(this, repository, provider.id)
                 AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args, settingsJson) { result ->
+                    val elapsedMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                    getSharedPreferences("addon_provider_latency", MODE_PRIVATE).edit()
+                        .putLong(providerLatencyKey(repository, provider.id), elapsedMs).apply()
                     if (!result.success) {
                         status.text = "Sağlayıcı hatası: " + result.value
                         Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
@@ -694,7 +779,7 @@ class AddonManagerActivity : Activity() {
                     }
                     val streams = providerResult.streams
                     status.text = provider.name + " · " + streams.size + " kaynak · " +
-                        providerResult.subtitles.size + " altyazı bulundu."
+                        providerResult.subtitles.size + " altyazı · ${elapsedMs} ms"
                     if (streams.isEmpty()) {
                         Toast.makeText(this, "Kaynak bulunamadı. Alan adı izinlerini kontrol et.", Toast.LENGTH_LONG).show()
                         return@evaluate
@@ -708,7 +793,7 @@ class AddonManagerActivity : Activity() {
                             val stream = streams[index]
                             val subtitles = providerResult.subtitles
                             if (subtitles.isEmpty()) {
-                                launchProviderStream(addon, tmdbId, season, episode, stream, null)
+                                launchProviderStream(addon, provider, tmdbId, mediaType, season, episode, stream, null, contentTitle, nextEpisodes)
                             } else {
                                 val subtitleLabels = (listOf("Altyazısız") + subtitles.map { subtitle ->
                                     subtitle.name + if (subtitle.language.isNotBlank()) " · " + subtitle.language else ""
@@ -716,8 +801,8 @@ class AddonManagerActivity : Activity() {
                                 AlertDialog.Builder(this)
                                     .setTitle("Altyazı seç")
                                     .setItems(subtitleLabels) { _, selected ->
-                                        launchProviderStream(addon, tmdbId, season, episode, stream,
-                                            if (selected == 0) null else subtitles[selected - 1])
+                                        launchProviderStream(addon, provider, tmdbId, mediaType, season, episode, stream,
+                                            if (selected == 0) null else subtitles[selected - 1], contentTitle, nextEpisodes)
                                     }
                                     .setNegativeButton("Kapat", null)
                                     .show()
@@ -732,11 +817,15 @@ class AddonManagerActivity : Activity() {
 
     private fun launchProviderStream(
         addon: Addons.Installed,
+        provider: Addons.ScraperProvider,
         tmdbId: String,
+        mediaType: String,
         season: Int?,
         episode: Int?,
         stream: Addons.ProviderStream,
-        subtitle: Addons.ProviderSubtitle?
+        subtitle: Addons.ProviderSubtitle?,
+        contentTitle: String,
+        nextEpisodes: List<Addons.EpisodeItem>
     ) {
         startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
             putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
@@ -744,6 +833,16 @@ class AddonManagerActivity : Activity() {
             putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
             putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
             putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
+            putExtra(AddonPlayerActivity.EXTRA_PROVIDER_REPOSITORY, addon.baseUrl)
+            putExtra(AddonPlayerActivity.EXTRA_PROVIDER_ID, provider.id)
+            putExtra(AddonPlayerActivity.EXTRA_TMDB_ID, tmdbId.toIntOrNull() ?: 0)
+            putExtra(AddonPlayerActivity.EXTRA_MEDIA_TYPE, mediaType)
+            putExtra(AddonPlayerActivity.EXTRA_CONTENT_TITLE, contentTitle)
+            putExtra(AddonPlayerActivity.EXTRA_NEXT_EPISODES, org.json.JSONArray().apply {
+                nextEpisodes.forEach { item ->
+                    put(org.json.JSONObject().put("season", item.season).put("episode", item.episode).put("title", item.title))
+                }
+            }.toString())
             if (subtitle != null) {
                 putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_URL, subtitle.url)
                 putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_MIME, when (subtitle.format) {
@@ -966,14 +1065,14 @@ class AddonManagerActivity : Activity() {
             ) { _, _ ->
                 if (canResume) {
                     if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
-                        chooseProviderAndSearch(addon, tmdbId, "tv", latestEpisode!!.season, latestEpisode.episode)
+                        chooseProviderAndSearch(addon, tmdbId, "tv", latestEpisode!!.season, latestEpisode.episode, film.title, episodes)
                     } else askEpisodeSource(addonName, progressId, latestEpisode!!)
                 } else if (episodes.isNotEmpty()) {
-                    showEpisodes(addonName, progressId, episodes, addon, tmdbId)
+                    showEpisodes(addonName, progressId, episodes, addon, tmdbId, film.title)
                 }
             }
             .setNeutralButton(if (canResume) "Bölümler" else "Detaylar") { _, _ ->
-                if (canResume) showEpisodes(addonName, progressId, episodes, addon, tmdbId)
+                if (canResume) showEpisodes(addonName, progressId, episodes, addon, tmdbId, film.title)
                 else DetailActivity.open(this, film)
             }
             .setNegativeButton("Kapat", null)
@@ -1004,7 +1103,8 @@ class AddonManagerActivity : Activity() {
         seriesId: String,
         episodes: List<Addons.EpisodeItem>,
         addon: Addons.Installed? = null,
-        tmdbId: Int = 0
+        tmdbId: Int = 0,
+        contentTitle: String = addonName
     ) {
         val labels = episodes.map { episode ->
             val progress = WatchProgress.get(this, seriesId, episode.season, episode.episode)
@@ -1033,7 +1133,7 @@ class AddonManagerActivity : Activity() {
                     else -> "Henüz izleme ilerlemesi yok."
                 }
                 if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
-                    chooseProviderAndSearch(addon, tmdbId, "tv", episode.season, episode.episode)
+                    chooseProviderAndSearch(addon, tmdbId, "tv", episode.season, episode.episode, contentTitle, episodes)
                 } else askEpisodeSource(addonName, seriesId, episode, progressText)
             }
             .setNegativeButton("Kapat", null)
