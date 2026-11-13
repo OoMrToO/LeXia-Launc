@@ -158,7 +158,8 @@ class AddonPlayerActivity : Activity() {
                     durationMs = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: durationMs
                     if (durationMs > 0) {
                         WatchProgress.save(
-                            this@AddonPlayerActivity, seriesId, season, episode, durationMs, durationMs
+                            this@AddonPlayerActivity, seriesId, season, episode, durationMs, durationMs,
+                            contentTitle, mediaType, intent.getIntExtra(EXTRA_TMDB_ID, 0)
                         )
                     }
                     handler.removeCallbacks(progressTask)
