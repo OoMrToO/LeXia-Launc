@@ -22,7 +22,7 @@ class AddonNetworkBrokerService : Service() {
             val callerPid = android.os.Binder.getCallingPid()
             val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
             val caller = manager.runningAppProcesses?.firstOrNull { it.pid == callerPid }
-            enforce(caller?.processName == "$packageName:addon_sandbox") {
+            check(caller?.processName == "$packageName:addon_sandbox") {
                 "Only the isolated addon runtime may use this broker."
             }
             return runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
