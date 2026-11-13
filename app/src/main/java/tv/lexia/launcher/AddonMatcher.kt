@@ -86,6 +86,7 @@ object AddonMatcher {
 
         for (repository in repositories) {
             val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
+            if ("meta" !in addon.resources && addon.resources.isNotEmpty()) continue
             for (catalog in addon.catalogs.take(8)) {
                 val expectedSeries = catalog.type.equals("series", true) ||
                     catalog.type.equals("tv", true)
