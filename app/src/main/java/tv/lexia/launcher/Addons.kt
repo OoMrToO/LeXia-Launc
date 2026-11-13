@@ -15,6 +15,16 @@ import java.net.URL
  */
 object Addons {
     data class Catalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
+    data class ScraperProvider(
+        val id: String,
+        val name: String,
+        val description: String,
+        val filename: String,
+        val version: String,
+        val supportedTypes: List<String>,
+        val formats: List<String>,
+        val enabled: Boolean
+    )
     data class Installed(
         val baseUrl: String,
         val id: String,
@@ -23,7 +33,9 @@ object Addons {
         val description: String,
         val types: List<String>,
         val catalogs: List<Catalog>,
-        val resources: Set<String>
+        val resources: Set<String>,
+        val format: String = "stremio",
+        val scrapers: List<ScraperProvider> = emptyList()
     )
 
     data class EpisodeItem(
@@ -91,6 +103,26 @@ object Addons {
         val typesJson = json.optJSONArray("types") ?: json.optJSONArray("supportedTypes") ?: JSONArray()
         val types = (0 until typesJson.length()).map { typesJson.optString(it) }.filter { it.isNotBlank() }
         val catalogsJson = json.optJSONArray("catalogs") ?: JSONArray()
+        val scrapersJson = json.optJSONArray("scrapers") ?: JSONArray()
+        val scrapers = (0 until scrapersJson.length()).mapNotNull { i ->
+            val item = scrapersJson.optJSONObject(i) ?: return@mapNotNull null
+            val id = item.optString("id")
+            val filename = item.optString("filename")
+            if (id.isBlank() || filename.isBlank()) return@mapNotNull null
+            val supported = item.optJSONArray("supportedTypes") ?: JSONArray()
+            val formats = item.optJSONArray("formats") ?: JSONArray()
+            ScraperProvider(
+                id = id,
+                name = item.optString("name").ifBlank { id },
+                description = item.optString("description"),
+                filename = filename,
+                version = item.optString("version"),
+                supportedTypes = (0 until supported.length()).map { supported.optString(it) }.filter { it.isNotBlank() },
+                formats = (0 until formats.length()).map { formats.optString(it) }.filter { it.isNotBlank() },
+                enabled = item.optBoolean("enabled", true)
+            )
+        }
+        val format = if (scrapers.isNotEmpty()) "nuvio-js" else "stremio"
         val catalogs = (0 until catalogsJson.length()).mapNotNull { i ->
             val c = catalogsJson.optJSONObject(i) ?: return@mapNotNull null
             val type = c.optString("type").ifBlank { c.optString("apiType") }
@@ -112,7 +144,9 @@ object Addons {
             description = json.optString("description"),
             types = types,
             catalogs = catalogs,
-            resources = resourceSet
+            resources = resourceSet,
+            format = format,
+            scrapers = scrapers
         )
     }
 
