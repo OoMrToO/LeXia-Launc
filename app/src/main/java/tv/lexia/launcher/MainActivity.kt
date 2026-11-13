@@ -3551,6 +3551,7 @@ class MainActivity : Activity() {
                 }
             }
             whereView.isClickable = addonMatch != null
+            whereView.isFocusable = addonMatch != null
             val parts = ArrayList<String>()
             if (p.year.isNotEmpty()) parts.add(p.year)
             if (p.runtime > 0) parts.add(if (p.runtime >= 60) "${p.runtime / 60} sa ${p.runtime % 60} dk" else "${p.runtime} dk")
