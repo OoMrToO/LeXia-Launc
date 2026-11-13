@@ -14,7 +14,7 @@ import java.net.URL
  * download or execute addon code and does not call stream/source endpoints.
  */
 object Addons {
-    data class Catalog(val type: String, val id: String, val name: String)
+    data class Catalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
     data class Installed(
         val baseUrl: String,
         val id: String,
@@ -96,7 +96,13 @@ object Addons {
             val type = c.optString("type").ifBlank { c.optString("apiType") }
             val id = c.optString("id")
             if (type.isBlank() || id.isBlank()) null
-            else Catalog(type, id, c.optString("name").ifBlank { id })
+            else {
+                val extrasJson = c.optJSONArray("extra") ?: JSONArray()
+                val extras = (0 until extrasJson.length()).mapNotNull { index ->
+                    extrasJson.optJSONObject(index)?.optString("name")?.takeIf { it.isNotBlank() }
+                }.toSet()
+                Catalog(type, id, c.optString("name").ifBlank { id }, extras)
+            }
         }
         return Installed(
             baseUrl = base.removeSuffix("/manifest.json"),
@@ -207,44 +213,6 @@ object Addons {
                 seasons = m.optInt("seasonCount", 0)
             )
         }
-    }
-
-    /**
-     * Searches only catalogue metadata from configured repositories. No stream/source endpoints
-     * are called. Mode 1 searches every saved repository; mode 2 searches the chosen favorite only.
-     */
-    fun searchConfigured(context: Context, title: String, type: String): List<Triple<Installed, Catalog, CatalogItem>> {
-        require(title.isNotBlank() && title.length <= 120) { "Aranacak içerik adı geçersiz." }
-        val prefs = Prefs(context)
-        val repositories = when (prefs.addonMatchMode) {
-            1 -> urls(context)
-            2 -> listOf(prefs.favoriteAddonUrl).filter { it.isNotBlank() && it in urls(context) }
-            else -> emptyList()
-        }
-        if (repositories.isEmpty()) return emptyList()
-        val wanted = if (type.equals("tv", true)) setOf("series", "tv") else setOf("movie", "film")
-        val results = ArrayList<Triple<Installed, Catalog, CatalogItem>>()
-        for (address in repositories.take(5)) {
-            val addon = runCatching { fetchManifest(address) }.getOrNull() ?: continue
-            for (catalog in addon.catalogs.filter { it.type.lowercase() in wanted }.take(8)) {
-                val items = runCatching { fetchCatalog(addon, catalog, search = title) }.getOrNull().orEmpty()
-                for (item in items) {
-                    if (item.name.isNotBlank() && similarTitle(item.name, title)) {
-                        results.add(Triple(addon, catalog, item))
-                    }
-                }
-                if (results.size >= 30) return results
-            }
-        }
-        return results
-    }
-
-    private fun similarTitle(left: String, right: String): Boolean {
-        fun key(value: String) = value.lowercase(java.util.Locale.ROOT)
-            .replace(Regex("[^\\p{L}\\p{N}]"), "")
-        val a = key(left)
-        val b = key(right)
-        return a == b || a.contains(b) || b.contains(a)
     }
 
     private fun normalize(raw: String): String {
