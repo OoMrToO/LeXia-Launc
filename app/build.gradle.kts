@@ -83,6 +83,8 @@ android {
 
 
 dependencies {
+    // Native QuickJS engine; no Java/Android objects are exposed to addon code.
+    implementation("app.cash.quickjs:quickjs-android:0.9.3")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("androidx.media3:media3-exoplayer-dash:1.4.1")
