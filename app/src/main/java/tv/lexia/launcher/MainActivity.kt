@@ -752,7 +752,7 @@ class MainActivity : Activity() {
         watchBtn.setOnClickListener {
             picks.getOrNull(pickIndex)?.let { film ->
                 AddonMatcher.find(this, film)?.let { match ->
-                    AddonManagerActivity.openMatch(this, match.repository, match.itemType, match.itemId)
+                    AddonManagerActivity.openMatch(this, match.repository, match.itemType, match.itemId, film.id)
                 }
             }
         }
@@ -3559,7 +3559,7 @@ class MainActivity : Activity() {
             watchBtn.visibility = if (addonMatch != null) View.VISIBLE else View.GONE
             whereView.setOnClickListener {
                 addonMatch?.let {
-                    AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId)
+                    AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId, p.id)
                 }
             }
             whereView.isClickable = addonMatch != null
