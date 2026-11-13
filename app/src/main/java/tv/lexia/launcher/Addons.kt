@@ -166,7 +166,7 @@ object Addons {
         fetchMetaDetails(addon, type, id).episodes
 
     /** Fetches only catalogue metadata. Addon stream/source resources are never requested. */
-    fun fetchCatalog(addon: Installed, catalog: Catalog, skip: Int = 0): List<CatalogItem> {
+    fun fetchCatalog(addon: Installed, catalog: Catalog, skip: Int = 0, search: String = ""): List<CatalogItem> {
         require("catalog" in addon.resources || addon.resources.isEmpty()) {
             "Bu eklenti katalog kaynağı sunmuyor."
         }
@@ -177,9 +177,14 @@ object Addons {
             "Katalog kimliği geçersiz."
         }
         val encodedCatalogId = java.net.URLEncoder.encode(catalog.id, "UTF-8").replace("+", "%20")
-        val url = addon.baseUrl.trimEnd('/') +
-            "/catalog/${catalog.type}/$encodedCatalogId.json" +
-            if (skip > 0) "?skip=${skip.coerceAtMost(10000)}" else ""
+        val query = ArrayList<String>()
+        if (skip > 0) query.add("skip=${skip.coerceAtMost(10000)}")
+        if (search.isNotBlank()) {
+            require(search.length <= 120) { "Arama metni çok uzun." }
+            query.add("search=" + java.net.URLEncoder.encode(search.trim(), "UTF-8").replace("+", "%20"))
+        }
+        val suffix = if (query.isEmpty()) "" else "?" + query.joinToString("&")
+        val url = addon.baseUrl.trimEnd('/') + "/catalog/${catalog.type}/$encodedCatalogId.json" + suffix
         val metas = JSONObject(getText(url)).optJSONArray("metas") ?: JSONArray()
         return (0 until metas.length()).mapNotNull { i ->
             val m = metas.optJSONObject(i) ?: return@mapNotNull null
@@ -202,6 +207,44 @@ object Addons {
                 seasons = m.optInt("seasonCount", 0)
             )
         }
+    }
+
+    /**
+     * Searches only catalogue metadata from configured repositories. No stream/source endpoints
+     * are called. Mode 1 searches every saved repository; mode 2 searches the chosen favorite only.
+     */
+    fun searchConfigured(context: Context, title: String, type: String): List<Triple<Installed, Catalog, CatalogItem>> {
+        require(title.isNotBlank() && title.length <= 120) { "Aranacak içerik adı geçersiz." }
+        val prefs = Prefs(context)
+        val urls = when (prefs.addonMatchMode) {
+            1 -> urls(context)
+            2 -> listOf(prefs.favoriteAddonUrl).filter { it.isNotBlank() && it in urls(context) }
+            else -> emptyList()
+        }
+        if (urls.isEmpty()) return emptyList()
+        val wanted = if (type.equals("tv", true)) setOf("series", "tv") else setOf("movie", "film")
+        val results = ArrayList<Triple<Installed, Catalog, CatalogItem>>()
+        for (address in urls.take(12)) {
+            val addon = runCatching { fetchManifest(address) }.getOrNull() ?: continue
+            for (catalog in addon.catalogs.filter { it.type.lowercase() in wanted }.take(20)) {
+                val items = runCatching { fetchCatalog(addon, catalog, search = title) }.getOrNull().orEmpty()
+                for (item in items) {
+                    if (item.name.isNotBlank() && similarTitle(item.name, title)) {
+                        results.add(Triple(addon, catalog, item))
+                    }
+                }
+                if (results.size >= 30) return results
+            }
+        }
+        return results
+    }
+
+    private fun similarTitle(left: String, right: String): Boolean {
+        fun key(value: String) = value.lowercase(java.util.Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}]"), "")
+        val a = key(left)
+        val b = key(right)
+        return a == b || a.contains(b) || b.contains(a)
     }
 
     private fun normalize(raw: String): String {
