@@ -57,6 +57,8 @@ object Addons {
     data class MetaDetails(val item: CatalogItem, val episodes: List<EpisodeItem>)
 
     data class ProviderStream(val name: String, val title: String, val url: String, val quality: String, val format: String, val headers: Map<String, String>)
+    data class ProviderSubtitle(val name: String, val language: String, val url: String, val format: String, val headers: Map<String, String>)
+    data class ProviderResult(val streams: List<ProviderStream>, val subtitles: List<ProviderSubtitle>)
 
     data class CatalogItem(
         val id: String,
@@ -325,6 +327,40 @@ object Addons {
                 headers = headers
             )
         }.take(30)
+    }
+
+    fun parseProviderResult(json: String): ProviderResult {
+        val root = runCatching { JSONObject(json) }.getOrNull()
+            ?: return ProviderResult(parseProviderStreams(json), emptyList())
+        val streams = parseProviderStreams(root.optJSONArray("streams")?.toString() ?: "[]")
+        val subtitlesJson = root.optJSONArray("subtitles") ?: JSONArray()
+        val subtitles = (0 until subtitlesJson.length()).mapNotNull { index ->
+            val item = subtitlesJson.optJSONObject(index) ?: return@mapNotNull null
+            val url = item.optString("url")
+            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
+            if (uri == null || !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) return@mapNotNull null
+            val headersJson = item.optJSONObject("headers") ?: JSONObject()
+            val headers = buildMap {
+                val names = headersJson.names() ?: JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = headersJson.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 && !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+            val format = item.optString("format").ifBlank {
+                url.substringBefore('?').substringAfterLast('.', "").lowercase()
+            }
+            if (format !in setOf("srt", "vtt", "webvtt")) return@mapNotNull null
+            ProviderSubtitle(
+                name = item.optString("name").ifBlank { item.optString("label").ifBlank { "Altyazı" } },
+                language = item.optString("language").ifBlank { item.optString("lang") },
+                url = url,
+                format = format,
+                headers = headers
+            )
+        }.take(20)
+        return ProviderResult(streams, subtitles)
     }
 
     private fun normalize(raw: String): String {
