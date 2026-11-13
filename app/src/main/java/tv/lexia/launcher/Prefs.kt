@@ -204,6 +204,14 @@ class Prefs(ctx: Context) {
     var platforms: Set<String>
         get() = HashSet(p.getStringSet("platforms", emptySet()) ?: emptySet())
         set(v) = p.edit().putStringSet("platforms", HashSet(v)).apply()
+    /** Home hero addon catalogue matching: off, all installed repositories, or selected repository. */
+    var addonMatchMode: String
+        get() = p.getString("addonMatchMode", "off") ?: "off"
+        set(v) = putStr("addonMatchMode", v)
+    /** Repository URL used when addonMatchMode is "selected". */
+    var addonMatchRepository: String
+        get() = str("addonMatchRepository")
+        set(v) = putStr("addonMatchRepository", v)
     /** The build whose "Yenilikler" card was already liked or disliked. */
     var votedBuild: Int get() = int("votedBuild", 0); set(v) = putInt("votedBuild", v)
     /** Larger text everywhere, for reading from across the room. */
