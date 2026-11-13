@@ -294,7 +294,11 @@ class AddonManagerActivity : Activity() {
                 val item = recent[index]
                 val tmdbId = item.tmdbId.takeIf { it > 0 } ?: item.seriesId.substringAfterLast("|").toIntOrNull()
                 if (tmdbId != null && tmdbId > 0 && item.title.isNotBlank()) {
-                    startAutoSearch(item.title, tmdbId, item.mediaType, item.season, item.episode)
+                    startAutoSearch(
+                        item.title, tmdbId, item.mediaType,
+                        if (item.mediaType == "movie") null else item.season,
+                        if (item.mediaType == "movie") null else item.episode
+                    )
                 } else {
                     Toast.makeText(this, "Bu kayıt için otomatik kaynak bilgisi bulunmuyor.", Toast.LENGTH_LONG).show()
                 }
@@ -554,11 +558,16 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             val options = ArrayList<ProviderOption>()
             for (repository in repositories) {
+                val connectionPrefs = getSharedPreferences("addon_connection_status", MODE_PRIVATE)
+                val savedManifestLatency = connectionPrefs.getLong("latency:$repository", 0L)
+                if (savedManifestLatency <= 0L) Addons.clearCache(repository)
                 val startedAt = System.nanoTime()
                 val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
-                val manifestLatency = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
-                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
-                    .putLong("latency:$repository", manifestLatency).apply()
+                val measuredLatency = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                val manifestLatency = savedManifestLatency.takeIf { it > 0L } ?: measuredLatency
+                if (savedManifestLatency <= 0L) {
+                    connectionPrefs.edit().putLong("latency:$repository", manifestLatency).apply()
+                }
                 addon.scrapers.filter { provider ->
                     provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
                 }.forEach { provider ->
