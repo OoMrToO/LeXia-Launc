@@ -63,8 +63,11 @@ class AddonManagerActivity : Activity() {
         }
         val title = TextView(this).apply {
             text = "EKLENTİLER"
-            textSize = 26f
-            setTextColor(-1)
+            textSize = 30f
+            letterSpacing = 0.08f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFFF5F7FA.toInt())
+            setPadding(0, 0, 0, pad / 3)
         }
         root.addView(title)
         status = TextView(this).apply {
@@ -74,7 +77,16 @@ class AddonManagerActivity : Activity() {
         }
         root.addView(status)
         val add = Button(this).apply {
-            text = "Eklenti adresi ekle"
+            text = "＋  EKLENTİ ADRESİ EKLE"
+            isAllCaps = false
+            textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF6750A4.toInt())
+                cornerRadius = pad.toFloat()
+            }
+            minHeight = pad * 2
+            setPadding(pad, pad / 2, pad, pad / 2)
             setOnClickListener { askUrl() }
         }
         root.addView(add)
@@ -152,22 +164,54 @@ class AddonManagerActivity : Activity() {
         urls.forEach { address ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(18, 14, 18, 14)
-                setBackgroundColor(0xFF252A33.toInt())
+                val inset = (resources.displayMetrics.density * 20).toInt()
+                setPadding(inset, inset, inset, inset)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF1B2029.toInt())
+                    cornerRadius = resources.displayMetrics.density * 18f
+                    setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF343C49.toInt())
+                }
+                isFocusable = true
             }
+            val heading = TextView(this).apply {
+                text = "BAĞLI DEPO"
+                textSize = 11f
+                letterSpacing = 0.12f
+                setTextColor(0xFF9BA7B8.toInt())
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            card.addView(heading)
             val label = TextView(this).apply {
                 text = address
                 textSize = 15f
-                setTextColor(-1)
+                setTextColor(0xFFF1F4F8.toInt())
+                maxLines = 2
+                setPadding(0, (resources.displayMetrics.density * 7).toInt(), 0, (resources.displayMetrics.density * 12).toInt())
             }
             card.addView(label)
-            val actions = LinearLayout(this).apply { gravity = Gravity.END }
+            val actions = LinearLayout(this).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
             val inspect = Button(this).apply {
                 text = "Katalogları yükle"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFFFFF.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF394B66.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
                 setOnClickListener { loadCatalogs(address) }
             }
             val remove = Button(this).apply {
                 text = "Kaldır"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFB4AB.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF392629.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
                 setOnClickListener {
                     Addons.remove(this@AddonManagerActivity, address)
                     render(list)
