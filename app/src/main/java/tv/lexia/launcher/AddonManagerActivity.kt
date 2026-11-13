@@ -57,6 +57,7 @@ class AddonManagerActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
     private lateinit var urlInput: EditText
+    private lateinit var addonList: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,13 +158,23 @@ class AddonManagerActivity : Activity() {
             setPadding(0, pad / 2, 0, pad / 2)
         }
         root.addView(section)
+        val collectionsButton = Button(this).apply {
+            text = "▦  Koleksiyonları yönet"
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(0xFFE9E4FF.toInt())
+            background = buttonBackground(0xFF29243A.toInt())
+            setOnClickListener { manageCollections() }
+            applyRemoteFocusStyle()
+        }
+        root.addView(collectionsButton, LinearLayout.LayoutParams(-1, pad * 2).apply { bottomMargin = pad / 2 })
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; isFocusable = false }
-        scroll.addView(list)
+        addonList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; isFocusable = false }
+        scroll.addView(addonList)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val history = Button(this).apply {
             text = "◷  İzleme geçmişi"
@@ -176,7 +187,7 @@ class AddonManagerActivity : Activity() {
         }
         root.addView(history, LinearLayout.LayoutParams(-1, pad * 2).apply { topMargin = pad / 2 })
         setContentView(root)
-        render(list)
+        render(addonList)
         urlInput.requestFocus()
         val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
         if (autoTmdbId > 0) {
@@ -274,9 +285,7 @@ class AddonManagerActivity : Activity() {
         try {
             Addons.add(this, raw)
             urlInput.setText("")
-            val content = root.getChildAt(5) as? ScrollView
-            val list = content?.getChildAt(0) as? LinearLayout
-            if (list != null) render(list)
+            render(addonList)
             Toast.makeText(this, "Eklenti adresi eklendi.", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             status.text = e.message ?: "Adres eklenemedi."
@@ -298,9 +307,9 @@ class AddonManagerActivity : Activity() {
 
     private fun render(list: LinearLayout) {
         list.removeAllViews()
-        val urls = AddonLibrary.enabledRepositories(this)
-        status.text = if (urls.isEmpty()) "Henüz eklenti eklenmedi." else "${urls.size} depo kayıtlı"
-        urls.forEach { address ->
+        val urls = AddonLibrary.repositories(this)
+        status.text = if (urls.isEmpty()) "Henüz eklenti eklenmedi." else "${AddonLibrary.enabledRepositories(this).size}/${urls.size} depo etkin"
+        urls.forEachIndexed { repositoryIndex, address ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 val inset = (resources.displayMetrics.density * 20).toInt()
@@ -347,6 +356,33 @@ class AddonManagerActivity : Activity() {
                 setPadding(0, 0, 0, (resources.displayMetrics.density * 12).toInt())
             }
             card.addView(connectionLine)
+            val repositoryControls = LinearLayout(this).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+            fun controlButton(labelText: String, color: Int, action: () -> Unit): Button = Button(this).apply {
+                text = labelText
+                isAllCaps = false
+                textSize = 12f
+                minHeight = (resources.displayMetrics.density * 42).toInt()
+                setTextColor(0xFFFFFFFF.toInt())
+                background = buttonBackground(color)
+                setOnClickListener { action() }
+                applyRemoteFocusStyle()
+            }
+            val enabled = AddonLibrary.isRepositoryEnabled(this, address)
+            repositoryControls.addView(controlButton(if (enabled) "Etkin" else "Devre dışı", if (enabled) 0xFF315B4A.toInt() else 0xFF59433A.toInt()) {
+                AddonLibrary.setRepositoryEnabled(this@AddonManagerActivity, address, !enabled)
+                render(list)
+            })
+            repositoryControls.addView(controlButton("↑", 0xFF394B66.toInt()) {
+                AddonLibrary.moveRepository(this@AddonManagerActivity, address, -1)
+                render(list)
+            }.apply { isEnabled = repositoryIndex > 0 })
+            repositoryControls.addView(controlButton("↓", 0xFF394B66.toInt()) {
+                AddonLibrary.moveRepository(this@AddonManagerActivity, address, 1)
+                render(list)
+            }.apply { isEnabled = repositoryIndex < urls.lastIndex })
+            card.addView(repositoryControls)
             val actions = LinearLayout(this).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
             }
@@ -556,7 +592,8 @@ class AddonManagerActivity : Activity() {
                             .show()
                     }
                 } else {
-                    val results = addon.catalogs.map { catalog ->
+                    val orderedCatalogs = AddonLibrary.orderedCatalogs(this, address, addon.catalogs)
+                    val results = orderedCatalogs.map { catalog ->
                         catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
                     }
                     runOnUiThread {
@@ -566,21 +603,7 @@ class AddonManagerActivity : Activity() {
                             addon.name + " · " + results.size + " katalog hazır."
                         }
                         if (results.isNotEmpty()) {
-                            val labels = results.map { (catalog, items) ->
-                                catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
-                            }.toTypedArray()
-                            AlertDialog.Builder(this)
-                                .setTitle(addon.name + " · Kataloglar")
-                                .setItems(labels) { _, index ->
-                                    val (catalog, items) = results[index]
-                                    if (items.isNullOrEmpty()) {
-                                        Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
-                                    } else {
-                                        showCatalogItems(addon, catalog, items)
-                                    }
-                                }
-                                .setNegativeButton("Kapat", null)
-                                .show()
+                            showCatalogList(addon, address, results)
                         }
                     }
                 }
@@ -590,6 +613,159 @@ class AddonManagerActivity : Activity() {
         }
     }
 
+
+
+    private fun showCatalogList(
+        addon: Addons.Installed,
+        repository: String,
+        results: List<Pair<Addons.Catalog, List<Addons.CatalogItem>?>>
+    ) {
+        val labels = results.map { (catalog, items) ->
+            val enabled = if (AddonLibrary.isCatalogEnabled(this, repository, catalog)) "●" else "○"
+            "$enabled  ${catalog.name} · ${items?.size?.toString() ?: "okunamadı"} kayıt"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(addon.name + " · Katalog sırası")
+            .setItems(labels) { _, index -> showCatalogActions(addon, repository, results, index) }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun showCatalogActions(
+        addon: Addons.Installed,
+        repository: String,
+        results: List<Pair<Addons.Catalog, List<Addons.CatalogItem>?>>,
+        index: Int
+    ) {
+        val (catalog, items) = results[index]
+        val enabled = AddonLibrary.isCatalogEnabled(this, repository, catalog)
+        val actions = listOf(
+            "Kataloğu aç",
+            if (enabled) "Kataloğu devre dışı bırak" else "Kataloğu etkinleştir",
+            "Koleksiyona ekle",
+            "Yukarı taşı",
+            "Aşağı taşı"
+        )
+        AlertDialog.Builder(this)
+            .setTitle(catalog.name)
+            .setItems(actions.toTypedArray()) { _, action ->
+                when (action) {
+                    0 -> if (items.isNullOrEmpty()) {
+                        Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
+                    } else showCatalogItems(addon, catalog, items)
+                    1 -> {
+                        AddonLibrary.setCatalogEnabled(this, repository, catalog, !enabled)
+                        showCatalogList(addon, repository, results)
+                    }
+                    2 -> addCatalogToCollection(repository, catalog)
+                    3, 4 -> {
+                        AddonLibrary.moveCatalog(this, repository, results.map { it.first }, catalog, if (action == 3) -1 else 1)
+                        val reordered = AddonLibrary.orderedCatalogs(this, repository, results.map { it.first })
+                        val byKey = results.associateBy { AddonLibrary.catalogKey(repository, it.first) }
+                        showCatalogList(addon, repository, reordered.mapNotNull { byKey[AddonLibrary.catalogKey(repository, it)] })
+                    }
+                }
+            }
+            .setNegativeButton("Geri") { _, _ -> showCatalogList(addon, repository, results) }
+            .show()
+    }
+
+    private fun addCatalogToCollection(repository: String, catalog: Addons.Catalog) {
+        val current = AddonLibrary.collections(this)
+        val labels = current.map { it.name }.toMutableList().apply { add("＋ Yeni koleksiyon oluştur") }
+        AlertDialog.Builder(this)
+            .setTitle("Koleksiyona ekle")
+            .setItems(labels.toTypedArray()) { _, index ->
+                if (index == current.size) {
+                    promptCreateCollection { created ->
+                        AddonLibrary.addCatalogToCollection(this, created.id, AddonLibrary.catalogKey(repository, catalog))
+                        Toast.makeText(this, "Kataloğa koleksiyon eklendi.", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    AddonLibrary.addCatalogToCollection(this, current[index].id, AddonLibrary.catalogKey(repository, catalog))
+                    Toast.makeText(this, "Koleksiyona eklendi.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
+    }
+
+    private fun manageCollections() {
+        val collections = AddonLibrary.collections(this)
+        val labels = collections.map { "${it.name} · ${it.catalogKeys.size} katalog" }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Koleksiyonlar")
+            .setItems(labels) { _, index -> showCollectionDetails(collections[index]) }
+            .setPositiveButton("Yeni oluştur") { _, _ -> promptCreateCollection() }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun promptCreateCollection(onCreated: ((AddonLibrary.Collection) -> Unit)? = null) {
+        val input = EditText(this).apply {
+            hint = "Koleksiyon adı"
+            setSingleLine(true)
+            setTextColor(0xFFFFFFFF.toInt())
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Yeni koleksiyon")
+            .setView(input)
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Oluştur") { _, _ ->
+                runCatching { AddonLibrary.createCollection(this, input.text.toString()) }
+                    .onSuccess { created ->
+                        onCreated?.invoke(created)
+                        if (onCreated == null) manageCollections()
+                    }
+                    .onFailure { Toast.makeText(this, it.message ?: "Koleksiyon oluşturulamadı.", Toast.LENGTH_LONG).show() }
+            }
+            .show()
+    }
+
+    private fun showCollectionDetails(collection: AddonLibrary.Collection) {
+        val current = AddonLibrary.collections(this).firstOrNull { it.id == collection.id } ?: return
+        val labels = current.catalogKeys.map { key ->
+            val parts = key.split("|")
+            val host = runCatching { android.net.Uri.parse(parts.first()).host }.getOrNull().orEmpty()
+            "${host.ifBlank { parts.firstOrNull().orEmpty() }} · ${parts.getOrNull(1).orEmpty()} · ${parts.getOrNull(2).orEmpty()}"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(current.name)
+            .setItems(labels) { _, index ->
+                AddonLibrary.removeCatalogFromCollection(this, current.id, current.catalogKeys[index])
+                showCollectionDetails(current)
+            }
+            .setPositiveButton("Yeniden adlandır") { _, _ -> promptRenameCollection(current) }
+            .setNeutralButton("Sil") { _, _ ->
+                AlertDialog.Builder(this).setMessage("${current.name} koleksiyonu silinsin mi?")
+                    .setNegativeButton("Vazgeç", null)
+                    .setPositiveButton("Sil") { _, _ ->
+                        AddonLibrary.deleteCollection(this, current.id)
+                        manageCollections()
+                    }.show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun promptRenameCollection(collection: AddonLibrary.Collection) {
+        val input = EditText(this).apply {
+            setText(collection.name)
+            setSingleLine(true)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Koleksiyonu yeniden adlandır")
+            .setView(input)
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Kaydet") { _, _ ->
+                runCatching { AddonLibrary.renameCollection(this, collection.id, input.text.toString()) }
+                    .onSuccess { manageCollections() }
+                    .onFailure { Toast.makeText(this, it.message ?: "Ad değiştirilemedi.", Toast.LENGTH_LONG).show() }
+            }
+            .show()
+    }
 
     private fun promptProviderTest(repository: String, addon: Addons.Installed, provider: Addons.ScraperProvider) {
         val idInput = EditText(this).apply {
