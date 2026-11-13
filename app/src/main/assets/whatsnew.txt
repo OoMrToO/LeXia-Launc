@@ -1,3 +1,4 @@
+Ana ekrandaki dönen film ve diziler, ayarlarda seçtiğin tüm eklentilerde veya favori eklentinde otomatik olarak aranır. Eşleşen katalog kaydını açabilirsin; bu özellik varsayılan olarak kapalıdır.
 # Yenilikler
 Oynatıcı artık MP4 ve HLS yanında MPEG-DASH (.mpd) yayınlarını da destekler.
 Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hızını değiştirebilirsin.
