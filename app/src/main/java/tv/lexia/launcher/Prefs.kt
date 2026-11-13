@@ -51,6 +51,9 @@ class Prefs(ctx: Context) {
     var autoRotate: Boolean get() = bool("rotate", true); set(v) = putBool("rotate", v)
     /** Seconds between films. */
     var rotateSec: Int get() = int("rotateSec", 15); set(v) = putInt("rotateSec", v)
+    /** 0 off, 1 search every installed addon, 2 search only the selected favorite repository. */
+    var addonMatchMode: Int get() = int("addonMatchMode", 0); set(v) = putInt("addonMatchMode", v.coerceIn(0, 2))
+    var favoriteAddonUrl: String get() = str("favoriteAddonUrl"); set(v) = putStr("favoriteAddonUrl", v)
     /** Preferred genres; empty means all. */
     var genres: Set<String>
         get() = HashSet(p.getStringSet("genres", emptySet()) ?: emptySet())
