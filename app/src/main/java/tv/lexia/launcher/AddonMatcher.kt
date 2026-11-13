@@ -29,7 +29,11 @@ object AddonMatcher {
         val prefs = Prefs(context)
         val repositories = when (prefs.addonMatchMode) {
             "all" -> Addons.urls(context).sorted()
-            "selected" -> listOf(prefs.addonMatchRepository)
+            "selected" -> {
+                val urls = Addons.urls(context)
+                listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
+                    .filter { it.isNotBlank() }
+            }
             else -> emptyList()
         }
         val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" +
