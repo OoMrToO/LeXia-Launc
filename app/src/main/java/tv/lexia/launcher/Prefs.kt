@@ -206,7 +206,7 @@ class Prefs(ctx: Context) {
         set(v) = p.edit().putStringSet("platforms", HashSet(v)).apply()
     /** Home hero addon catalogue matching: off, all installed repositories, or selected repository. */
     var addonMatchMode: String
-        get() = p.getString("addonMatchMode", "off") ?: "off"
+        get() = p.getString("addonMatchMode", "all") ?: "all"
         set(v) = putStr("addonMatchMode", v)
     /** Repository URL used when addonMatchMode is "selected". */
     var addonMatchRepository: String
