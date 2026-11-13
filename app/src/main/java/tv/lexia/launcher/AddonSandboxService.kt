@@ -62,7 +62,6 @@ class AddonSandboxService : Service() {
             val result = runBlocking(Dispatchers.IO) {
                 withTimeout(EXECUTION_TIMEOUT_MS) {
                     quickJs(Dispatchers.IO) {
-                        evaluationTimeoutMillis = EXECUTION_TIMEOUT_MS
                         function("__native_fetch") { args ->
                             val request = JSONObject()
                                 .put("url", args.getOrNull(0)?.toString().orEmpty())
