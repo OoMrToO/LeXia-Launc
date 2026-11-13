@@ -188,38 +188,52 @@ class AddonManagerActivity : Activity() {
                                 " · " + provider.catalogs.size + " katalog" +
                                 (if (provider.enabled) "" else " · devre dışı")
                         }.toTypedArray()
+                        if (labels.isEmpty()) {
+                            status.text = addon.name + " · Manifestte sağlayıcı bulunamadı."
+                            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                            return@runOnUiThread
+                        }
+
+                        // Show the safety notice separately; combining setMessage and setItems
+                        // can leave Android TV displaying only the message instead of the list.
                         AlertDialog.Builder(this)
-                            .setTitle(addon.name + " · Sağlayıcılar")
+                            .setTitle(addon.name + " · Güvenlik")
                             .setMessage(
-                                "Sağlayıcılar izole JavaScript ortamında çalıştırılabilir. " +
-                                    "Ağ erişimi varsayılan olarak kapalıdır; sağlayıcı için gereken " +
-                                    "HTTPS alan adlarını Ağ izinleri bölümünden tek tek onayla. " +
-                                    "Yalnızca kullanım hakkına sahip olduğun doğrudan medya adreslerini oynat."
+                                "Sağlayıcılar izole JavaScript ortamında çalıştırılır. " +
+                                    "Ağ erişimi varsayılan olarak kapalıdır. Gerekli HTTPS alan adlarına " +
+                                    "Ağ izinleri bölümünden izin vermen gerekir. " +
+                                    "Yalnızca kullanım hakkına sahip olduğun medya içeriklerini oynat."
                             )
-                            .setItems(labels) { _, index ->
-                                val provider = addon.scrapers[index]
+                            .setNegativeButton("Kapat", null)
+                            .setPositiveButton("Devam et") { _, _ ->
                                 AlertDialog.Builder(this)
-                                    .setTitle(provider.name)
-                                    .setMessage(
-                                        provider.description.ifBlank { "Açıklama yok." } + "\\n\\n" +
-                                            "Sürüm: " + provider.version + "\\n" +
-                                            "Dosya: " + provider.filename + "\\n" +
-                                            "Formatlar: " + provider.formats.joinToString(", ") + "\n" +
-                                            "Kataloglar: " + provider.catalogs.joinToString("\n") { catalog ->
-                                                catalog.name + " (" + catalog.type + ")" +
-                                                    if (catalog.extras.isEmpty()) "" else " · " + catalog.extras.joinToString(", ")
+                                    .setTitle(addon.name + " · Sağlayıcılar (" + labels.size + ")")
+                                    .setItems(labels) { _, index ->
+                                        val provider = addon.scrapers[index]
+                                        AlertDialog.Builder(this)
+                                            .setTitle(provider.name)
+                                            .setMessage(
+                                                provider.description.ifBlank { "Açıklama yok." } + "\n\n" +
+                                                    "Sürüm: " + provider.version + "\n" +
+                                                    "Dosya: " + provider.filename + "\n" +
+                                                    "Formatlar: " + provider.formats.joinToString(", ") + "\n" +
+                                                    "Kataloglar: " + provider.catalogs.joinToString("\n") { catalog ->
+                                                        catalog.name + " (" + catalog.type + ")" +
+                                                            if (catalog.extras.isEmpty()) "" else " · " + catalog.extras.joinToString(", ")
+                                                    }
+                                            )
+                                            .setPositiveButton("Kaynakları ara") { _, _ -> promptProviderTest(address, addon, provider) }
+                                            .setNeutralButton("Ağ izinleri") {
+                                                _, _ -> manageProviderNetworkPermissions(address, provider.id)
                                             }
-                                    )
-                                    .setPositiveButton("Kaynakları ara") { _, _ -> promptProviderTest(address, addon, provider) }
-                                    .setNeutralButton("Ağ izinleri") {
-                                        _, _ -> manageProviderNetworkPermissions(address, provider.id)
+                                            .setNegativeButton("Ayarlar") { _, _ ->
+                                                manageProviderSettings(address, provider.id)
+                                            }
+                                            .show()
                                     }
-                                    .setNegativeButton("Ayarlar") { _, _ ->
-                                        manageProviderSettings(address, provider.id)
-                                    }
+                                    .setNegativeButton("Kapat", null)
                                     .show()
                             }
-                            .setNegativeButton("Kapat", null)
                             .show()
                     }
                 } else {
