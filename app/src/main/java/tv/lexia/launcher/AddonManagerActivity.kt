@@ -298,7 +298,7 @@ class AddonManagerActivity : Activity() {
 
     private fun render(list: LinearLayout) {
         list.removeAllViews()
-        val urls = Addons.urls(this)
+        val urls = AddonLibrary.enabledRepositories(this)
         status.text = if (urls.isEmpty()) "Henüz eklenti eklenmedi." else "${urls.size} depo kayıtlı"
         urls.forEach { address ->
             val card = LinearLayout(this).apply {
@@ -669,7 +669,7 @@ class AddonManagerActivity : Activity() {
         initialSeason: Int? = null,
         initialEpisode: Int? = null
     ) {
-        val urls = Addons.urls(this)
+        val urls = AddonLibrary.enabledRepositories(this)
         val prefs = Prefs(this)
         val repositories = when (prefs.addonMatchMode) {
             "selected" -> listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
