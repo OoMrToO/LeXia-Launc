@@ -57,3 +57,14 @@ jobs:
         run: |
           npx -y $WRANGLER pages project create $PROJECT --production-branch main 2>/dev/null || true
           npx -y $WRANGLER pages deploy out --project-name $PROJECT --branch main --commit-dirty=true
+      # Checks from outside that a TV can get the files (address, status, size).
+      - name: Check
+        run: |
+          HOST=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT" |
+            python3 -c "import json,sys; print((json.load(sys.stdin).get('result') or {}).get('subdomain') or '')")
+          sleep 20
+          for p in version.txt pick.json apk/app.apk kur.apk; do
+            curl -sS -o /dev/null -w "$p %{http_code} %{content_type} %{size_download}\n" "https://$HOST/$p?t=$(date +%s)" || echo "$p FAILED"
+          done
+          echo "version.txt: $(curl -sS "https://$HOST/version.txt?t=$(date +%s)")"
