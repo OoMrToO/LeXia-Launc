@@ -12,6 +12,7 @@ on:
       - "scripts/pick.py"
       - ".github/workflows/daily-pick.yml"
       - ".github/workflows/publish.yml"
+      - ".github/workflows/pr-build.yml"
   workflow_dispatch:
 
 permissions:
