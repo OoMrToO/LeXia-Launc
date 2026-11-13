@@ -2,6 +2,7 @@ package tv.lexia.launcher
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -11,6 +12,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -35,6 +37,10 @@ class AddonPlayerActivity : Activity() {
     private var resumeApplied = false
     private var networkRetryCount = 0
     private var pendingRetry: Runnable? = null
+    private var externalSubtitleUri: Uri? = null
+    private val playbackPrefs by lazy {
+        getSharedPreferences("playback_preferences", MODE_PRIVATE)
+    }
 
     private val progressTask = object : Runnable {
         override fun run() {
@@ -92,6 +98,7 @@ class AddonPlayerActivity : Activity() {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     durationMs = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
+                    applyPreferredLanguages(current)
                     if (!resumeApplied) {
                         val saved = WatchProgress.get(this@AddonPlayerActivity, seriesId, season, episode)
                         if (saved != null && !saved.isComplete && saved.positionMs > 5_000) {
@@ -166,9 +173,104 @@ class AddonPlayerActivity : Activity() {
             }
         })
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
-        current.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        externalSubtitleUri = playbackPrefs.getString(KEY_EXTERNAL_SUBTITLE_URI, null)
+            ?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        val initialItem = buildMediaItem(url, externalSubtitleUri)
+        current.setMediaItem(initialItem)
         current.prepare()
         current.playWhenReady = true
+    }
+
+    @Deprecated("Deprecated in Android; retained for compatibility with the document picker result.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_EXTERNAL_SUBTITLE || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val mimeType = subtitleMimeType(uri) ?: run {
+            Toast.makeText(this, "Yalnızca SRT veya WebVTT altyazı dosyaları desteklenir.", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        externalSubtitleUri = uri
+        playbackPrefs.edit().putString(KEY_EXTERNAL_SUBTITLE_URI, uri.toString()).apply()
+        applyExternalSubtitle(mimeType)
+    }
+
+    private fun subtitleMimeType(uri: Uri): String? {
+        val name = uri.lastPathSegment.orEmpty().lowercase()
+        val detected = contentResolver.getType(uri)?.lowercase().orEmpty()
+        return when {
+            name.endsWith(".srt") || detected.contains("subrip") -> MimeTypes.APPLICATION_SUBRIP
+            name.endsWith(".vtt") || detected.contains("vtt") -> MimeTypes.TEXT_VTT
+            else -> null
+        }
+    }
+
+    private fun applyExternalSubtitle(mimeType: String? = null) {
+        val current = player ?: return
+        val uri = externalSubtitleUri ?: return
+        val type = mimeType ?: subtitleMimeType(uri) ?: return
+        val position = current.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = current.playWhenReady
+        val item = buildMediaItem(intent.getStringExtra(EXTRA_URL).orEmpty(), uri, type)
+        current.setMediaItem(item, position)
+        current.prepare()
+        current.playWhenReady = wasPlaying
+        Toast.makeText(this, "Harici altyazı eklendi.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun buildMediaItem(url: String, subtitleUri: Uri?, knownMimeType: String? = null): MediaItem {
+        val builder = MediaItem.Builder().setUri(url)
+        val type = subtitleUri?.let { knownMimeType ?: subtitleMimeType(it) }
+        if (subtitleUri != null && type != null) {
+            val subtitle = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                .setMimeType(type)
+                .setLanguage("und")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+            builder.setSubtitleConfigurations(listOf(subtitle))
+        }
+        return builder.build()
+    }
+
+    private fun applyPreferredLanguages(current: ExoPlayer) {
+        val audio = playbackPrefs.getString(KEY_AUDIO_LANGUAGE, null)
+        val text = playbackPrefs.getString(KEY_TEXT_LANGUAGE, null)
+        current.trackSelectionParameters = current.trackSelectionParameters.buildUpon()
+            .setPreferredAudioLanguage(audio)
+            .setPreferredTextLanguage(text)
+            .build()
+    }
+
+    private fun showLanguagePreference(title: String, key: String) {
+        val choices = arrayOf("Otomatik", "Türkçe", "İngilizce", "Almanca", "Fransızca", "İspanyolca", "Arapça")
+        val tags = arrayOf<String?>(null, "tr", "en", "de", "fr", "es", "ar")
+        val selectedTag = playbackPrefs.getString(key, null)
+        val selected = tags.indexOf(selectedTag).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(choices, selected) { dialog, which ->
+                playbackPrefs.edit().putString(key, tags[which]).apply()
+                player?.let { applyPreferredLanguages(it) }
+                dialog.dismiss()
+                Toast.makeText(this, "$title kaydedildi.", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun chooseExternalSubtitle() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, REQUEST_EXTERNAL_SUBTITLE)
     }
 
     /** Android TV remotes commonly expose MENU or INFO for playback options. */
@@ -230,11 +332,21 @@ class AddonPlayerActivity : Activity() {
         val current = player ?: return
         AlertDialog.Builder(this)
             .setTitle("Oynatma seçenekleri")
-            .setItems(arrayOf("Ses dili", "Altyazı", "Oynatma hızı")) { _, which ->
+            .setItems(arrayOf(
+                "Ses parçası seç",
+                "Altyazı seç",
+                "Harici altyazı yükle",
+                "Tercih edilen ses dili",
+                "Tercih edilen altyazı dili",
+                "Oynatma hızı"
+            )) { _, which ->
                 when (which) {
                     0 -> showTrackDialog(current, C.TRACK_TYPE_AUDIO, "Ses dili")
                     1 -> showTrackDialog(current, C.TRACK_TYPE_TEXT, "Altyazı")
-                    2 -> showPlaybackSpeedDialog(current)
+                    2 -> chooseExternalSubtitle()
+                    3 -> showLanguagePreference("Tercih edilen ses dili", KEY_AUDIO_LANGUAGE)
+                    4 -> showLanguagePreference("Tercih edilen altyazı dili", KEY_TEXT_LANGUAGE)
+                    5 -> showPlaybackSpeedDialog(current)
                 }
             }
             .show()
@@ -311,6 +423,10 @@ class AddonPlayerActivity : Activity() {
         private const val HTTP_FORBIDDEN = 403
         private const val HTTP_NOT_FOUND = 404
         private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val REQUEST_EXTERNAL_SUBTITLE = 4102
+        private const val KEY_AUDIO_LANGUAGE = "preferred_audio_language"
+        private const val KEY_TEXT_LANGUAGE = "preferred_text_language"
+        private const val KEY_EXTERNAL_SUBTITLE_URI = "external_subtitle_uri"
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
         const val EXTRA_URL = "media_url"
