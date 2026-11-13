@@ -235,6 +235,18 @@ class AddonManagerActivity : Activity() {
         progressId: String,
         episodes: List<Addons.EpisodeItem>
     ) {
+        val latest = WatchProgress.latest(this, progressId)
+        val latestEpisode = latest?.let { saved ->
+            episodes.firstOrNull { it.season == saved.season && it.episode == saved.episode }
+        }
+        val latestProgress = latest?.let { saved ->
+            when {
+                saved.isComplete -> "Tamamlandı"
+                saved.durationMs > 0 -> "Devam · ${(saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100)}%"
+                saved.positionMs > 0 -> "Devam ediyor"
+                else -> null
+            }
+        }
         val message = buildString {
             if (film.meta.isNotBlank()) append(film.meta)
             if (film.runtime > 0) {
@@ -251,6 +263,13 @@ class AddonManagerActivity : Activity() {
             }
             if (isNotEmpty()) append("\n\n")
             append(episodes.size.toString() + " bölüm metadata kaydı")
+            if (latest != null && latestProgress != null) {
+                append("\nSon izleme: ")
+                append(latestEpisode?.let { "S${it.season} B${it.episode} · ${it.title}" }
+                    ?: "S${latest.season} B${latest.episode}")
+                append(" · ")
+                append(latestProgress)
+            }
         }
         AlertDialog.Builder(this)
             .setTitle(film.title)
@@ -290,8 +309,12 @@ class AddonManagerActivity : Activity() {
         val labels = episodes.map { episode ->
             val progress = WatchProgress.get(this, seriesId, episode.season, episode.episode)
             val marker = when {
-                progress?.isComplete == true -> " ✓"
-                progress != null && progress.positionMs > 0 -> " · Devam"
+                progress?.isComplete == true -> " · Tamamlandı ✓"
+                progress != null && progress.positionMs > 0 && progress.durationMs > 0 -> {
+                    val percent = (progress.positionMs * 100 / progress.durationMs).coerceIn(0, 100)
+                    " · Devam %${percent}"
+                }
+                progress != null && progress.positionMs > 0 -> " · Devam ediyor"
                 else -> ""
             }
             val release = episode.released.take(10).takeIf { it.isNotBlank() }?.let { " · " + it }.orEmpty()
@@ -302,9 +325,13 @@ class AddonManagerActivity : Activity() {
             .setItems(labels) { _, index ->
                 val episode = episodes[index]
                 val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
-                val progressText = if (saved != null && saved.durationMs > 0) {
-                    "İlerleme: " + (saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100) + "%"
-                } else "Henüz izleme ilerlemesi yok."
+                val progressText = when {
+                    saved?.isComplete == true -> "Bu bölüm tamamlandı."
+                    saved != null && saved.durationMs > 0 ->
+                        "İlerleme: " + (saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100) + "%"
+                    saved != null && saved.positionMs > 0 -> "Devam edilecek konum kaydedildi."
+                    else -> "Henüz izleme ilerlemesi yok."
+                }
                 val input = EditText(this).apply {
                     hint = "https://ornek.com/video.mp4"
                     setSingleLine(true)
