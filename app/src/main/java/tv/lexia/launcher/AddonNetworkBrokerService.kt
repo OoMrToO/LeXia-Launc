@@ -18,7 +18,9 @@ import java.util.Locale
 class AddonNetworkBrokerService : Service() {
     private val binder = AddonNetworkBrokerBinder { repository, providerId, requestJson ->
         val callerUid = android.os.Binder.getCallingUid()
-        check(android.os.Process.isIsolated(callerUid)) {
+        // Android assigns isolated service processes UIDs in this reserved range.
+        // Process.isIsolated() only checks the current (broker) process, not the Binder caller.
+        check(callerUid in 99_000..99_999) {
             "Only the isolated addon runtime may use this broker."
         }
         runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
