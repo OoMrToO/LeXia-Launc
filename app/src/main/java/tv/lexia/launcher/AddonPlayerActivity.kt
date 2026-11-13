@@ -16,6 +16,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -64,6 +65,7 @@ class AddonPlayerActivity : Activity() {
             setBackgroundColor(android.graphics.Color.BLACK)
             keepScreenOn = true
             isFocusable = true
+            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
         }
         setContentView(playerView)
         playerView.requestFocus()
@@ -114,11 +116,18 @@ class AddonPlayerActivity : Activity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val statusCode = httpStatusCode(error)
                 val isTemporaryNetworkError =
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                val isRetryableHttpError =
+                    statusCode == HTTP_REQUEST_TIMEOUT ||
+                        statusCode == HTTP_TOO_MANY_REQUESTS ||
+                        statusCode in HTTP_SERVER_ERROR_RANGE
 
-                if (isTemporaryNetworkError && networkRetryCount < MAX_NETWORK_RETRIES) {
+                if ((isTemporaryNetworkError || isRetryableHttpError) &&
+                    networkRetryCount < MAX_NETWORK_RETRIES
+                ) {
                     networkRetryCount++
                     val retryNumber = networkRetryCount
                     val resumePosition = current.currentPosition.coerceAtLeast(0L)
@@ -142,11 +151,17 @@ class AddonPlayerActivity : Activity() {
                     return
                 }
 
-                Toast.makeText(
-                    this@AddonPlayerActivity,
-                    "Video oynatılamadı. Bağlantıyı ve medya adresini kontrol et.",
-                    Toast.LENGTH_LONG
-                ).show()
+                val message = when (statusCode) {
+                    HTTP_UNAUTHORIZED, HTTP_FORBIDDEN ->
+                        "Yayın sunucusu erişim izni vermedi (HTTP $statusCode)."
+                    HTTP_NOT_FOUND ->
+                        "Medya adresi bulunamadı (HTTP 404)."
+                    in HTTP_SERVER_ERROR_RANGE, HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS ->
+                        "Yayın sunucusu geçici olarak yanıt vermiyor (HTTP $statusCode). Daha sonra tekrar dene."
+                    else ->
+                        "Video oynatılamadı. Bağlantıyı ve medya adresini kontrol et."
+                }
+                Toast.makeText(this@AddonPlayerActivity, message, Toast.LENGTH_LONG).show()
                 finish()
             }
         })
@@ -186,6 +201,17 @@ class AddonPlayerActivity : Activity() {
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun httpStatusCode(error: PlaybackException): Int? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode
+            }
+            cause = cause.cause
+        }
+        return null
     }
 
     private fun seekBy(current: ExoPlayer, offsetMs: Long) {
@@ -280,6 +306,12 @@ class AddonPlayerActivity : Activity() {
         private const val MAX_NETWORK_RETRIES = 3
         private const val RETRY_BASE_DELAY_MS = 1_500L
         private const val SEEK_INTERVAL_MS = 10_000L
+        private const val HTTP_REQUEST_TIMEOUT = 408
+        private const val HTTP_UNAUTHORIZED = 401
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_NOT_FOUND = 404
+        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private val HTTP_SERVER_ERROR_RANGE = 500..599
 
         const val EXTRA_URL = "media_url"
         const val EXTRA_SERIES_ID = "series_id"
