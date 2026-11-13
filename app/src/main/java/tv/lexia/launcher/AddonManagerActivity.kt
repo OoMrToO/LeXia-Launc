@@ -454,22 +454,77 @@ class AddonManagerActivity : Activity() {
         season: Int?,
         episode: Int?
     ) {
-        val run: (ProviderOption) -> Unit = { option ->
-            runProvider(option.repository, option.addon, option.provider, tmdbId.toString(), mediaType, season, episode)
+        val saved = rememberedProvider(mediaType, tmdbId)
+        val savedOption = saved?.let { (repository, providerId) ->
+            options.firstOrNull { it.repository == repository && it.provider.id == providerId }
         }
-        if (options.size == 1) {
-            run(options.first())
+        if (savedOption != null) {
+            AlertDialog.Builder(this)
+                .setTitle("Kaydedilen sağlayıcı")
+                .setMessage(title + " için " + savedOption.provider.name + " daha önce seçilmiş.")
+                .setPositiveButton("Bununla devam et") { _, _ ->
+                    runProvider(savedOption.repository, savedOption.addon, savedOption.provider,
+                        tmdbId.toString(), mediaType, season, episode)
+                }
+                .setNeutralButton("Başka sağlayıcı seç") { _, _ ->
+                    showProviderOptions(options, title, tmdbId, mediaType, season, episode)
+                }
+                .setNegativeButton("Kapat", null)
+                .show()
             return
         }
+        showProviderOptions(options, title, tmdbId, mediaType, season, episode)
+    }
+
+    private fun showProviderOptions(
+        options: List<ProviderOption>,
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ) {
         val labels = options.map { option ->
             option.addon.name + " · " + option.provider.name + " · " +
                 option.repository.removePrefix("https://").removeSuffix("/")
         }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Kaynak sağlayıcısı · " + title)
-            .setItems(labels) { _, index -> run(options[index]) }
+            .setItems(labels) { _, index ->
+                val option = options[index]
+                AlertDialog.Builder(this)
+                    .setTitle("Sağlayıcıyı hatırla?")
+                    .setMessage(option.provider.name + " sağlayıcısı bu içerik için sonraki izlemelerde de kullanılsın mı?")
+                    .setPositiveButton("Hatırla") { _, _ ->
+                        rememberProvider(mediaType, tmdbId, option)
+                        runProvider(option.repository, option.addon, option.provider,
+                            tmdbId.toString(), mediaType, season, episode)
+                    }
+                    .setNegativeButton("Sadece bu kez") { _, _ ->
+                        runProvider(option.repository, option.addon, option.provider,
+                            tmdbId.toString(), mediaType, season, episode)
+                    }
+                    .setNeutralButton("Vazgeç", null)
+                    .show()
+            }
             .setNegativeButton("Kapat", null)
             .show()
+    }
+
+    private fun rememberedProvider(mediaType: String, tmdbId: Int): Pair<String, String>? {
+        val value = getSharedPreferences("addon_provider_preferences", MODE_PRIVATE)
+            .getString("provider:$mediaType:$tmdbId", null) ?: return null
+        val split = value.indexOf('\n')
+        if (split <= 0 || split == value.lastIndex) return null
+        return value.substring(0, split) to value.substring(split + 1)
+    }
+
+    private fun rememberProvider(mediaType: String, tmdbId: Int, option: ProviderOption) {
+        getSharedPreferences("addon_provider_preferences", MODE_PRIVATE)
+            .edit()
+            .putString("provider:$mediaType:$tmdbId", option.repository + "\n" + option.provider.id)
+            .apply()
+        Toast.makeText(this, "Sağlayıcı bu içerik için hatırlanacak.", Toast.LENGTH_SHORT).show()
     }
 
     /** Uses the TMDB ID already attached to the home-screen title; no manual ID entry is needed. */
