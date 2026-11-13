@@ -14,6 +14,10 @@ import java.util.concurrent.Executors
 
 /** TV-friendly manager for HTTPS addon repositories and their metadata catalogues. */
 class AddonManagerActivity : Activity() {
+    companion object {
+        const val EXTRA_SEARCH_TITLE = "addon_search_title"
+        const val EXTRA_SEARCH_TYPE = "addon_search_type"
+    }
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
@@ -50,6 +54,8 @@ class AddonManagerActivity : Activity() {
         setContentView(root)
         add.requestFocus()
         render(list)
+        val searchTitle = intent.getStringExtra(EXTRA_SEARCH_TITLE).orEmpty()
+        if (searchTitle.isNotBlank()) searchConfigured(searchTitle, intent.getStringExtra(EXTRA_SEARCH_TYPE) ?: "movie")
     }
 
     private fun render(list: LinearLayout) {
@@ -84,6 +90,37 @@ class AddonManagerActivity : Activity() {
             actions.addView(remove)
             card.addView(actions)
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+        }
+    }
+
+    private fun searchConfigured(title: String, type: String) {
+        status.text = "“$title” eklenti kataloglarında aranıyor…"
+        worker.execute {
+            val matches = Addons.searchConfigured(this, title, type)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (matches.isEmpty()) {
+                    status.text = "“$title” için eşleşme bulunamadı. Eklenti ayarlarını ve katalog arama desteğini kontrol et."
+                    AlertDialog.Builder(this)
+                        .setTitle("Eşleşme bulunamadı")
+                        .setMessage("Seçtiğin arama kapsamındaki kataloglarda bu içerik bulunamadı.")
+                        .setPositiveButton("Tamam", null)
+                        .show()
+                    return@runOnUiThread
+                }
+                status.text = "${matches.size} katalog eşleşmesi bulundu."
+                val labels = matches.map { (addon, catalog, item) ->
+                    "${item.name}  ·  ${addon.name} / ${catalog.name}"
+                }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle("“$title” eşleşmeleri")
+                    .setItems(labels) { _, index ->
+                        val (addon, catalog, item) = matches[index]
+                        showCatalogItems(addon, catalog, listOf(item))
+                    }
+                    .setNegativeButton("Kapat", null)
+                    .show()
+            }
         }
     }
 
