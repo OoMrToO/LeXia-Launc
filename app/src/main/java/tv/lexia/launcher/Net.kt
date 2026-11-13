@@ -17,7 +17,7 @@ object Net {
      * A copy of the same files on GitHub (a separate account, own branch), for TVs that cannot open
      * pages.dev: some TVs do not trust its certificate, some networks block it.
      */
-    const val MIRROR = "https://raw.githubusercontent.com/exxsss/Lxialnch/tv"
+    const val MIRROR = "https://raw.githubusercontent.com/exxsss/Lxialnch/qe46fjffumnk"
 
     /** When the site last failed to answer. For half an hour after, the copy is asked first, so a TV
      *  that cannot open the site does not wait for it on every check. */

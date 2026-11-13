@@ -22,6 +22,7 @@ jobs:
       WRANGLER: wrangler@3.99.0
       DIST_TOKEN: ${{ secrets.DIST_TOKEN }}
       DIST_REPO: exxsss/Lxialnch
+      DIST_BRANCH: qe46fjffumnk
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +61,7 @@ jobs:
           npx -y $WRANGLER pages project create $PROJECT --production-branch main 2>/dev/null || true
           npx -y $WRANGLER pages deploy out --project-name $PROJECT --branch main --commit-dirty=true
       # The same files on GitHub, for TVs that cannot open pages.dev. A separate account's public
-      # repository, on its own branch "tv" (its "main" belongs to the first LeXia): one commit, replaced
+      # repository, on its own branch (an unguessable name) (its "main" belongs to the first LeXia): one commit, replaced
       # each time. Skipped while the DIST_TOKEN secret is missing.
       - name: Copy for TVs that cannot open pages.dev
         if: env.DIST_TOKEN != ''
@@ -72,13 +73,15 @@ jobs:
             if [ -f out/$f ]; then cp out/$f $M/$f; fi
           done
           cd $M
-          git init -q -b tv
+          git init -q -b "$DIST_BRANCH"
           git add -A
           git -c user.name="LeXia" -c user.email="lexia@users.noreply.github.com" commit -q -m "$(cat version.txt 2>/dev/null || echo files)"
-          git push -q --force "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" tv
+          git push -q --force "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" "$DIST_BRANCH"
+          # The first copy used the branch "tv"; it is removed.
+          git push -q "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" --delete tv 2>/dev/null || true
           echo "Kopya güncellendi: $(cat version.txt 2>/dev/null)"
           sleep 5
-          curl -sS -o /dev/null -w "kopya version.txt %{http_code}\n" "https://raw.githubusercontent.com/${DIST_REPO}/tv/version.txt" || true
+          curl -sS -o /dev/null -w "kopya version.txt %{http_code}\n" "https://raw.githubusercontent.com/${DIST_REPO}/${DIST_BRANCH}/version.txt" || true
       # Checks from outside that a TV can get the files (address, status, size).
       - name: Check
         run: |
