@@ -997,8 +997,8 @@ class AddonManagerActivity : Activity() {
                 addon.scrapers.filter { provider ->
                     Addons.isProviderEnabled(this, repository, provider) &&
                         (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes) &&
-                        !isAnimeOnlyProvider(provider)
-                }.forEach { provider -> options.add(ProviderOption(repository, addon, provider)) }
+                        !isAnimeOnlyProvider(provider) && !provider.limited
+                }.take(8).forEach { provider -> options.add(ProviderOption(repository, addon, provider)) }
             }
             runOnUiThread {
                 if (options.isEmpty()) {
@@ -1067,7 +1067,10 @@ class AddonManagerActivity : Activity() {
                                 providerResult.streams.forEach { stream ->
                                     found.add(FoundProviderStream(option, stream, providerResult.subtitles))
                                 }
-                                if (providerResult.streams.isEmpty()) failures.add(option.provider.name + ": kaynak döndürmedi")
+                                if (providerResult.streams.isEmpty()) {
+                                    val diagnostic = providerResult.diagnostics.firstOrNull()
+                                    failures.add(option.provider.name + ": " + (diagnostic ?: "kaynak döndürmedi"))
+                                }
                             }
                         }
                         runAt(index + 1)
