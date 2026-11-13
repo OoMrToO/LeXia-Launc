@@ -35,6 +35,13 @@ class AddonPlayerActivity : Activity() {
     private var seriesId = ""
     private var season = 0
     private var episode = 0
+    private var contentTitle = ""
+    private var mediaType = "tv"
+    private data class NextEpisode(val season: Int, val episode: Int, val title: String)
+    private var nextEpisodes: List<NextEpisode> = emptyList()
+    private var nextPromptShown = false
+    private var nextDialog: AlertDialog? = null
+    private var nextCountdown = 10
     private var durationMs = 0L
     private var resumeApplied = false
     private var networkRetryCount = 0
@@ -58,6 +65,9 @@ class AddonPlayerActivity : Activity() {
         seriesId = intent.getStringExtra(EXTRA_SERIES_ID).orEmpty()
         season = intent.getIntExtra(EXTRA_SEASON, -1)
         episode = intent.getIntExtra(EXTRA_EPISODE, -1)
+        contentTitle = intent.getStringExtra(EXTRA_CONTENT_TITLE).orEmpty()
+        mediaType = intent.getStringExtra(EXTRA_MEDIA_TYPE).orEmpty().ifBlank { "tv" }
+        nextEpisodes = readNextEpisodes(intent.getStringExtra(EXTRA_NEXT_EPISODES).orEmpty())
         val uri = runCatching { Uri.parse(rawUrl) }.getOrNull()
         if (uri == null || !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() ||
             !uri.userInfo.isNullOrBlank() || seriesId.isBlank() || season < 0 || episode < 1) {
@@ -152,6 +162,7 @@ class AddonPlayerActivity : Activity() {
                         )
                     }
                     handler.removeCallbacks(progressTask)
+                    showNextEpisodePrompt()
                 }
             }
 
@@ -441,7 +452,8 @@ class AddonPlayerActivity : Activity() {
                 "Tercih edilen altyazı dili",
                 "Altyazı boyutu ve konumu",
                 "Oynatma hızı",
-                "Görüntü kalitesi"
+                "Görüntü kalitesi",
+                "Otomatik sonraki bölüm: " + if (playbackPrefs.getBoolean(KEY_AUTO_NEXT, true)) "Açık" else "Kapalı"
             )) { _, which ->
                 when (which) {
                     0 -> showTrackDialog(current, C.TRACK_TYPE_AUDIO, "Ses dili")
@@ -452,6 +464,11 @@ class AddonPlayerActivity : Activity() {
                     5 -> showSubtitleAppearanceDialog()
                     6 -> showPlaybackSpeedDialog(current)
                     7 -> showVideoQualityDialog(current)
+                    8 -> {
+                        val enabled = !playbackPrefs.getBoolean(KEY_AUTO_NEXT, true)
+                        playbackPrefs.edit().putBoolean(KEY_AUTO_NEXT, enabled).apply()
+                        Toast.makeText(this, "Otomatik sonraki bölüm: " + if (enabled) "Açık" else "Kapalı", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             .create().also { stylePlaybackDialog(it) }.show()
@@ -533,13 +550,147 @@ class AddonPlayerActivity : Activity() {
             .create().also { stylePlaybackDialog(it) }.show()
     }
 
+    private fun readNextEpisodes(raw: String): List<NextEpisode> = runCatching {
+        val array = org.json.JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val s = item.optInt("season", -1)
+            val e = item.optInt("episode", -1)
+            if (s < 0 || e < 1) null else NextEpisode(s, e, item.optString("title"))
+        }.distinctBy { it.season to it.episode }.sortedWith(compareBy<NextEpisode> { it.season }.thenBy { it.episode })
+    }.getOrDefault(emptyList())
+
+    private fun nextEpisodeAfterCurrent(): NextEpisode? {
+        val index = nextEpisodes.indexOfFirst { it.season == season && it.episode == episode }
+        return if (index >= 0) nextEpisodes.getOrNull(index + 1) else null
+    }
+
+    private fun showNextEpisodePrompt() {
+        if (nextPromptShown || !playbackPrefs.getBoolean(KEY_AUTO_NEXT, true)) return
+        val next = nextEpisodeAfterCurrent() ?: return
+        nextPromptShown = true
+        nextCountdown = 10
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Sonraki bölüm · 10 sn")
+            .setMessage("S${next.season} B${next.episode} · ${next.title.ifBlank { contentTitle }}")
+            .setPositiveButton("Şimdi izle") { _, _ ->
+                handler.removeCallbacks(nextCountdownTask)
+                startNextEpisode(next)
+            }
+            .setNegativeButton("İptal", null)
+            .create()
+        nextDialog = dialog
+        dialog.setOnDismissListener {
+            handler.removeCallbacks(nextCountdownTask)
+            if (nextDialog === dialog) nextDialog = null
+        }
+        dialog.show()
+        handler.postDelayed(nextCountdownTask, 1_000L)
+    }
+
+    private val nextCountdownTask = object : Runnable {
+        override fun run() {
+            val dialog = nextDialog ?: return
+            if (!dialog.isShowing) return
+            nextCountdown--
+            if (nextCountdown <= 0) {
+                val next = nextEpisodeAfterCurrent()
+                dialog.dismiss()
+                if (next != null) startNextEpisode(next)
+            } else {
+                dialog.setTitle("Sonraki bölüm · ${nextCountdown} sn")
+                handler.postDelayed(this, 1_000L)
+            }
+        }
+    }
+
+    private fun startNextEpisode(next: NextEpisode) {
+        val repository = intent.getStringExtra(EXTRA_PROVIDER_REPOSITORY).orEmpty()
+        val providerId = intent.getStringExtra(EXTRA_PROVIDER_ID).orEmpty()
+        val tmdbId = intent.getIntExtra(EXTRA_TMDB_ID, 0)
+        if (repository.isBlank() || providerId.isBlank() || tmdbId <= 0) {
+            Toast.makeText(this, "Sonraki bölüm için sağlayıcı bilgisi bulunamadı.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "S${next.season} B${next.episode} yükleniyor…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val addon = Addons.fetchManifest(repository)
+                val provider = addon.scrapers.firstOrNull { it.id == providerId && it.enabled }
+                    ?: error("Kayıtlı sağlayıcı artık kullanılamıyor.")
+                val source = Addons.fetchScraperSource(addon, provider)
+                val args = org.json.JSONObject()
+                    .put("tmdbId", tmdbId)
+                    .put("mediaType", mediaType)
+                    .put("season", next.season)
+                    .put("episode", next.episode)
+                    .toString()
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    AddonSandbox.evaluate(
+                        this, source, repository, provider.id, args,
+                        Addons.providerSettings(this, repository, provider.id)
+                    ) { result ->
+                        if (!result.success) {
+                            Toast.makeText(this, "Sonraki bölüm bulunamadı: ${result.value}", Toast.LENGTH_LONG).show()
+                            return@evaluate
+                        }
+                        val providerResult = runCatching { Addons.parseProviderResult(result.value) }.getOrNull()
+                        val stream = providerResult?.streams?.firstOrNull()
+                        if (stream == null) {
+                            Toast.makeText(this, "Sonraki bölüm için yayın kaynağı bulunamadı.", Toast.LENGTH_LONG).show()
+                            return@evaluate
+                        }
+                        val preferredLanguage = playbackPrefs.getString(KEY_TEXT_LANGUAGE, null)
+                        val subtitle = providerResult.subtitles.firstOrNull { item ->
+                            !preferredLanguage.isNullOrBlank() && item.language.startsWith(preferredLanguage, true)
+                        } ?: providerResult.subtitles.firstOrNull()
+                        launchNextEpisode(stream, subtitle, next)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (!isFinishing) Toast.makeText(this, e.message ?: "Sonraki bölüm yüklenemedi.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun launchNextEpisode(
+        stream: Addons.ProviderStream,
+        subtitle: Addons.ProviderSubtitle?,
+        next: NextEpisode
+    ) {
+        val nextIntent = Intent(this, AddonPlayerActivity::class.java).apply {
+            putExtra(EXTRA_URL, stream.url)
+            putExtra(EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
+            putExtra(EXTRA_SERIES_ID, seriesId)
+            putExtra(EXTRA_SEASON, next.season)
+            putExtra(EXTRA_EPISODE, next.episode)
+            putExtra(EXTRA_PROVIDER_REPOSITORY, intent.getStringExtra(EXTRA_PROVIDER_REPOSITORY))
+            putExtra(EXTRA_PROVIDER_ID, intent.getStringExtra(EXTRA_PROVIDER_ID))
+            putExtra(EXTRA_TMDB_ID, intent.getIntExtra(EXTRA_TMDB_ID, 0))
+            putExtra(EXTRA_MEDIA_TYPE, mediaType)
+            putExtra(EXTRA_CONTENT_TITLE, contentTitle)
+            putExtra(EXTRA_NEXT_EPISODES, intent.getStringExtra(EXTRA_NEXT_EPISODES).orEmpty())
+            if (subtitle != null) {
+                putExtra(EXTRA_SUBTITLE_URL, subtitle.url)
+                putExtra(EXTRA_SUBTITLE_MIME, if (subtitle.format == "srt") MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
+                putExtra(EXTRA_SUBTITLE_LANGUAGE, subtitle.language.ifBlank { "und" })
+                putExtra(EXTRA_SUBTITLE_HEADERS, org.json.JSONObject(subtitle.headers).toString())
+            }
+        }
+        startActivity(nextIntent)
+        finish()
+    }
+
     private fun saveProgress() {
         val current = player ?: return
         val position = current.currentPosition.coerceAtLeast(0)
         val duration = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: durationMs
         if (position > 0) {
             durationMs = duration
-            WatchProgress.save(this, seriesId, season, episode, position, duration)
+            WatchProgress.save(this, seriesId, season, episode, position, duration, contentTitle, mediaType)
         }
     }
 
@@ -555,6 +706,9 @@ class AddonPlayerActivity : Activity() {
         handler.removeCallbacks(progressTask)
         pendingRetry?.let(handler::removeCallbacks)
         pendingRetry = null
+        handler.removeCallbacks(nextCountdownTask)
+        nextDialog?.dismiss()
+        nextDialog = null
         if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
@@ -563,6 +717,7 @@ class AddonPlayerActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(progressTask)
+        handler.removeCallbacks(nextCountdownTask)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onDestroy()
     }
@@ -582,6 +737,7 @@ class AddonPlayerActivity : Activity() {
         private const val KEY_SUBTITLE_SIZE = "preferred_subtitle_size"
         private const val KEY_SUBTITLE_POSITION = "preferred_subtitle_position"
         private const val KEY_VIDEO_QUALITY = "preferred_video_quality"
+        private const val KEY_AUTO_NEXT = "automatic_next_episode"
         private const val KEY_EXTERNAL_SUBTITLE_URI = "external_subtitle_uri"
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
@@ -594,5 +750,11 @@ class AddonPlayerActivity : Activity() {
         const val EXTRA_SUBTITLE_MIME = "subtitle_mime"
         const val EXTRA_SUBTITLE_LANGUAGE = "subtitle_language"
         const val EXTRA_SUBTITLE_HEADERS = "subtitle_headers"
+        const val EXTRA_PROVIDER_REPOSITORY = "provider_repository"
+        const val EXTRA_PROVIDER_ID = "provider_id"
+        const val EXTRA_TMDB_ID = "provider_tmdb_id"
+        const val EXTRA_MEDIA_TYPE = "provider_media_type"
+        const val EXTRA_CONTENT_TITLE = "content_title"
+        const val EXTRA_NEXT_EPISODES = "next_episodes"
     }
 }
