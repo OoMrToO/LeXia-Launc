@@ -113,7 +113,7 @@ class MainActivity : Activity() {
     private lateinit var trailerBtn: TextView
     private lateinit var listBtn: TextView
     private lateinit var addonBtn: TextView
-    private val addonMatchCache = HashMap<String, Boolean>()
+    private val addonMatchCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private val addonMatchWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var progress: LinearLayout
     private var progressAnim: Animator? = null
@@ -3938,6 +3938,7 @@ class MainActivity : Activity() {
         refreshMarks()
         refreshRecent()
         refreshShelf()
+        picks.getOrNull(pickIndex)?.let { updateAddonMatch(it) }
         // Films put in Listem by older versions get a date now, for "Listende 3 haftadır bekliyor".
         if (prefs.listAdded.isEmpty() && prefs.watchlist.isNotEmpty()) prefs.watchlist = prefs.watchlist
         handler.removeCallbacks(morningCheck)
