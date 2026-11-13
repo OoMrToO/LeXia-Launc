@@ -3948,6 +3948,17 @@ class MainActivity : Activity() {
         showTopRows()
         applyGenres()
         val now = System.currentTimeMillis()
+        val addonCandidates = (allPicks + top10 + top10tv + cinema + soon + platformList + localList)
+            .distinctBy { it.key }
+        if (AddonMatcher.enabled(this) && addonCandidates.isNotEmpty() &&
+            AddonMatcher.needsRefresh(this, addonCandidates)) {
+            Thread {
+                AddonMatcher.refresh(this@MainActivity, addonCandidates)
+                runOnUiThread {
+                    if (!isFinishing && prefs.addonMatchMode != "off") showPick()
+                }
+            }.start()
+        }
         if (prefs.showPicks && (allPicks.isEmpty() || now - lastPicks > 3 * 60 * 60 * 1000L)) startPicks()
         val wsig = "${prefs.weather}|${prefs.city}|${prefs.ambience}|${prefs.lite}"
         if (!prefs.weather) weatherBox.visibility = View.GONE
