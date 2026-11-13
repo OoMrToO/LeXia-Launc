@@ -31,6 +31,8 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 
 - **Kopya durumu (13 Kasım akşamı):** eski `exxsss/Lxialnch` deposu yoktu; kullanıcı aynı adla yeniden açtı (herkese açık). `DIST_TOKEN` = `exxsss` hesabının fine-grained anahtarı (All repositories, Contents: Read and write, süresiz). Sürüm 21 kopyada doğrulandı (APK iniyor, içinde kopya adresi var). **Depo adı ve dal adı (`DIST_BRANCH`) bir daha değişmemeli**: TV'deki uygulama adresi ezbere bilir, değişirse güncelleme ve film listesi kesilir. Kullanıcıya kurulum linki verildi; TV'de sonuç bekleniyor.
 
+- **Erişilebilirlik ekranı (13 Kasım):** kullanıcının Grundig'inde rehberin "Ayarları aç" düğmesi yalnızca ana ayarları açtı (yol: **Cihaz Tercihleri › Erişilebilirlik**). `SystemSettings.openAccessibility` artık TV ayar uygulamasının dışa açık ekranlarından adında "accessib" geçenleri kendisi bulup önce onları dener (`found`), sonra sabit adları ve standart isteği. TV'de denenmedi; yine açmazsa TV'nin ayar uygulamasındaki ekran adlarını göstermek gerekir.
+
 ## 4. Depo, derleme, yayın
 
 - Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 34, Kotlin 1.9.24, AGP 8.5.2. Kütüphane: yalnızca Media3 (ChatGPT'nin oynatıcısı için); geri kalan her şey düz Android View.
