@@ -13,6 +13,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.util.concurrent.Executors
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** TV-friendly manager for HTTPS addon repositories and their metadata catalogues. */
 class AddonManagerActivity : Activity() {
@@ -189,8 +192,34 @@ class AddonManagerActivity : Activity() {
                 setPadding(0, (resources.displayMetrics.density * 7).toInt(), 0, (resources.displayMetrics.density * 12).toInt())
             }
             card.addView(label)
+            val connectionPrefs = getSharedPreferences("addon_connection_status", MODE_PRIVATE)
+            val lastSuccess = connectionPrefs.getLong("success:$address", 0L)
+            val lastError = connectionPrefs.getString("error:$address", null)
+            val lastCheck = if (lastSuccess > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastSuccess)) else "Henüz test edilmedi"
+            val connectionLine = TextView(this).apply {
+                text = when {
+                    lastError != null -> "● Bağlantı hatası · $lastError"
+                    lastSuccess > 0L -> "● Bağlantı başarılı · Son kontrol: $lastCheck"
+                    else -> "● Bağlantı durumu bilinmiyor"
+                }
+                textSize = 12f
+                setTextColor(if (lastError != null) 0xFFFFB4AB.toInt() else if (lastSuccess > 0L) 0xFF8ED6A5.toInt() else 0xFF9BA7B8.toInt())
+                setPadding(0, 0, 0, (resources.displayMetrics.density * 12).toInt())
+            }
+            card.addView(connectionLine)
             val actions = LinearLayout(this).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+            val test = Button(this).apply {
+                text = "Bağlantıyı test et"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFFFFF.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF315B4A.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
+                setOnClickListener { testRepository(address, connectionLine) }
             }
             val inspect = Button(this).apply {
                 text = "Katalogları yükle"
@@ -217,6 +246,7 @@ class AddonManagerActivity : Activity() {
                     render(list)
                 }
             }
+            actions.addView(test)
             actions.addView(inspect)
             actions.addView(remove)
             card.addView(actions)
@@ -244,6 +274,37 @@ class AddonManagerActivity : Activity() {
                     status.text = e.message ?: "Adres eklenemedi."
                 }
             }.show()
+    }
+
+    private fun testRepository(address: String, line: TextView) {
+        line.text = "● Bağlantı kontrol ediliyor…"
+        line.setTextColor(0xFFFFD27A.toInt())
+        worker.execute {
+            try {
+                val manifest = Addons.fetchManifest(address)
+                val now = System.currentTimeMillis()
+                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putLong("success:$address", now)
+                    .remove("error:$address")
+                    .commit()
+                runOnUiThread {
+                    val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
+                    line.text = "● Bağlantı başarılı · ${manifest.name} · $stamp"
+                    line.setTextColor(0xFF8ED6A5.toInt())
+                    Toast.makeText(this, "Eklenti deposuna erişim başarılı.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                val reason = (e.message ?: "Bağlantı kurulamadı").take(120)
+                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putString("error:$address", reason)
+                    .commit()
+                runOnUiThread {
+                    line.text = "● Bağlantı hatası · $reason"
+                    line.setTextColor(0xFFFFB4AB.toInt())
+                    Toast.makeText(this, "Eklenti bağlantısı başarısız.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun loadCatalogs(address: String) {
