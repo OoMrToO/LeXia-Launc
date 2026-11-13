@@ -13,6 +13,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.util.concurrent.Executors
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** TV-friendly manager for HTTPS addon repositories and their metadata catalogues. */
 class AddonManagerActivity : Activity() {
@@ -20,15 +23,35 @@ class AddonManagerActivity : Activity() {
         private const val EXTRA_MATCH_REPOSITORY = "addon_match_repository"
         private const val EXTRA_MATCH_TYPE = "addon_match_type"
         private const val EXTRA_MATCH_ID = "addon_match_id"
+        private const val EXTRA_MATCH_TMDB_ID = "addon_match_tmdb_id"
+        private const val EXTRA_AUTO_TITLE = "addon_auto_title"
+        private const val EXTRA_AUTO_TMDB_ID = "addon_auto_tmdb_id"
+        private const val EXTRA_AUTO_TYPE = "addon_auto_type"
 
-        fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String) {
+        fun openAutoSearch(context: android.content.Context, title: String, tmdbId: Int, mediaType: String) {
+            context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
+                putExtra(EXTRA_AUTO_TITLE, title)
+                putExtra(EXTRA_AUTO_TMDB_ID, tmdbId)
+                putExtra(EXTRA_AUTO_TYPE, mediaType)
+            })
+        }
+
+        fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String, tmdbId: Int = 0) {
             context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
                 putExtra(EXTRA_MATCH_REPOSITORY, repository)
                 putExtra(EXTRA_MATCH_TYPE, type)
                 putExtra(EXTRA_MATCH_ID, itemId)
+                putExtra(EXTRA_MATCH_TMDB_ID, tmdbId)
             })
         }
     }
+
+    private data class ProviderOption(
+        val repository: String,
+        val addon: Addons.Installed,
+        val provider: Addons.ScraperProvider,
+        val latencyMs: Long = 0L
+    )
 
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
@@ -44,10 +67,26 @@ class AddonManagerActivity : Activity() {
         }
         val title = TextView(this).apply {
             text = "EKLENTİLER"
-            textSize = 26f
-            setTextColor(-1)
+            textSize = 30f
+            letterSpacing = 0.08f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFFF5F7FA.toInt())
+            setPadding(0, 0, 0, pad / 3)
         }
         root.addView(title)
+        val history = Button(this).apply {
+            text = "◷  İZLEME GEÇMİŞİ"
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(0xFFE9E4FF.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF29243A.toInt())
+                cornerRadius = pad.toFloat()
+                setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF51466F.toInt())
+            }
+            setOnClickListener { showWatchHistory() }
+        }
+        root.addView(history)
         status = TextView(this).apply {
             textSize = 16f
             setTextColor(0xFFB8BEC9.toInt())
@@ -55,7 +94,16 @@ class AddonManagerActivity : Activity() {
         }
         root.addView(status)
         val add = Button(this).apply {
-            text = "Eklenti adresi ekle"
+            text = "＋  EKLENTİ ADRESİ EKLE"
+            isAllCaps = false
+            textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF6750A4.toInt())
+                cornerRadius = pad.toFloat()
+            }
+            minHeight = pad * 2
+            setPadding(pad, pad / 2, pad, pad / 2)
             setOnClickListener { askUrl() }
         }
         root.addView(add)
@@ -66,15 +114,24 @@ class AddonManagerActivity : Activity() {
         setContentView(root)
         add.requestFocus()
         render(list)
+        val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
+        if (autoTmdbId > 0) {
+            startAutoSearch(
+                intent.getStringExtra(EXTRA_AUTO_TITLE).orEmpty(),
+                autoTmdbId,
+                intent.getStringExtra(EXTRA_AUTO_TYPE).orEmpty()
+            )
+        }
         val matchedRepository = intent.getStringExtra(EXTRA_MATCH_REPOSITORY).orEmpty()
         val matchedType = intent.getStringExtra(EXTRA_MATCH_TYPE).orEmpty()
         val matchedId = intent.getStringExtra(EXTRA_MATCH_ID).orEmpty()
+        val matchedTmdbId = intent.getIntExtra(EXTRA_MATCH_TMDB_ID, 0)
         if (matchedRepository.isNotBlank() && matchedType.isNotBlank() && matchedId.isNotBlank()) {
-            openMatchedItem(matchedRepository, matchedType, matchedId)
+            openMatchedItem(matchedRepository, matchedType, matchedId, matchedTmdbId)
         }
     }
 
-    private fun openMatchedItem(repository: String, type: String, itemId: String) {
+    private fun openMatchedItem(repository: String, type: String, itemId: String, tmdbId: Int) {
         status.text = "Eklentideki içerik yükleniyor…"
         worker.execute {
             try {
@@ -83,7 +140,8 @@ class AddonManagerActivity : Activity() {
                 val meta = details.item
                 val isSeries = meta.type.equals("series", true) || meta.type.equals("tv", true) ||
                     type.equals("series", true) || type.equals("tv", true)
-                val progressId = addon.baseUrl + "|" + meta.id.ifBlank { itemId }
+                val progressKey = if (tmdbId > 0) tmdbId.toString() else meta.id.ifBlank { itemId }
+                val progressId = addon.baseUrl + "|" + progressKey
                 val film = Pick(
                     title = meta.name.ifBlank { itemId },
                     meta = listOf(meta.releaseInfo, meta.genres.take(3).joinToString(", "))
@@ -103,8 +161,10 @@ class AddonManagerActivity : Activity() {
                 )
                 runOnUiThread {
                     status.text = "Eşleşme bulundu: " + film.title
-                    if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes)
-                    else askMovieSource(film, progressId)
+                    if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes, addon, tmdbId)
+                    else if (tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                        chooseProviderAndSearch(addon, tmdbId, "movie", null, null, film.title)
+                    } else askMovieSource(film, progressId)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -122,32 +182,129 @@ class AddonManagerActivity : Activity() {
         urls.forEach { address ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(18, 14, 18, 14)
-                setBackgroundColor(0xFF252A33.toInt())
+                val inset = (resources.displayMetrics.density * 20).toInt()
+                setPadding(inset, inset, inset, inset)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF1B2029.toInt())
+                    cornerRadius = resources.displayMetrics.density * 18f
+                    setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF343C49.toInt())
+                }
+                isFocusable = true
             }
+            val heading = TextView(this).apply {
+                text = "BAĞLI DEPO"
+                textSize = 11f
+                letterSpacing = 0.12f
+                setTextColor(0xFF9BA7B8.toInt())
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            card.addView(heading)
             val label = TextView(this).apply {
                 text = address
                 textSize = 15f
-                setTextColor(-1)
+                setTextColor(0xFFF1F4F8.toInt())
+                maxLines = 2
+                setPadding(0, (resources.displayMetrics.density * 7).toInt(), 0, (resources.displayMetrics.density * 12).toInt())
             }
             card.addView(label)
-            val actions = LinearLayout(this).apply { gravity = Gravity.END }
+            val connectionPrefs = getSharedPreferences("addon_connection_status", MODE_PRIVATE)
+            val lastSuccess = connectionPrefs.getLong("success:$address", 0L)
+            val lastError = connectionPrefs.getString("error:$address", null)
+            val lastCheck = if (lastSuccess > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastSuccess)) else "Henüz test edilmedi"
+            val connectionLine = TextView(this).apply {
+                text = when {
+                    lastError != null -> "● Bağlantı hatası · $lastError"
+                    lastSuccess > 0L -> {
+                        val latency = connectionPrefs.getLong("latency:$address", 0L)
+                        "● Bağlantı başarılı" + (if (latency > 0L) " · ${latency} ms" else "") + " · Son kontrol: $lastCheck"
+                    }
+                    else -> "● Bağlantı durumu bilinmiyor"
+                }
+                textSize = 12f
+                setTextColor(if (lastError != null) 0xFFFFB4AB.toInt() else if (lastSuccess > 0L) 0xFF8ED6A5.toInt() else 0xFF9BA7B8.toInt())
+                setPadding(0, 0, 0, (resources.displayMetrics.density * 12).toInt())
+            }
+            card.addView(connectionLine)
+            val actions = LinearLayout(this).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+            val test = Button(this).apply {
+                text = "Bağlantıyı test et"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFFFFF.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF315B4A.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
+                setOnClickListener { testRepository(address, connectionLine) }
+            }
             val inspect = Button(this).apply {
                 text = "Katalogları yükle"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFFFFF.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF394B66.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
                 setOnClickListener { loadCatalogs(address) }
             }
             val remove = Button(this).apply {
                 text = "Kaldır"
+                isAllCaps = false
+                textSize = 13f
+                setTextColor(0xFFFFB4AB.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF392629.toInt())
+                    cornerRadius = resources.displayMetrics.density * 12f
+                }
                 setOnClickListener {
                     Addons.remove(this@AddonManagerActivity, address)
                     render(list)
                 }
             }
+            actions.addView(test)
             actions.addView(inspect)
             actions.addView(remove)
             card.addView(actions)
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
         }
+    }
+
+    private fun showWatchHistory() {
+        val recent = WatchProgress.recent(this, 50)
+        if (recent.isEmpty()) {
+            Toast.makeText(this, "Henüz izleme geçmişi yok.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = recent.map { item ->
+            val title = item.title.ifBlank { "İçerik" }
+            val detail = if (item.mediaType == "movie") "Film" else "S${item.season} B${item.episode}"
+            val progress = when {
+                item.isComplete -> "Tamamlandı"
+                item.durationMs > 0L -> "%${(item.positionMs * 100 / item.durationMs).coerceIn(0, 100)}"
+                else -> "İzleniyor"
+            }
+            "$title · $detail · $progress"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Son izlenenler")
+            .setItems(labels) { _, index ->
+                val item = recent[index]
+                val tmdbId = item.tmdbId.takeIf { it > 0 } ?: item.seriesId.substringAfterLast("|").toIntOrNull()
+                if (tmdbId != null && tmdbId > 0 && item.title.isNotBlank()) {
+                    startAutoSearch(
+                        item.title, tmdbId, item.mediaType,
+                        if (item.mediaType == "movie") null else item.season,
+                        if (item.mediaType == "movie") null else item.episode
+                    )
+                } else {
+                    Toast.makeText(this, "Bu kayıt için otomatik kaynak bilgisi bulunmuyor.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     private fun askUrl() {
@@ -170,6 +327,41 @@ class AddonManagerActivity : Activity() {
                     status.text = e.message ?: "Adres eklenemedi."
                 }
             }.show()
+    }
+
+    private fun testRepository(address: String, line: TextView) {
+        line.text = "● Bağlantı kontrol ediliyor…"
+        line.setTextColor(0xFFFFD27A.toInt())
+        worker.execute {
+            try {
+                Addons.clearCache(address)
+                val startedAt = System.nanoTime()
+                val manifest = Addons.fetchManifest(address)
+                val latencyMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                val now = System.currentTimeMillis()
+                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putLong("latency:$address", latencyMs)
+                    .putLong("success:$address", now)
+                    .remove("error:$address")
+                    .commit()
+                runOnUiThread {
+                    val stamp = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
+                    line.text = "● Bağlantı başarılı · ${manifest.name} · ${latencyMs} ms · $stamp"
+                    line.setTextColor(0xFF8ED6A5.toInt())
+                    Toast.makeText(this, "Eklenti deposuna erişim başarılı.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                val reason = (e.message ?: "Bağlantı kurulamadı").take(120)
+                getSharedPreferences("addon_connection_status", MODE_PRIVATE).edit()
+                    .putString("error:$address", reason)
+                    .commit()
+                runOnUiThread {
+                    line.text = "● Bağlantı hatası · $reason"
+                    line.setTextColor(0xFFFFB4AB.toInt())
+                    Toast.makeText(this, "Eklenti bağlantısı başarısız.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun loadCatalogs(address: String) {
@@ -342,6 +534,218 @@ class AddonManagerActivity : Activity() {
             .show()
     }
 
+    /** Searches enabled Nuvio providers from the configured repository scope using the known TMDB ID. */
+    private fun startAutoSearch(
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        initialSeason: Int? = null,
+        initialEpisode: Int? = null
+    ) {
+        val urls = Addons.urls(this)
+        val prefs = Prefs(this)
+        val repositories = when (prefs.addonMatchMode) {
+            "selected" -> listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
+                .filter { it.isNotBlank() }
+            "all" -> urls
+            else -> emptyList()
+        }
+        if (repositories.isEmpty()) {
+            status.text = "Önce Ayarlar › Eklenti eşleştirme bölümünden bir depo seç."
+            return
+        }
+        status.text = "$title · sağlayıcılar aranıyor…"
+        worker.execute {
+            val options = ArrayList<ProviderOption>()
+            for (repository in repositories) {
+                val connectionPrefs = getSharedPreferences("addon_connection_status", MODE_PRIVATE)
+                val savedManifestLatency = connectionPrefs.getLong("latency:$repository", 0L)
+                if (savedManifestLatency <= 0L) Addons.clearCache(repository)
+                val startedAt = System.nanoTime()
+                val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
+                val measuredLatency = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                val manifestLatency = savedManifestLatency.takeIf { it > 0L } ?: measuredLatency
+                if (savedManifestLatency <= 0L) {
+                    connectionPrefs.edit().putLong("latency:$repository", manifestLatency).apply()
+                }
+                addon.scrapers.filter { provider ->
+                    provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
+                }.forEach { provider ->
+                    val providerLatency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
+                        .getLong(providerLatencyKey(repository, provider.id), manifestLatency)
+                    options.add(ProviderOption(repository, addon, provider, providerLatency))
+                }
+            }
+            options.sortBy { if (it.latencyMs > 0L) it.latencyMs else Long.MAX_VALUE }
+            runOnUiThread {
+                if (options.isEmpty()) {
+                    status.text = "Bu depolarda etkin ve uyumlu sağlayıcı bulunamadı."
+                    Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                } else if (mediaType == "tv" && (initialSeason == null || initialEpisode == null)) {
+                    askSeriesEpisode(options, title, tmdbId)
+                } else {
+                    chooseProviderOptions(options, title, tmdbId, mediaType, initialSeason, initialEpisode)
+                }
+            }
+        }
+    }
+
+    private fun askSeriesEpisode(options: List<ProviderOption>, title: String, tmdbId: Int) {
+        val seasonInput = EditText(this).apply {
+            hint = "Sezon numarası"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val episodeInput = EditText(this).apply {
+            hint = "Bölüm numarası"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(seasonInput)
+            addView(episodeInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title + " · Bölüm seç")
+            .setMessage("TMDB kimliği otomatik alındı. Kaynak aramak için sezon ve bölüm numarasını gir.")
+            .setView(content)
+            .setPositiveButton("Sağlayıcıları ara") { _, _ ->
+                val season = seasonInput.text.toString().toIntOrNull()
+                val episode = episodeInput.text.toString().toIntOrNull()
+                if (season == null || season < 0 || episode == null || episode < 1) {
+                    Toast.makeText(this, "Geçerli sezon ve bölüm numarası gir.", Toast.LENGTH_LONG).show()
+                } else chooseProviderOptions(options, title, tmdbId, "tv", season, episode)
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun chooseProviderOptions(
+        options: List<ProviderOption>,
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
+    ) {
+        val saved = rememberedProvider(mediaType, tmdbId)
+        val savedOption = saved?.let { (repository, providerId) ->
+            options.firstOrNull { it.repository == repository && it.provider.id == providerId }
+        }
+        if (savedOption != null) {
+            AlertDialog.Builder(this)
+                .setTitle("Kaydedilen sağlayıcı")
+                .setMessage(title + " için " + savedOption.provider.name + " daha önce seçilmiş.")
+                .setPositiveButton("Bununla devam et") { _, _ ->
+                    runProvider(savedOption.repository, savedOption.addon, savedOption.provider,
+                        tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
+                }
+                .setNeutralButton("Başka sağlayıcı seç") { _, _ ->
+                    showProviderOptions(options, title, tmdbId, mediaType, season, episode, nextEpisodes)
+                }
+                .setNegativeButton("Kapat", null)
+                .show()
+            return
+        }
+        showProviderOptions(options, title, tmdbId, mediaType, season, episode, nextEpisodes)
+    }
+
+    private fun showProviderOptions(
+        options: List<ProviderOption>,
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
+    ) {
+        val labels = options.map { option ->
+            option.addon.name + " · " + option.provider.name + " · " +
+                option.repository.removePrefix("https://").removeSuffix("/") +
+                if (option.latencyMs > 0L) " · ~${option.latencyMs} ms" else ""
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Kaynak sağlayıcısı · " + title)
+            .setItems(labels) { _, index ->
+                val option = options[index]
+                AlertDialog.Builder(this)
+                    .setTitle("Sağlayıcıyı hatırla?")
+                    .setMessage(option.provider.name + " sağlayıcısı bu içerik için sonraki izlemelerde de kullanılsın mı?")
+                    .setPositiveButton("Hatırla") { _, _ ->
+                        rememberProvider(mediaType, tmdbId, option)
+                        runProvider(option.repository, option.addon, option.provider,
+                            tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
+                    }
+                    .setNegativeButton("Sadece bu kez") { _, _ ->
+                        runProvider(option.repository, option.addon, option.provider,
+                            tmdbId.toString(), mediaType, season, episode, title, nextEpisodes)
+                    }
+                    .setNeutralButton("Vazgeç", null)
+                    .show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun providerLatencyKey(repository: String, providerId: String) =
+        "provider_latency:" + repository.trimEnd('/') + ":" + providerId
+
+    private fun rememberedProvider(mediaType: String, tmdbId: Int): Pair<String, String>? {
+        val value = getSharedPreferences("addon_provider_preferences", MODE_PRIVATE)
+            .getString("provider:$mediaType:$tmdbId", null) ?: return null
+        val split = value.indexOf('\n')
+        if (split <= 0 || split == value.lastIndex) return null
+        return value.substring(0, split) to value.substring(split + 1)
+    }
+
+    private fun rememberProvider(mediaType: String, tmdbId: Int, option: ProviderOption) {
+        getSharedPreferences("addon_provider_preferences", MODE_PRIVATE)
+            .edit()
+            .putString("provider:$mediaType:$tmdbId", option.repository + "\n" + option.provider.id)
+            .apply()
+        Toast.makeText(this, "Sağlayıcı bu içerik için hatırlanacak.", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Uses the TMDB ID already attached to the home-screen title; no manual ID entry is needed. */
+    private fun chooseProviderAndSearch(
+        addon: Addons.Installed,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?,
+        contentTitle: String = addon.name,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
+    ) {
+        val providers = addon.scrapers.filter { provider ->
+            provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
+        }
+        if (providers.isEmpty()) {
+            Toast.makeText(this, "Bu depoda etkin ve uyumlu sağlayıcı yok.", Toast.LENGTH_LONG).show()
+            return
+        }
+        chooseProviderOptions(
+            providers.map { provider ->
+                val latency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
+                    .getLong(providerLatencyKey(addon.baseUrl, provider.id),
+                        getSharedPreferences("addon_connection_status", MODE_PRIVATE).getLong("latency:${addon.baseUrl}", 0L))
+                ProviderOption(addon.baseUrl, addon, provider, latency)
+            }.sortedBy { if (it.latencyMs > 0L) it.latencyMs else Long.MAX_VALUE },
+            contentTitle,
+            tmdbId,
+            mediaType,
+            season,
+            episode,
+            nextEpisodes
+        )
+    }
+
     private fun runProvider(
         repository: String,
         addon: Addons.Installed,
@@ -349,10 +753,13 @@ class AddonManagerActivity : Activity() {
         tmdbId: String,
         mediaType: String,
         season: Int?,
-        episode: Int?
+        episode: Int?,
+        contentTitle: String = addon.name,
+        nextEpisodes: List<Addons.EpisodeItem> = emptyList()
     ) {
         status.text = provider.name + " çalıştırılıyor…"
         worker.execute {
+            val startedAt = System.nanoTime()
             val source = runCatching { Addons.fetchScraperSource(addon, provider) }
             if (source.isFailure) {
                 runOnUiThread { status.text = source.exceptionOrNull()?.message ?: "Sağlayıcı dosyası alınamadı." }
@@ -368,6 +775,9 @@ class AddonManagerActivity : Activity() {
                 status.text = provider.name + " kaynakları taranıyor…"
                 val settingsJson = Addons.providerSettings(this, repository, provider.id)
                 AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args, settingsJson) { result ->
+                    val elapsedMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
+                    getSharedPreferences("addon_provider_latency", MODE_PRIVATE).edit()
+                        .putLong(providerLatencyKey(repository, provider.id), elapsedMs).apply()
                     if (!result.success) {
                         status.text = "Sağlayıcı hatası: " + result.value
                         Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
@@ -379,7 +789,7 @@ class AddonManagerActivity : Activity() {
                     }
                     val streams = providerResult.streams
                     status.text = provider.name + " · " + streams.size + " kaynak · " +
-                        providerResult.subtitles.size + " altyazı bulundu."
+                        providerResult.subtitles.size + " altyazı · ${elapsedMs} ms"
                     if (streams.isEmpty()) {
                         Toast.makeText(this, "Kaynak bulunamadı. Alan adı izinlerini kontrol et.", Toast.LENGTH_LONG).show()
                         return@evaluate
@@ -393,7 +803,7 @@ class AddonManagerActivity : Activity() {
                             val stream = streams[index]
                             val subtitles = providerResult.subtitles
                             if (subtitles.isEmpty()) {
-                                launchProviderStream(addon, tmdbId, season, episode, stream, null)
+                                launchProviderStream(addon, provider, tmdbId, mediaType, season, episode, stream, null, contentTitle, nextEpisodes)
                             } else {
                                 val subtitleLabels = (listOf("Altyazısız") + subtitles.map { subtitle ->
                                     subtitle.name + if (subtitle.language.isNotBlank()) " · " + subtitle.language else ""
@@ -401,8 +811,8 @@ class AddonManagerActivity : Activity() {
                                 AlertDialog.Builder(this)
                                     .setTitle("Altyazı seç")
                                     .setItems(subtitleLabels) { _, selected ->
-                                        launchProviderStream(addon, tmdbId, season, episode, stream,
-                                            if (selected == 0) null else subtitles[selected - 1])
+                                        launchProviderStream(addon, provider, tmdbId, mediaType, season, episode, stream,
+                                            if (selected == 0) null else subtitles[selected - 1], contentTitle, nextEpisodes)
                                     }
                                     .setNegativeButton("Kapat", null)
                                     .show()
@@ -417,11 +827,15 @@ class AddonManagerActivity : Activity() {
 
     private fun launchProviderStream(
         addon: Addons.Installed,
+        provider: Addons.ScraperProvider,
         tmdbId: String,
+        mediaType: String,
         season: Int?,
         episode: Int?,
         stream: Addons.ProviderStream,
-        subtitle: Addons.ProviderSubtitle?
+        subtitle: Addons.ProviderSubtitle?,
+        contentTitle: String,
+        nextEpisodes: List<Addons.EpisodeItem>
     ) {
         startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
             putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
@@ -429,6 +843,16 @@ class AddonManagerActivity : Activity() {
             putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
             putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
             putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
+            putExtra(AddonPlayerActivity.EXTRA_PROVIDER_REPOSITORY, addon.baseUrl)
+            putExtra(AddonPlayerActivity.EXTRA_PROVIDER_ID, provider.id)
+            putExtra(AddonPlayerActivity.EXTRA_TMDB_ID, tmdbId.toIntOrNull() ?: 0)
+            putExtra(AddonPlayerActivity.EXTRA_MEDIA_TYPE, mediaType)
+            putExtra(AddonPlayerActivity.EXTRA_CONTENT_TITLE, contentTitle)
+            putExtra(AddonPlayerActivity.EXTRA_NEXT_EPISODES, org.json.JSONArray().apply {
+                nextEpisodes.forEach { item ->
+                    put(org.json.JSONObject().put("season", item.season).put("episode", item.episode).put("title", item.title))
+                }
+            }.toString())
             if (subtitle != null) {
                 putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_URL, subtitle.url)
                 putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_MIME, when (subtitle.format) {
@@ -598,7 +1022,9 @@ class AddonManagerActivity : Activity() {
         film: Pick,
         addonName: String,
         progressId: String,
-        episodes: List<Addons.EpisodeItem>
+        episodes: List<Addons.EpisodeItem>,
+        addon: Addons.Installed? = null,
+        tmdbId: Int = 0
     ) {
         val latest = WatchProgress.latest(this, progressId)
         val latestEpisode = latest?.let { saved ->
@@ -648,13 +1074,15 @@ class AddonManagerActivity : Activity() {
                 }
             ) { _, _ ->
                 if (canResume) {
-                    askEpisodeSource(addonName, progressId, latestEpisode!!)
+                    if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                        chooseProviderAndSearch(addon, tmdbId, "tv", latestEpisode!!.season, latestEpisode.episode, film.title, episodes)
+                    } else askEpisodeSource(addonName, progressId, latestEpisode!!)
                 } else if (episodes.isNotEmpty()) {
-                    showEpisodes(addonName, progressId, episodes)
+                    showEpisodes(addonName, progressId, episodes, addon, tmdbId, film.title)
                 }
             }
             .setNeutralButton(if (canResume) "Bölümler" else "Detaylar") { _, _ ->
-                if (canResume) showEpisodes(addonName, progressId, episodes)
+                if (canResume) showEpisodes(addonName, progressId, episodes, addon, tmdbId, film.title)
                 else DetailActivity.open(this, film)
             }
             .setNegativeButton("Kapat", null)
@@ -673,7 +1101,7 @@ class AddonManagerActivity : Activity() {
             .setMessage("Yalnızca kullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir. Eklenti kaynak uçları çağrılmaz.")
             .setView(input)
             .setPositiveButton("Oynat") { _, _ ->
-                openDirectPlayer(input.text.toString(), progressId, 0, 1)
+                openDirectPlayer(input.text.toString(), progressId, 0, 1, film.title, "movie")
             }
             .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
@@ -683,7 +1111,10 @@ class AddonManagerActivity : Activity() {
     private fun showEpisodes(
         addonName: String,
         seriesId: String,
-        episodes: List<Addons.EpisodeItem>
+        episodes: List<Addons.EpisodeItem>,
+        addon: Addons.Installed? = null,
+        tmdbId: Int = 0,
+        contentTitle: String = addonName
     ) {
         val labels = episodes.map { episode ->
             val progress = WatchProgress.get(this, seriesId, episode.season, episode.episode)
@@ -711,7 +1142,9 @@ class AddonManagerActivity : Activity() {
                     saved != null && saved.positionMs > 0 -> "Devam edilecek konum kaydedildi."
                     else -> "Henüz izleme ilerlemesi yok."
                 }
-                askEpisodeSource(addonName, seriesId, episode, progressText)
+                if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                    chooseProviderAndSearch(addon, tmdbId, "tv", episode.season, episode.episode, contentTitle, episodes)
+                } else askEpisodeSource(addonName, seriesId, episode, progressText)
             }
             .setNegativeButton("Kapat", null)
             .show()
@@ -748,13 +1181,20 @@ class AddonManagerActivity : Activity() {
             .setMessage(message)
             .setView(input)
             .setPositiveButton("Oynat") { _, _ ->
-                openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
+                openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode, episode.title, "tv")
             }
             .setNegativeButton("Kapat", null)
             .show()
     }
 
-    private fun openDirectPlayer(rawUrl: String, progressId: String, season: Int, episode: Int) {
+    private fun openDirectPlayer(
+        rawUrl: String,
+        progressId: String,
+        season: Int,
+        episode: Int,
+        contentTitle: String = "",
+        mediaType: String = "tv"
+    ) {
         val source = rawUrl.trim()
         val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
         if (uri == null || !uri.scheme.equals("https", true) ||
@@ -767,6 +1207,8 @@ class AddonManagerActivity : Activity() {
             putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, progressId)
             putExtra(AddonPlayerActivity.EXTRA_SEASON, season)
             putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode)
+            putExtra(AddonPlayerActivity.EXTRA_CONTENT_TITLE, contentTitle)
+            putExtra(AddonPlayerActivity.EXTRA_MEDIA_TYPE, mediaType)
         })
     }
 

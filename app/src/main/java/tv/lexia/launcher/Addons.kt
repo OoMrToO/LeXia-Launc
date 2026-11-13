@@ -77,6 +77,21 @@ object Addons {
     private const val PREFS = "lexia_addons"
     private const val URLS = "repository_urls"
     private const val TIMEOUT = 12_000
+    private const val MANIFEST_CACHE_MS = 5 * 60 * 1000L
+    private const val SOURCE_CACHE_MS = 15 * 60 * 1000L
+    private data class Timed<T>(val value: T, val savedAt: Long)
+    private val manifestCache = LinkedHashMap<String, Timed<Installed>>(16, 0.75f, true)
+    private val sourceCache = LinkedHashMap<String, Timed<String>>(16, 0.75f, true)
+
+    /** Clears cached metadata and provider code for a repository after it is tested, added or removed. */
+    fun clearCache(raw: String) {
+        val base = runCatching { normalize(raw) }.getOrNull() ?: return
+        synchronized(manifestCache) { manifestCache.remove(base) }
+        synchronized(sourceCache) {
+            val prefix = base + "|"
+            sourceCache.keys.removeAll { it.startsWith(prefix) }
+        }
+    }
 
     fun urls(context: Context): List<String> =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -87,6 +102,7 @@ object Addons {
         require(url.startsWith("https://", true)) { "Güvenlik için yalnızca HTTPS adresleri kabul edilir." }
         val values = urls(context).toMutableSet()
         values.add(url)
+        clearCache(url)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putStringSet(URLS, values).apply()
     }
@@ -94,12 +110,20 @@ object Addons {
     fun remove(context: Context, url: String) {
         val values = urls(context).toMutableSet()
         values.remove(url)
+        clearCache(url)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putStringSet(URLS, values).apply()
     }
 
     fun fetchManifest(raw: String): Installed {
         val base = normalize(raw)
+        synchronized(manifestCache) {
+            val cached = manifestCache[base]
+            if (cached != null && System.currentTimeMillis() - cached.savedAt < MANIFEST_CACHE_MS) {
+                return cached.value
+            }
+            if (cached != null) manifestCache.remove(base)
+        }
         val manifestUrl = if (base.endsWith("/manifest.json")) base else "$base/manifest.json"
         val json = JSONObject(getText(manifestUrl))
         val resources = json.optJSONArray("resources") ?: JSONArray()
@@ -174,7 +198,7 @@ object Addons {
                 Catalog(type, id, c.optString("name").ifBlank { id }, extras)
             }
         }
-        return Installed(
+        val installed = Installed(
             baseUrl = base.removeSuffix("/manifest.json"),
             id = json.optString("id").ifBlank { base },
             name = json.optString("name").ifBlank { base },
@@ -186,6 +210,11 @@ object Addons {
             format = format,
             scrapers = scrapers
         )
+        synchronized(manifestCache) {
+            manifestCache[base] = Timed(installed, System.currentTimeMillis())
+            while (manifestCache.size > 24) manifestCache.remove(manifestCache.keys.first())
+        }
+        return installed
     }
 
     /** Loads metadata and its embedded episode descriptors with one network request. */
@@ -309,6 +338,14 @@ object Addons {
         require(addon.format == "nuvio-js") { "Bu depo Nuvio JavaScript deposu değil." }
         require(provider.enabled) { "Bu sağlayıcı manifestte devre dışı." }
         val filename = provider.filename.trim()
+        val cacheKey = addon.baseUrl.trimEnd('/') + "|" + provider.id + "|" + filename
+        synchronized(sourceCache) {
+            val cached = sourceCache[cacheKey]
+            if (cached != null && System.currentTimeMillis() - cached.savedAt < SOURCE_CACHE_MS) {
+                return cached.value
+            }
+            if (cached != null) sourceCache.remove(cacheKey)
+        }
         require(filename.length in 1..240 && !filename.startsWith("/") && !filename.contains("..") &&
             !filename.contains('\\') && filename.matches(Regex("^[A-Za-z0-9_./-]+\\.js$"))) {
             "Sağlayıcı dosya yolu geçersiz."
@@ -316,6 +353,10 @@ object Addons {
         val source = getText(addon.baseUrl.trimEnd('/') + "/" + filename)
         require(source.isNotBlank() && source.length <= 256 * 1024) {
             "Sağlayıcı JavaScript dosyası boş veya 256 KB sınırını aşıyor."
+        }
+        synchronized(sourceCache) {
+            sourceCache[cacheKey] = Timed(source, System.currentTimeMillis())
+            while (sourceCache.size > 32) sourceCache.remove(sourceCache.keys.first())
         }
         return source
     }

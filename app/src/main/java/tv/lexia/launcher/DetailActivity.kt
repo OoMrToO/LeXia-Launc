@@ -179,12 +179,23 @@ class DetailActivity : Activity() {
             val line = ui.text("İzlenebileceği yer:  " + platforms.joinToString("  ·  "), 21, C.TEXT2, 600)
             top.addView(line, ui.ll(w, w, top = 14))
         }
-        val story = ui.text(film.overview, 22, C.TEXT, 400)
-        story.maxWidth = ui.u(940)
-        story.maxLines = 6
-        story.ellipsize = TextUtils.TruncateAt.END
-        story.setLineSpacing(0f, 1.3f)
-        top.addView(story, ui.ll(w, w, top = 22))
+        if (film.overview.isNotBlank()) {
+            val storyLabel = ui.text("HİKÂYE", 13, C.ACCENT, 800)
+            storyLabel.letterSpacing = 0.14f
+            top.addView(storyLabel, ui.ll(w, w, top = 24))
+            val story = ui.text(film.overview, 21, C.TEXT, 400)
+            story.maxWidth = ui.u(940)
+            story.maxLines = 6
+            story.ellipsize = TextUtils.TruncateAt.END
+            story.setLineSpacing(0f, 1.35f)
+            story.setPadding(ui.u(20), ui.u(16), ui.u(20), ui.u(16))
+            story.background = GradientDrawable().apply {
+                setColor(Color.argb(178, 13, 18, 27))
+                cornerRadius = ui.uf(18)
+                setStroke(ui.u(1), Color.argb(90, 255, 255, 255))
+            }
+            top.addView(story, ui.ll(w, w, top = 10))
+        }
         if (film.director.isNotEmpty()) {
             val role = if (film.isSeries) "Yaratıcı" else "Yönetmen"
             val d = ui.text("$role: ${film.director}", 20, C.TEXT2, 500)

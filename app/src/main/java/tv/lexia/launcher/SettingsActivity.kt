@@ -571,7 +571,7 @@ class SettingsActivity : Activity() {
                 action = { startActivity(Intent(this, AddonManagerActivity::class.java)) },
                 value = { Addons.urls(this).size.let { if (it == 0) "" else "$it depo" } }
             ),
-            sub("Eklenti eşleştirme", "Ana ekranda dönen film ve dizileri eklenti kataloglarında ara; hangi depoda bulunacağını seç.", { addonMatchPage() },
+            sub("Eklenti eşleştirme", "▶ İzle düğmesinde hangi depoların sağlayıcıları aransın; tüm depoları ya da tek bir depoyu seç.", { addonMatchPage() },
                 value = { when (prefs.addonMatchMode) { "all" -> "Tüm depolar"; "selected" -> "Favori depo"; else -> "Kapalı" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
@@ -699,14 +699,14 @@ class SettingsActivity : Activity() {
     ) {
         val items = ArrayList<Item>()
         items.add(Note(
-            "Ana ekrandaki dönen içerikler, seçtiğin eklentilerin katalog metadata bilgileriyle eşleştirilir. " +
-                "Eşleşen içerikte eklenti adı görünür; etikete basınca eklentideki detay açılır. " +
-                "Yalnızca katalog ve metadata okunur; eklentilerin oynatıcı/kaynak uçları taranmaz."
+            "▶ İzle düğmesi, ana ekrandaki filmin TMDB numarasını otomatik alır ve burada seçtiğin depolardaki etkin Nuvio sağlayıcılarına gönderir. " +
+                "Birden fazla sağlayıcı varsa aralarından seçim yaparsın; tek sağlayıcı varsa doğrudan aranır. " +
+                "Kapalı seçeneği otomatik sağlayıcı aramasını durdurur."
         ))
         items.add(Header("ARAMA KAPSAMI"))
         items.add(choice(
             "Eklentilerde ara",
-            "Kapalı: mevcut ana ekran. Tüm depolar: eklediğin bütün depolar. Favori depo: yalnızca seçtiğin site.",
+            "Kapalı: otomatik sağlayıcı araması kapalı. Tüm depolar: eklediğin bütün depolar. Favori depo: yalnızca seçtiğin depo aranır.",
             listOf("off", "all", "selected"),
             listOf("Kapalı", "Tüm depolar", "Favori depo"),
             { prefs.addonMatchMode },

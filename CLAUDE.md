@@ -70,6 +70,8 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 
 ## 8. Açık işler
 
+- **13 Kasım, ChatGPT:** `codex/home-watch-button-v25` dalında ana ekrana, TMDB kimliği bulunan film/diziler ve etkin depo kapsamı varken görünen `▶ İzle` düğmesi eklendi. Düğme, TMDB ID'yi otomatik alıp `all`/`selected` kapsamındaki Nuvio depolarının etkin ve uyumlu sağlayıcılarını tarar; tek sağlayıcı varsa çalıştırır, birden fazlaysa seçim sunar. Dizide sezon/bölüm sorulur. Yeni kurulumlarda kapsam `all`. Kalite tercihi ve sağlayıcı sabitleme sonraki aşamalardır.
+
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
 - GitHub Actions dakikası takip edilmeli (bölüm 4).

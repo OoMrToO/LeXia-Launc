@@ -12,7 +12,10 @@ object WatchProgress {
         val episode: Int,
         val positionMs: Long,
         val durationMs: Long,
-        val updatedAt: Long
+        val updatedAt: Long,
+        val title: String = "",
+        val mediaType: String = "tv",
+        val tmdbId: Int = 0
     ) {
         val isComplete: Boolean get() = durationMs > 0 && positionMs >= durationMs * 0.9
     }
@@ -27,7 +30,10 @@ object WatchProgress {
         season: Int,
         episode: Int,
         positionMs: Long,
-        durationMs: Long
+        durationMs: Long,
+        title: String = "",
+        mediaType: String = "tv",
+        tmdbId: Int = 0
     ) {
         require(seriesId.isNotBlank() && season >= 0 && episode > 0)
         val all = read(context).associateBy { key(it.seriesId, it.season, it.episode) }.toMutableMap()
@@ -37,7 +43,10 @@ object WatchProgress {
             episode = episode,
             positionMs = positionMs.coerceAtLeast(0),
             durationMs = durationMs.coerceAtLeast(0),
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            title = title.take(180),
+            mediaType = if (mediaType == "movie") "movie" else "tv",
+            tmdbId = tmdbId.coerceAtLeast(0)
         )
         all[key(seriesId, season, episode)] = item
         val json = JSONArray()
@@ -48,7 +57,10 @@ object WatchProgress {
                 .put("episode", it.episode)
                 .put("positionMs", it.positionMs)
                 .put("durationMs", it.durationMs)
-                .put("updatedAt", it.updatedAt))
+                .put("updatedAt", it.updatedAt)
+                .put("title", it.title)
+                .put("mediaType", it.mediaType)
+                .put("tmdbId", it.tmdbId))
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY, json.toString()).apply()
@@ -61,6 +73,10 @@ object WatchProgress {
     @Synchronized
     fun latest(context: Context, seriesId: String): Episode? =
         read(context).filter { it.seriesId == seriesId }.maxByOrNull { it.updatedAt }
+
+    @Synchronized
+    fun recent(context: Context, limit: Int = 50): List<Episode> =
+        read(context).sortedByDescending { it.updatedAt }.take(limit.coerceIn(1, 200))
 
     @Synchronized
     fun completed(context: Context, seriesId: String): Set<String> =
@@ -77,7 +93,10 @@ object WatchProgress {
                 .put("episode", it.episode)
                 .put("positionMs", it.positionMs)
                 .put("durationMs", it.durationMs)
-                .put("updatedAt", it.updatedAt))
+                .put("updatedAt", it.updatedAt)
+                .put("title", it.title)
+                .put("mediaType", it.mediaType)
+                .put("tmdbId", it.tmdbId))
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY, json.toString()).apply()
@@ -94,7 +113,10 @@ object WatchProgress {
                 episode = o.optInt("episode"),
                 positionMs = o.optLong("positionMs"),
                 durationMs = o.optLong("durationMs"),
-                updatedAt = o.optLong("updatedAt")
+                updatedAt = o.optLong("updatedAt"),
+                title = o.optString("title"),
+                mediaType = o.optString("mediaType", "tv").let { if (it == "movie") "movie" else "tv" },
+                tmdbId = o.optInt("tmdbId", 0)
             ).takeIf { it.seriesId.isNotBlank() && it.episode > 0 }
         }
     } catch (_: Exception) {
