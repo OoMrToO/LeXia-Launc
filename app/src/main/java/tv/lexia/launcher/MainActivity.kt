@@ -3233,6 +3233,16 @@ class MainActivity : Activity() {
                     genreSig = "-"
                     applyGenres()
                 }
+                if (AddonMatcher.enabled(this@MainActivity)) {
+                    val matchCandidates = (list + top + topTv + nowList + soonList + plat + localTitles)
+                        .distinctBy { it.key }
+                    Thread {
+                        AddonMatcher.refresh(this@MainActivity, matchCandidates)
+                        runOnUiThread {
+                            if (!isFinishing && prefs.addonMatchMode != "off") showPick()
+                        }
+                    }.start()
+                }
             }
         }
     }
@@ -3527,12 +3537,20 @@ class MainActivity : Activity() {
             certView.visibility = if (p.cert.isEmpty()) View.GONE else View.VISIBLE
             // Where to watch it: the platform it is new on, else one it streams on, else cinemas.
             val inCinema = cinema.any { it.key == p.key }
+            val addonMatch = if (prefs.addonMatchMode == "off") null else AddonMatcher.find(this, p)
             ui.setWhere(whereView, when {
+                addonMatch != null -> "EKLENTİ · " + addonMatch.addonName
                 p.provider.isNotEmpty() -> p.provider
                 inCinema -> ""
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
+            whereView.setOnClickListener {
+                addonMatch?.let {
+                    AddonManagerActivity.openMatch(this, it.repository, it.catalogType, it.itemId)
+                }
+            }
+            whereView.isClickable = addonMatch != null
             val parts = ArrayList<String>()
             if (p.year.isNotEmpty()) parts.add(p.year)
             if (p.runtime > 0) parts.add(if (p.runtime >= 60) "${p.runtime / 60} sa ${p.runtime % 60} dk" else "${p.runtime} dk")
