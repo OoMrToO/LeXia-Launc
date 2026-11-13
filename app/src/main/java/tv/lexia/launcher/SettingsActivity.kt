@@ -695,7 +695,7 @@ class SettingsActivity : Activity() {
 
     private fun filmsPage() = Page(
         "Filmler", R.drawable.ic_film,
-        keys = listOf("picks", "rotate", "rotateSec", "cinema", "genres")
+        keys = listOf("picks", "rotate", "rotateSec", "cinema", "genres", "addonMatchMode", "favoriteAddonUrl")
     ) {
         val items = ArrayList<Item>()
         items.add(Header("GÜNÜN FİLMLERİ"))
@@ -717,6 +717,41 @@ class SettingsActivity : Activity() {
             toggle(
                 "Sinema köşesi", "“Şu an sinemalarda” ve “Yakında vizyonda” satırları.",
                 { prefs.cinema }, { prefs.cinema = it }
+            )
+        )
+        items.add(Header("EKLENTİ EŞLEŞTİRME"))
+        items.add(
+            choice(
+                "Ana ekrandaki içerikleri ara",
+                "Dönen film ve dizilerin adını eklenti kataloglarında ara. Kapalıyken hiçbir eklenti isteği gönderilmez.",
+                listOf(0, 1, 2),
+                listOf("Kapalı", "Tüm eklentiler", "Favori eklenti"),
+                { prefs.addonMatchMode },
+                { prefs.addonMatchMode = it }
+            )
+        )
+        items.add(
+            Row(
+                "Favori eklenti",
+                "“Favori eklenti” modu seçiliyken yalnızca bu depoda arama yapılır.",
+                chevron = true,
+                value = {
+                    val address = prefs.favoriteAddonUrl
+                    if (address.isBlank()) "Seçilmedi" else address.removePrefix("https://").take(30)
+                },
+                action = {
+                    val urls = Addons.urls(this)
+                    if (urls.isEmpty()) {
+                        Toast.makeText(this, "Önce Eklentiler bölümünden bir depo ekle.", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(this, AddonManagerActivity::class.java))
+                    } else {
+                        val selected = urls.indexOf(prefs.favoriteAddonUrl).coerceAtLeast(0)
+                        Dialogs.chooseOne(this, "Favori eklenti", urls, selected) {
+                            prefs.favoriteAddonUrl = urls[it]
+                            refreshValues()
+                        }
+                    }
+                }
             )
         )
         items.add(Header("FRAGMANLAR"))
