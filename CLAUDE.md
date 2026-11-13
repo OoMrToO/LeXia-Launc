@@ -3,7 +3,7 @@
 Bu depo, `OoMrToO/TvLauncher`'daki LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** kopyasıdır.
 **Her değişiklikte bu dosya da güncellenir.** Yeni sohbet önce bu dosyayı okur.
 
-Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `main`'den)
+Son güncelleme: 13 Kasım 2026 · MPEG-DASH oynatma desteği
 
 ## 0. Bu depo eskisinden neyle farklı
 
@@ -13,6 +13,7 @@ Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `
 - **Hiçbir şey sayılmaz/gönderilmez:** `Remote.ping` ve `Remote.sendCrash` boş; sürüm oylaması kalktı. Hatalar yalnızca TV'de (Ayarlar › Hakkında › Son hata).
 - **Liste yedeği eski sitede kalır:** `Backup` hâlâ `lexialauncher.pages.dev/api/backup`'ı kullanır (`Net.OLD_SITE`), böylece eski LeXia'dan alınan kod yeni uygulamada geri yüklenir. Eski Cloudflare projesi silinirse yedek çalışmaz; o zaman bu depoya küçük bir Pages Function taşınmalı.
 - **Uzaktan ayarlar yok** (kullanıcı, 12 Kasım: "yönetim, sayaç, güncelleme ekranı duyurusu gerek yok"): `remote.json` silindi, `Remote.loadSaved/refresh` boş; duyuru, zorunlu güncelleme ekranı, sürüm bekletme, seçki, uzaktan gizleme/kapatma çalışmaz (hep varsayılan). **Yenilikler kartı** güncellemeden sonra çıkmaz (`WhatsNew.maybeShow` yalnızca "görüldü" işaretler; Ayarlar › Hakkında'da liste hâlâ var), `whatsnew.txt` her yayında yazılmak zorunda değil.
+- **Oynatıcı biçimleri (13 Kasım 2026):** Media3 ExoPlayer'a `media3-exoplayer-dash` eklendi; doğrudan HTTPS kaynaklarda MP4/progressive ve HLS yanında MPEG-DASH (`.mpd`) de desteklenir. Kaynak adresi hâlâ kullanıcı tarafından sağlanır veya yetkili sağlayıcının belgelenmiş API'sinden alınır; scraper/resolver yoktur.
 - **Eklenti kapsamı (12 Kasım 2026, güncellendi):** Kullanıcı Nuvio entegrasyonu kararını değiştirdi. Hedef, Nuvio'nun addon/repo mimarisini mümkün olduğunca yakından uyarlamak; depo/manifest yönetimi, katalog ve standart meta uçlarından detay sayfası, bölüm listeleri, izleme ilerlemesi ve oynatıcı altyapısını tamamlamaktır. Kaynak sağlayıcıları yalnızca belgelenmiş API'ler veya kullanıcının kullanım hakkına sahip olduğu yayın uçları üzerinden bağlanır; yetkisiz üçüncü taraf yayınlarını kazıyan/çözen scraper-resolver kodu taşınmaz. Mevcut eklenti akışı metadata/katalog/bölüm listesi ve doğrudan HTTPS medya adresiyle sınırlıdır; kaynak uçları çözülmez. Media3 oynatıcı ilerlemeyi kaydeder, yeniden açılışta kaldığı saniyeden devam eder; bölüm listesi ilerlemeyi gösterir ve son tamamlanmamış bölüme hızlı devam sunar. CI geçse bile gerçek TV kumandası ve oynatma akışı ayrıca cihazda denenmelidir.
 - **İş akışları:** `build.yml` (main'e push: anahtar → site adresi → iki APK → `latest` sürümü → yayın), `daily-pick.yml` (02:17 UTC film listesi → yayın), `publish.yml` (dosya sitesini kurar).
 - **Depo sırları (4):** `KEYSTORE_PASSWORD` (kullanıcının seçtiği yeni parola), `TMDB_KEY`, `CLOUDFLARE_API_TOKEN` (Pages: Edit; Kasım 2027'de bitiyor), `CLOUDFLARE_ACCOUNT_ID`.
