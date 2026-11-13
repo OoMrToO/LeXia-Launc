@@ -179,7 +179,6 @@ class AddonManagerActivity : Activity() {
         render(list)
         urlInput.requestFocus()
         val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
-        val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
         if (autoTmdbId > 0) {
             startAutoSearch(
                 intent.getStringExtra(EXTRA_AUTO_TITLE).orEmpty(),
