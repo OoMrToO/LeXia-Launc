@@ -95,11 +95,9 @@ object AddonMatcher {
                 val candidates = wanted.filter { it.isSeries == expectedSeries }
                 if (candidates.isEmpty()) continue
                 val candidateNames = candidates.groupBy { normalize(it.title) }
-                var skip = 0
-                var pageNumber = 0
-                while (pageNumber < 3) {
-                    val page = runCatching { Addons.fetchCatalog(addon, catalog, skip) }.getOrNull() ?: break
-                    for (item in page) {
+
+                fun recordMatches(items: List<Addons.CatalogItem>) {
+                    for (item in items) {
                         val normalized = normalize(item.name)
                         val pick = candidateNames[normalized]
                             ?.firstOrNull { sameYear(it.year, item.releaseInfo) } ?: continue
@@ -114,9 +112,27 @@ object AddonMatcher {
                                 .put("itemType", item.type.ifBlank { catalog.type })
                         }
                     }
-                    if (page.size < 100) break
-                    skip += page.size
-                    pageNumber++
+                }
+
+                if ("search" in catalog.extras) {
+                    // Use the addon search endpoint only when its manifest declares this extra.
+                    for (pick in candidates) {
+                        val results = runCatching {
+                            Addons.fetchCatalog(addon, catalog, search = pick.title)
+                        }.getOrNull().orEmpty()
+                        recordMatches(results)
+                    }
+                } else {
+                    // Backward-compatible bounded scan for catalogues without search support.
+                    var skip = 0
+                    var pageNumber = 0
+                    while (pageNumber < 3) {
+                        val page = runCatching { Addons.fetchCatalog(addon, catalog, skip) }.getOrNull() ?: break
+                        recordMatches(page)
+                        if (page.size < 100) break
+                        skip += page.size
+                        pageNumber++
+                    }
                 }
             }
         }
