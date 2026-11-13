@@ -110,6 +110,7 @@ class MainActivity : Activity() {
     private lateinit var whyView: TextView
     private lateinit var descView: TextView
     private lateinit var buttons: LinearLayout
+    private lateinit var watchBtn: TextView
     private lateinit var trailerBtn: TextView
     private lateinit var listBtn: TextView
     private lateinit var progress: LinearLayout
@@ -746,6 +747,15 @@ class MainActivity : Activity() {
         buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.visibility = View.INVISIBLE
+        watchBtn = ui.pill("▶   İzle", 64, 23, primary = true)
+        watchBtn.visibility = View.GONE
+        watchBtn.setOnClickListener {
+            picks.getOrNull(pickIndex)?.let { film ->
+                AddonMatcher.find(this, film)?.let { match ->
+                    AddonManagerActivity.openMatch(this, match.repository, match.itemType, match.itemId)
+                }
+            }
+        }
         trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
         trailerBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { trailer(it) } }
         listBtn = ui.pill("+   Listeme Ekle", 64, 23)
@@ -754,7 +764,7 @@ class MainActivity : Activity() {
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
         val nextBtn = ui.pill("Sonraki", 64, 23)
         nextBtn.setOnClickListener { next() }
-        for (b in listOf(trailerBtn, infoBtn, listBtn, nextBtn)) {
+        for (b in listOf(watchBtn, trailerBtn, infoBtn, listBtn, nextBtn)) {
             val old = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 old?.onFocusChange(v, f)
@@ -765,6 +775,7 @@ class MainActivity : Activity() {
             }
         }
         progress = ui.hbox()
+        buttons.addView(watchBtn)
         buttons.addView(trailerBtn)
         buttons.addView(infoBtn)
         buttons.addView(listBtn)
@@ -3545,6 +3556,7 @@ class MainActivity : Activity() {
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
+            watchBtn.visibility = if (addonMatch != null) View.VISIBLE else View.GONE
             whereView.setOnClickListener {
                 addonMatch?.let {
                     AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId)
