@@ -722,22 +722,22 @@ class SettingsActivity : Activity() {
         items.add(Header("EKLENTİ EŞLEŞTİRME"))
         items.add(
             choice(
-                "Ana ekrandaki içerikleri ara",
-                "Dönen film ve dizilerin adını eklenti kataloglarında ara. Kapalıyken hiçbir eklenti isteği gönderilmez.",
-                listOf(0, 1, 2),
-                listOf("Kapalı", "Tüm eklentiler", "Favori eklenti"),
+                "Ana ekrandaki içerikleri eşleştir",
+                "Ana ekrandaki film ve dizileri eklenti kataloglarıyla eşleştir. Kapalı seçeneğinde eklentilere arama isteği gönderilmez.",
+                listOf("off", "all", "selected"),
+                listOf("Kapalı", "Tüm eklentiler", "Seçili eklenti"),
                 { prefs.addonMatchMode },
                 { prefs.addonMatchMode = it }
             )
         )
         items.add(
             Row(
-                "Favori eklenti",
-                "“Favori eklenti” modu seçiliyken yalnızca bu depoda arama yapılır.",
+                "Eşleştirme deposu",
+                "“Seçili eklenti” modunda kullanılacak depo. Önce Eklentiler bölümünden depo ekle.",
                 chevron = true,
                 value = {
-                    val address = prefs.favoriteAddonUrl
-                    if (address.isBlank()) "Seçilmedi" else address.removePrefix("https://").take(30)
+                    val address = prefs.addonMatchRepository
+                    if (address.isBlank()) "İlk depo" else address.removePrefix("https://").take(30)
                 },
                 action = {
                     val urls = Addons.urls(this)
@@ -745,9 +745,9 @@ class SettingsActivity : Activity() {
                         Toast.makeText(this, "Önce Eklentiler bölümünden bir depo ekle.", Toast.LENGTH_LONG).show()
                         startActivity(Intent(this, AddonManagerActivity::class.java))
                     } else {
-                        val selected = urls.indexOf(prefs.favoriteAddonUrl).coerceAtLeast(0)
-                        Dialogs.chooseOne(this, "Favori eklenti", urls, selected) {
-                            prefs.favoriteAddonUrl = urls[it]
+                        val current = urls.indexOf(prefs.addonMatchRepository).coerceAtLeast(0)
+                        Dialogs.chooseOne(this, "Eşleştirme deposu", urls, current) {
+                            prefs.addonMatchRepository = urls[it]
                             refreshValues()
                         }
                     }
