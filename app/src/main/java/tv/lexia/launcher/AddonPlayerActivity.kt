@@ -125,6 +125,7 @@ class AddonPlayerActivity : Activity() {
                 if (playbackState == Player.STATE_READY) {
                     durationMs = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
                     applyPreferredLanguages(current)
+                    applyPreferredVideoQuality(current)
                     if (!resumeApplied) {
                         val saved = WatchProgress.get(this@AddonPlayerActivity, seriesId, season, episode)
                         if (saved != null && !saved.isComplete && saved.positionMs > 5_000) {
@@ -378,7 +379,8 @@ class AddonPlayerActivity : Activity() {
                 "Harici altyazı yükle",
                 "Tercih edilen ses dili",
                 "Tercih edilen altyazı dili",
-                "Oynatma hızı"
+                "Oynatma hızı",
+                "Görüntü kalitesi"
             )) { _, which ->
                 when (which) {
                     0 -> showTrackDialog(current, C.TRACK_TYPE_AUDIO, "Ses dili")
@@ -387,9 +389,39 @@ class AddonPlayerActivity : Activity() {
                     3 -> showLanguagePreference("Tercih edilen ses dili", KEY_AUDIO_LANGUAGE)
                     4 -> showLanguagePreference("Tercih edilen altyazı dili", KEY_TEXT_LANGUAGE)
                     5 -> showPlaybackSpeedDialog(current)
+                    6 -> showVideoQualityDialog(current)
                 }
             }
             .show()
+    }
+
+    private fun showVideoQualityDialog(current: ExoPlayer) {
+        val labels = arrayOf("Otomatik (en yüksek)", "En fazla 480p", "En fazla 720p", "En fazla 1080p", "En fazla 4K")
+        val values = arrayOf("auto", "480", "720", "1080", "2160")
+        val selected = values.indexOf(playbackPrefs.getString(KEY_VIDEO_QUALITY, "auto")).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Görüntü kalitesi")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                playbackPrefs.edit().putString(KEY_VIDEO_QUALITY, values[which]).apply()
+                applyPreferredVideoQuality(current)
+                dialog.dismiss()
+                Toast.makeText(this, "Görüntü kalitesi: " + labels[which], Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    /** Applies a maximum video size; adaptive streams may use any resolution up to this limit. */
+    private fun applyPreferredVideoQuality(current: ExoPlayer) {
+        val builder = current.trackSelectionParameters.buildUpon()
+        when (playbackPrefs.getString(KEY_VIDEO_QUALITY, "auto")) {
+            "480" -> builder.setMaxVideoSize(854, 480)
+            "720" -> builder.setMaxVideoSize(1280, 720)
+            "1080" -> builder.setMaxVideoSize(1920, 1080)
+            "2160" -> builder.setMaxVideoSize(3840, 2160)
+            else -> builder.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+        }
+        current.trackSelectionParameters = builder.build()
     }
 
     private fun showTrackDialog(current: ExoPlayer, trackType: Int, title: String) {
@@ -466,6 +498,7 @@ class AddonPlayerActivity : Activity() {
         private const val REQUEST_EXTERNAL_SUBTITLE = 4102
         private const val KEY_AUDIO_LANGUAGE = "preferred_audio_language"
         private const val KEY_TEXT_LANGUAGE = "preferred_text_language"
+        private const val KEY_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_EXTERNAL_SUBTITLE_URI = "external_subtitle_uri"
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
