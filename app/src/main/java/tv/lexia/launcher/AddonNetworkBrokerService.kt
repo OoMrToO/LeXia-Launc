@@ -1,5 +1,6 @@
 package tv.lexia.launcher
 
+import android.app.ActivityManager
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
@@ -17,11 +18,18 @@ import java.util.Locale
  */
 class AddonNetworkBrokerService : Service() {
     private val binder = object : IAddonNetworkBroker.Stub() {
-        override fun fetch(repository: String, providerId: String, requestJson: String): String =
-            runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
+        override fun fetch(repository: String, providerId: String, requestJson: String): String {
+            val callerPid = android.os.Binder.getCallingPid()
+            val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            val caller = manager.runningAppProcesses?.firstOrNull { it.pid == callerPid }
+            enforce(caller?.processName == "$packageName:addon_sandbox") {
+                "Only the isolated addon runtime may use this broker."
+            }
+            return runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
                 .getOrElse { JSONObject().put("ok", false).put("status", 0)
                     .put("statusText", (it.message ?: "Request failed").take(500))
                     .put("body", "").put("url", "").toString() }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -57,8 +65,9 @@ class AddonNetworkBrokerService : Service() {
                 connection.requestMethod = method
                 connection.setRequestProperty("Accept", "*/*")
                 val allowedHeaders = setOf("accept", "content-type", "user-agent", "referer", "origin", "accept-language")
-                for (i in 0 until headers.length()) {
-                    val name = headers.names().toList()[i]
+                val headerNames = headers.names() ?: org.json.JSONArray()
+                for (i in 0 until headerNames.length()) {
+                    val name = headerNames.optString(i)
                     require(name.lowercase(Locale.ROOT) in allowedHeaders) { "Header not permitted: $name" }
                     val value = headers.optString(name)
                     require(value.length <= 2048 && !value.contains("\r") && !value.contains("\n")) { "Invalid header." }
