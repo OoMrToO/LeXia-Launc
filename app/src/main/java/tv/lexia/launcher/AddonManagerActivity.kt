@@ -542,19 +542,14 @@ class AddonManagerActivity : Activity() {
             Toast.makeText(this, "Bu depoda etkin ve uyumlu sağlayıcı yok.", Toast.LENGTH_LONG).show()
             return
         }
-        val run: (Addons.ScraperProvider) -> Unit = { provider ->
-            runProvider(addon.baseUrl, addon, provider, tmdbId.toString(), mediaType, season, episode)
-        }
-        if (providers.size == 1) {
-            run(providers.first())
-            return
-        }
-        val labels = providers.map { it.name + if (it.description.isBlank()) "" else " · " + it.description.take(70) }
-        AlertDialog.Builder(this)
-            .setTitle("Kaynak sağlayıcısı")
-            .setItems(labels.toTypedArray()) { _, index -> run(providers[index]) }
-            .setNegativeButton("Kapat", null)
-            .show()
+        chooseProviderOptions(
+            providers.map { ProviderOption(addon.baseUrl, addon, it) },
+            addon.name,
+            tmdbId,
+            mediaType,
+            season,
+            episode
+        )
     }
 
     private fun runProvider(
