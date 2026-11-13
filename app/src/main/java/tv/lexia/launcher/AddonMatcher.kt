@@ -89,6 +89,8 @@ object AddonMatcher {
             for (catalog in addon.catalogs.take(8)) {
                 val expectedSeries = catalog.type.equals("series", true) ||
                     catalog.type.equals("tv", true)
+                val expectedMovie = catalog.type.equals("movie", true)
+                if (!expectedSeries && !expectedMovie) continue
                 val candidates = wanted.filter { it.isSeries == expectedSeries }
                 if (candidates.isEmpty()) continue
                 val candidateNames = candidates.groupBy { normalize(it.title) }
