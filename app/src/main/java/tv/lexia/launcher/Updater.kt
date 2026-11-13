@@ -65,6 +65,16 @@ object Updater {
                 Thread.sleep(2000L)
                 look()
             }
+            // Cloudflare can be temporarily unreachable on some TV networks. The public
+            // GitHub release is an independent fallback for both the version check and APK.
+            if (best == 0 && !tester) {
+                val release = "https://github.com/OoMrToO/LeXia-Launc/releases/download/latest"
+                val n = Net.get("$release/version.txt?t=" + System.currentTimeMillis())?.trim()?.toIntOrNull() ?: 0
+                if (n > 0) {
+                    best = n
+                    link = "$release/app.apk"
+                }
+            }
             // The owner can hold every TV at a build while a new one is checked (admin page). The site
             // only serves the newest APK, so a held TV simply sees no update. The setup build always updates.
             // The owner's settings are read fresh with every check (every 30 minutes and on each start),
