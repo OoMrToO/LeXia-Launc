@@ -11,10 +11,7 @@ import android.os.IBinder
 import android.os.Message
 import android.os.Messenger
 import android.os.Process
-import com.dokar.quickjs.binding.asyncFunction
-import com.dokar.quickjs.binding.define
-import com.dokar.quickjs.binding.function
-import com.dokar.quickjs.quickJs
+import app.cash.quickjs.QuickJs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -67,25 +64,18 @@ class AddonSandboxService : Service() {
             }
             val result = runBlocking(Dispatchers.IO) {
                 withTimeout(EXECUTION_TIMEOUT_MS) {
-                    quickJs(Dispatchers.IO) {
-                        define("console") {
-                            function("log") { args -> android.util.Log.d("LeXiaAddon:$providerId", args.joinToString(" ")) }
-                            function("error") { args -> android.util.Log.e("LeXiaAddon:$providerId", args.joinToString(" ")) }
-                            function("warn") { args -> android.util.Log.w("LeXiaAddon:$providerId", args.joinToString(" ")) }
-                        }
-                        define("Native") {
-                            asyncFunction("fetch") { args ->
-                                val requestJson = args.firstOrNull()?.toString().orEmpty()
+                    QuickJs.create().use { engine ->
+                        engine.evaluate(FETCH_POLYFILL)
+                        engine.set("Native", AddonNativeFetch::class.java, object : AddonNativeFetch {
+                            override fun fetch(requestJson: String): String {
                                 require(requestJson.length <= MAX_REQUEST_CHARS) { "Network request too large." }
-                                checkNotNull(networkBroker).fetch(repository, providerId, requestJson)
+                                return checkNotNull(networkBroker).fetch(repository, providerId, requestJson)
                             }
-                        }
-                        evaluate<String>(
-                            FETCH_POLYFILL + "\n" + COMMON_JS_WRAPPER
-                                .replace("__PROVIDER_SOURCE__", source)
-                                .replace("__CALL_ARGS__", JSONObject.quote(callArgs)),
-                            filename = "provider-$providerId.js"
-                        ) ?: "[]"
+                        })
+                        val wrapped = COMMON_JS_WRAPPER
+                            .replace("__PROVIDER_SOURCE__", source)
+                            .replace("__CALL_ARGS__", JSONObject.quote(callArgs))
+                        engine.evaluate(wrapped)?.toString() ?: "[]"
                     }
                 }
             }
