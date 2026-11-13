@@ -262,15 +262,16 @@ class AddonManagerActivity : Activity() {
             setTextColor(-1)
             setHintTextColor(0xFF8B929E.toInt())
         }
+        val message = buildString {
+            append("Sağlayıcı: ").append(providerId).append("\n")
+            append("İzinli HTTPS alan adları: ")
+            append(if (current.isEmpty()) "Henüz yok" else current.sorted().joinToString(", "))
+            append("\n\nYalnızca tam alan adı eklenir. Joker karakter, IP ve HTTP kabul edilmez.")
+            append("\nBu izin listesi hazırlanmıştır; JavaScript ağ köprüsü henüz etkin değildir.")
+        }
         AlertDialog.Builder(this)
             .setTitle("Sağlayıcı ağ izinleri")
-            .setMessage(
-                "Sağlayıcı: " + providerId + "\\n" +
-                    "İzinli HTTPS alan adları: " +
-                    if (current.isEmpty()) "Henüz yok" else current.sorted().joinToString(", ") +
-                    "\\n\\nYalnızca tam alan adı eklenir. Joker karakter, IP ve HTTP kabul edilmez. " +
-                    "Bu izin listesi hazırlanmıştır; JavaScript ağ köprüsü henüz etkin değildir."
-            )
+            .setMessage(message)
             .setView(input)
             .setPositiveButton("Alan adı ekle") { _, _ ->
                 try {
