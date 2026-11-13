@@ -14,7 +14,8 @@ object WatchProgress {
         val durationMs: Long,
         val updatedAt: Long,
         val title: String = "",
-        val mediaType: String = "tv"
+        val mediaType: String = "tv",
+        val tmdbId: Int = 0
     ) {
         val isComplete: Boolean get() = durationMs > 0 && positionMs >= durationMs * 0.9
     }
@@ -31,7 +32,8 @@ object WatchProgress {
         positionMs: Long,
         durationMs: Long,
         title: String = "",
-        mediaType: String = "tv"
+        mediaType: String = "tv",
+        tmdbId: Int = 0
     ) {
         require(seriesId.isNotBlank() && season >= 0 && episode > 0)
         val all = read(context).associateBy { key(it.seriesId, it.season, it.episode) }.toMutableMap()
@@ -43,7 +45,8 @@ object WatchProgress {
             durationMs = durationMs.coerceAtLeast(0),
             updatedAt = System.currentTimeMillis(),
             title = title.take(180),
-            mediaType = if (mediaType == "movie") "movie" else "tv"
+            mediaType = if (mediaType == "movie") "movie" else "tv",
+            tmdbId = tmdbId.coerceAtLeast(0)
         )
         all[key(seriesId, season, episode)] = item
         val json = JSONArray()
@@ -56,7 +59,8 @@ object WatchProgress {
                 .put("durationMs", it.durationMs)
                 .put("updatedAt", it.updatedAt)
                 .put("title", it.title)
-                .put("mediaType", it.mediaType))
+                .put("mediaType", it.mediaType)
+                .put("tmdbId", it.tmdbId))
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY, json.toString()).apply()
@@ -91,7 +95,8 @@ object WatchProgress {
                 .put("durationMs", it.durationMs)
                 .put("updatedAt", it.updatedAt)
                 .put("title", it.title)
-                .put("mediaType", it.mediaType))
+                .put("mediaType", it.mediaType)
+                .put("tmdbId", it.tmdbId))
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY, json.toString()).apply()
@@ -110,7 +115,8 @@ object WatchProgress {
                 durationMs = o.optLong("durationMs"),
                 updatedAt = o.optLong("updatedAt"),
                 title = o.optString("title"),
-                mediaType = o.optString("mediaType", "tv").let { if (it == "movie") "movie" else "tv" }
+                mediaType = o.optString("mediaType", "tv").let { if (it == "movie") "movie" else "tv" },
+                tmdbId = o.optInt("tmdbId", 0)
             ).takeIf { it.seriesId.isNotBlank() && it.episode > 0 }
         }
     } catch (_: Exception) {
