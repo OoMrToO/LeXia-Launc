@@ -112,6 +112,9 @@ class MainActivity : Activity() {
     private lateinit var buttons: LinearLayout
     private lateinit var trailerBtn: TextView
     private lateinit var listBtn: TextView
+    private lateinit var addonBtn: TextView
+    private val addonMatchCache = HashMap<String, Boolean>()
+    private val addonMatchWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var progress: LinearLayout
     private var progressAnim: Animator? = null
     private var progressFill: View? = null
@@ -752,7 +755,7 @@ class MainActivity : Activity() {
         listBtn.setOnClickListener { toggleList() }
         val infoBtn = ui.pill("Detaylar", 64, 23)
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
-        val addonBtn = ui.pill("Eklentide bul", 64, 23)
+        addonBtn = ui.pill("Eklentide ara", 64, 23)
         addonBtn.visibility = if (prefs.addonMatchMode == 0) View.GONE else View.VISIBLE
         addonBtn.setOnClickListener {
             picks.getOrNull(pickIndex)?.let { current ->
@@ -3555,7 +3558,7 @@ class MainActivity : Activity() {
             whyView.visibility = if (p.reason.isEmpty()) View.GONE else View.VISIBLE
             descView.text = p.overview
             trailerBtn.visibility = if (p.trailer.isEmpty()) View.GONE else View.VISIBLE
-            addonBtn.visibility = if (prefs.addonMatchMode == 0 || Addons.urls(this).isEmpty()) View.GONE else View.VISIBLE
+            updateAddonMatch(p)
             updateListBtn()
         }
         heroText.animate().cancel()
@@ -3585,6 +3588,41 @@ class MainActivity : Activity() {
                 beat++
             }
         }.start()
+    }
+
+    /** Search the active addon scope once per hero title and remember the result for this session. */
+    private fun updateAddonMatch(p: Pick) {
+        if (!::addonBtn.isInitialized) return
+        val mode = prefs.addonMatchMode
+        val favorite = if (mode == 2) prefs.favoriteAddonUrl else ""
+        if (mode == 0 || Addons.urls(this).isEmpty() || (mode == 2 && favorite.isBlank())) {
+            addonBtn.visibility = View.GONE
+            return
+        }
+        addonBtn.visibility = View.VISIBLE
+        val cacheKey = "$mode|$favorite|${p.kind}|${p.title.lowercase(tr)}"
+        val cached = addonMatchCache[cacheKey]
+        addonBtn.text = when (cached) {
+            true -> "Eklentide bulundu"
+            false -> "Eklentide ara"
+            null -> "Eklentide aranıyor…"
+        }
+        if (cached != null) return
+        addonMatchWorker.execute {
+            val found = runCatching {
+                Addons.searchConfigured(this, p.title, if (p.isSeries) "tv" else "movie").isNotEmpty()
+            }.getOrDefault(false)
+            addonMatchCache[cacheKey] = found
+            runOnUiThread {
+                if (!isFinishing && ::addonBtn.isInitialized &&
+                    picks.getOrNull(pickIndex)?.key == p.key &&
+                    prefs.addonMatchMode == mode &&
+                    (mode != 2 || prefs.favoriteAddonUrl == favorite)
+                ) {
+                    addonBtn.text = if (found) "Eklentide bulundu" else "Eklentide ara"
+                }
+            }
+        }
     }
 
     /** Segmented bar: one per film, the current one fills until the next film. */
