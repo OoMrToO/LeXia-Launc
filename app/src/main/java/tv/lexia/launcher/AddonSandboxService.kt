@@ -104,7 +104,8 @@ class AddonSandboxService : Service() {
                         }
                         function("__cheerio_select") { args ->
                             val docId = args.getOrNull(0)?.toString().orEmpty()
-                            val selector = args.getOrNull(1)?.toString().orEmpty()
+                            val rawSelector = args.getOrNull(1)?.toString().orEmpty()
+                            val selector = rawSelector.replace(Regex(""":contains\\(["']([^"']+)["']\\)"""), ":contains($1)")
                             val ids = runCatching {
                                 documentCache[docId]?.select(selector)?.mapIndexed { index, element ->
                                     val id = "$docId:$index:${element.hashCode()}"
@@ -117,7 +118,8 @@ class AddonSandboxService : Service() {
                         function("__cheerio_find") { args ->
                             val docId = args.getOrNull(0)?.toString().orEmpty()
                             val parentId = args.getOrNull(1)?.toString().orEmpty()
-                            val selector = args.getOrNull(2)?.toString().orEmpty()
+                            val rawSelector = args.getOrNull(2)?.toString().orEmpty()
+                            val selector = rawSelector.replace(Regex(""":contains\\(["']([^"']+)["']\\)"""), ":contains($1)")
                             val ids = runCatching {
                                 elementCache[parentId]?.select(selector)?.mapIndexed { index, element ->
                                     val id = "$docId:find:$index:${element.hashCode()}"
@@ -172,6 +174,9 @@ class AddonSandboxService : Service() {
                         function("__get_call_args") { callArgs }
                         function("__get_scraper_id") { providerId }
                         function("__get_scraper_settings") { settingsJson }
+                        function("__get_tmdb_api_key") {
+                            runCatching { JSONObject(settingsJson).optString("tmdbApiKey") }.getOrDefault("")
+                        }
                         loadCryptoJsSource()?.let { cryptoSource -> evaluate<Any?>(cryptoSource) }
                         evaluate<Any?>(providerScript(source))
                         evaluate<Any?>(providerCallScript())
@@ -196,6 +201,7 @@ class AddonSandboxService : Service() {
         globalThis.global = globalThis; globalThis.window = globalThis; globalThis.self = globalThis;
         globalThis.SCRAPER_ID = __get_scraper_id();
         globalThis.SCRAPER_SETTINGS = JSON.parse(__get_scraper_settings());
+        globalThis.TMDB_API_KEY = __get_tmdb_api_key();
         globalThis.console = globalThis.console || {log:function(){},info:function(){},warn:function(){},error:function(){},debug:function(){}};
         if (typeof atob === "undefined") globalThis.atob = function(s) {
           var c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",o="",b=0,n=0;
