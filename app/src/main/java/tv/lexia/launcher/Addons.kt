@@ -287,6 +287,23 @@ object Addons {
         }
     }
 
+    fun providerSettings(context: Context, repository: String, providerId: String): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(providerSettingsKey(repository, providerId), "{}") ?: "{}"
+
+    fun saveProviderSettings(context: Context, repository: String, providerId: String, rawJson: String): String {
+        require(rawJson.length <= 8 * 1024) { "Sağlayıcı ayarları 8 KB sınırını aşıyor." }
+        val normalized = JSONObject(rawJson).toString()
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(providerSettingsKey(repository, providerId), normalized).commit()) {
+            "Sağlayıcı ayarları kaydedilemedi."
+        }
+        return normalized
+    }
+
+    private fun providerSettingsKey(repository: String, providerId: String): String =
+        "provider_settings:" + repository.trimEnd('/') + ":" + providerId
+
     /** Download the provider JavaScript entry file from its repository. */
     fun fetchScraperSource(addon: Installed, provider: ScraperProvider): String {
         require(addon.format == "nuvio-js") { "Bu depo Nuvio JavaScript deposu değil." }
