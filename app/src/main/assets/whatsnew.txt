@@ -3,3 +3,4 @@ Oynatıcı artık MP4 ve HLS yanında MPEG-DASH (.mpd) yayınlarını da destekl
 Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hızını değiştirebilirsin.
 Dizi bölümlerinde izleme ilerlemesi görünür; son kaldığın tamamlanmamış bölüme tek seçimle dönebilirsin.
 Oynatıcı kaldığın saniyeden devam eder ve ilerlemeyi düzenli olarak kaydeder.
+Oynatıcı, TV kumandasının medya tuşlarıyla kontrol edilebilir; geçici ağ kopmalarında üç kez otomatik yeniden dener.
