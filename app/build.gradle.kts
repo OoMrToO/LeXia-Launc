@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "tv.lexia.launcher"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "tv.lexia.launcher"
