@@ -172,6 +172,7 @@ class AddonSandboxService : Service() {
                         function("__get_call_args") { callArgs }
                         function("__get_scraper_id") { providerId }
                         function("__get_scraper_settings") { settingsJson }
+                        loadCryptoJsSource()?.let { cryptoSource -> evaluate<Any?>(cryptoSource) }
                         evaluate<Any?>(providerScript(source))
                         evaluate<Any?>(providerCallScript())
                         resultJson
@@ -276,9 +277,27 @@ class AddonSandboxService : Service() {
         globalThis.cheerio=cheerio;
         globalThis.require=function(name) {
             if(name==="cheerio"||name==="cheerio-without-node-native"||name==="react-native-cheerio")return cheerio;
+            if(name==="crypto-js"&&globalThis.CryptoJS)return globalThis.CryptoJS;
             throw new Error("Module '"+name+"' is not available in the isolated provider runtime");
         };
     """.trimIndent()
+
+    private fun loadCryptoJsSource(): String? {
+        val loader = javaClass.classLoader ?: return null
+        val paths = listOf(
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.min.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.min.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.js"
+        )
+        for (path in paths) {
+            val source = runCatching {
+                loader.getResourceAsStream(path)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            }.getOrNull()
+            if (!source.isNullOrBlank()) return source
+        }
+        return null
+    }
 
     private fun providerCallScript(): String = """
         (async function() {
