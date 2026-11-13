@@ -17,19 +17,17 @@ import java.util.Locale
  * requests through this narrow Binder interface and the user's exact-host grants.
  */
 class AddonNetworkBrokerService : Service() {
-    private val binder = object : IAddonNetworkBroker.Stub() {
-        override fun fetch(repository: String, providerId: String, requestJson: String): String {
-            val callerPid = android.os.Binder.getCallingPid()
-            val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-            val caller = manager.runningAppProcesses?.firstOrNull { it.pid == callerPid }
-            check(caller?.processName == "$packageName:addon_sandbox") {
-                "Only the isolated addon runtime may use this broker."
-            }
-            return runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
-                .getOrElse { JSONObject().put("ok", false).put("status", 0)
-                    .put("statusText", (it.message ?: "Request failed").take(500))
-                    .put("body", "").put("url", "").toString() }
+    private val binder = AddonNetworkBrokerBinder { repository, providerId, requestJson ->
+        val callerPid = android.os.Binder.getCallingPid()
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        val caller = manager.runningAppProcesses?.firstOrNull { it.pid == callerPid }
+        check(caller?.processName == "$packageName:addon_sandbox") {
+            "Only the isolated addon runtime may use this broker."
         }
+        runCatching { performFetch(repository, providerId, JSONObject(requestJson)) }
+            .getOrElse { JSONObject().put("ok", false).put("status", 0)
+                .put("statusText", (it.message ?: "Request failed").take(500))
+                .put("body", "").put("url", "").toString() }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
