@@ -214,6 +214,9 @@ class AddonManagerActivity : Activity() {
                                     .setNeutralButton("Ağ izinleri") {
                                         _, _ -> manageProviderNetworkPermissions(address, provider.id)
                                     }
+                                    .setNegativeButton("Ayarlar") { _, _ ->
+                                        manageProviderSettings(address, provider.id)
+                                    }
                                     .show()
                             }
                             .setNegativeButton("Kapat", null)
@@ -349,7 +352,8 @@ class AddonManagerActivity : Activity() {
                 .toString()
             runOnUiThread {
                 status.text = provider.name + " kaynakları taranıyor…"
-                AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args) { result ->
+                val settingsJson = Addons.providerSettings(this, repository, provider.id)
+                AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args, settingsJson) { result ->
                     if (!result.success) {
                         status.text = "Sağlayıcı hatası: " + result.value
                         Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
@@ -421,6 +425,39 @@ class AddonManagerActivity : Activity() {
                 putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_HEADERS, org.json.JSONObject(subtitle.headers).toString())
             }
         })
+    }
+
+    private fun manageProviderSettings(repository: String, providerId: String) {
+        val input = EditText(this).apply {
+            setText(Addons.providerSettings(this@AddonManagerActivity, repository, providerId))
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+            hint = "{ \"apiKey\": \"...\", \"language\": \"tr\" }"
+            minLines = 6
+            maxLines = 12
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        AlertDialog.Builder(this)
+            .setTitle(providerId + " · Sağlayıcı ayarları")
+            .setMessage("JSON nesnesi olarak kaydedilir ve JavaScript içinde SCRAPER_SETTINGS değişkeninden okunur.")
+            .setView(input)
+            .setPositiveButton("Kaydet") { _, _ ->
+                try {
+                    Addons.saveProviderSettings(this, repository, providerId, input.text.toString())
+                    Toast.makeText(this, "Sağlayıcı ayarları kaydedildi.", Toast.LENGTH_LONG).show()
+                } catch (error: Exception) {
+                    Toast.makeText(this, error.message ?: "JSON ayarları geçersiz.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("Varsayılana dön") { _, _ ->
+                Addons.saveProviderSettings(this, repository, providerId, "{}")
+                Toast.makeText(this, "Sağlayıcı ayarları sıfırlandı.", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     private fun manageProviderNetworkPermissions(repository: String, providerId: String) {
