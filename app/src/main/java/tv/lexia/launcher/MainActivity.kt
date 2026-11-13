@@ -751,10 +751,12 @@ class MainActivity : Activity() {
         watchBtn.visibility = View.GONE
         watchBtn.setOnClickListener {
             picks.getOrNull(pickIndex)?.let { film ->
-                AddonMatcher.find(this, film)?.let { match ->
+                val isCinemaRelease = cinema.any { it.key == film.key }
+                if (!isCinemaRelease && film.id > 0 && prefs.addonMatchMode != "off" &&
+                    AddonLibrary.enabledRepositories(this).isNotEmpty()) {
                     AddonManagerActivity.openAutoSearch(
-                    this, film.title, film.id, if (film.isSeries) "tv" else "movie"
-                )
+                        this, film.title, film.id, if (film.isSeries) "tv" else "movie"
+                    )
                 }
             }
         }
@@ -3558,10 +3560,10 @@ class MainActivity : Activity() {
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
-            // Only show the action when this exact title has a catalogue match.
-            // Cinema titles remain labelled as theatrical releases, not addon-playable.
-            val canSearchProviders = addonMatch != null && !inCinema &&
-                prefs.addonMatchMode != "off" && p.id > 0
+            // Show provider search for every identified non-cinema title when an addon repository is enabled.
+            // Cinema titles must never expose the addon playback action.
+            val canSearchProviders = !inCinema && prefs.addonMatchMode != "off" &&
+                p.id > 0 && AddonLibrary.enabledRepositories(this).isNotEmpty()
             watchBtn.visibility = if (canSearchProviders) View.VISIBLE else View.GONE
             whereView.setOnClickListener {
                 addonMatch?.let {
