@@ -11,36 +11,36 @@ import java.util.Locale
  */
 object AddonNetworkPermissions {
     private const val PREFS = "lexia_addon_network_permissions"
-    private const val SESSION_TOKEN = "active_provider_session_token"
-    private const val SESSION_REPOSITORY = "active_provider_session_repository"
-    private const val SESSION_PROVIDER = "active_provider_session_id"
-    private const val SESSION_EXPIRY = "active_provider_session_expiry"
+    private const val SESSION_PREFIX = "provider_session:"
 
     fun registerSession(context: Context, repository: String, providerId: String, token: String) {
+        require(token.length in 16..128)
+        val record = org.json.JSONObject()
+            .put("repository", repository)
+            .put("providerId", providerId)
+            .put("expiresAt", System.currentTimeMillis() + 3 * 60 * 1000L)
         check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(SESSION_TOKEN, token)
-            .putString(SESSION_REPOSITORY, repository)
-            .putString(SESSION_PROVIDER, providerId)
-            .putLong(SESSION_EXPIRY, System.currentTimeMillis() + 3 * 60 * 1000L)
+            .putString(sessionKey(token), record.toString())
             .commit()) { "Sağlayıcı oturumu başlatılamadı." }
     }
 
     fun isSessionAllowed(context: Context, repository: String, providerId: String, token: String): Boolean {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return token.isNotBlank() &&
-            prefs.getString(SESSION_TOKEN, null) == token &&
-            prefs.getString(SESSION_REPOSITORY, null) == repository &&
-            prefs.getString(SESSION_PROVIDER, null) == providerId &&
-            prefs.getLong(SESSION_EXPIRY, 0L) > System.currentTimeMillis()
+        if (token.length !in 16..128) return false
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(sessionKey(token), null) ?: return false
+        val record = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return false
+        return record.optString("repository") == repository &&
+            record.optString("providerId") == providerId &&
+            record.optLong("expiresAt") > System.currentTimeMillis()
     }
 
     fun clearSession(context: Context, token: String) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getString(SESSION_TOKEN, null) == token) {
-            prefs.edit().remove(SESSION_TOKEN).remove(SESSION_REPOSITORY)
-                .remove(SESSION_PROVIDER).remove(SESSION_EXPIRY).apply()
-        }
+        if (token.length !in 16..128) return
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(sessionKey(token)).apply()
     }
+
+    private fun sessionKey(token: String): String = SESSION_PREFIX + token
 
     fun grantedHosts(context: Context, repository: String, providerId: String): Set<String> =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
