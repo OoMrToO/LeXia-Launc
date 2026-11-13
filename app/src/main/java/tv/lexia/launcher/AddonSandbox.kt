@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 object AddonSandbox {
     data class Result(val success: Boolean, val value: String)
 
-    fun evaluate(context: Context, source: String, repository: String, providerId: String, callback: (Result) -> Unit) {
+    fun evaluate(context: Context, source: String, repository: String, providerId: String, callArgs: String = "{}", callback: (Result) -> Unit) {
         if (source.isBlank() || source.length > MAX_SOURCE_CHARS) {
             callback(Result(false, "JavaScript source is empty or too large."))
             return
@@ -50,6 +50,7 @@ object AddonSandbox {
                             putString(AddonSandboxService.KEY_SOURCE, source)
                             putString(AddonSandboxService.KEY_REPOSITORY, repository)
                             putString(AddonSandboxService.KEY_PROVIDER_ID, providerId)
+                            putString(AddonSandboxService.KEY_CALL_ARGS, callArgs)
                         }
                     }
                     Messenger(binder!!).send(request)
