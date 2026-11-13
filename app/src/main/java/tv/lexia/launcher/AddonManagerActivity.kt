@@ -53,6 +53,12 @@ class AddonManagerActivity : Activity() {
         val latencyMs: Long = 0L
     )
 
+    private data class FoundProviderStream(
+        val option: ProviderOption,
+        val stream: Addons.ProviderStream,
+        val subtitles: List<Addons.ProviderSubtitle>
+    )
+
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
@@ -983,40 +989,126 @@ class AddonManagerActivity : Activity() {
             status.text = "Önce Ayarlar › Eklenti eşleştirme bölümünden bir depo seç."
             return
         }
-        status.text = "$title · sağlayıcılar aranıyor…"
+        status.text = "$title · film kaynakları hazırlanıyor…"
         worker.execute {
             val options = ArrayList<ProviderOption>()
             for (repository in repositories) {
-                val connectionPrefs = getSharedPreferences("addon_connection_status", MODE_PRIVATE)
-                val savedManifestLatency = connectionPrefs.getLong("latency:$repository", 0L)
-                if (savedManifestLatency <= 0L) Addons.clearCache(repository)
-                val startedAt = System.nanoTime()
                 val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
-                val measuredLatency = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(1L)
-                val manifestLatency = savedManifestLatency.takeIf { it > 0L } ?: measuredLatency
-                if (savedManifestLatency <= 0L) {
-                    connectionPrefs.edit().putLong("latency:$repository", manifestLatency).apply()
-                }
                 addon.scrapers.filter { provider ->
-                    Addons.isProviderEnabled(this, repository, provider) && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
-                }.forEach { provider ->
-                    val providerLatency = getSharedPreferences("addon_provider_latency", MODE_PRIVATE)
-                        .getLong(providerLatencyKey(repository, provider.id), manifestLatency)
-                    options.add(ProviderOption(repository, addon, provider, providerLatency))
-                }
+                    Addons.isProviderEnabled(this, repository, provider) &&
+                        (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes) &&
+                        !isAnimeOnlyProvider(provider) && !provider.limited
+                }.take(8).forEach { provider -> options.add(ProviderOption(repository, addon, provider)) }
             }
-            options.sortBy { if (it.latencyMs > 0L) it.latencyMs else Long.MAX_VALUE }
             runOnUiThread {
                 if (options.isEmpty()) {
-                    status.text = "Bu depolarda etkin ve uyumlu sağlayıcı bulunamadı."
+                    status.text = "Bu içerik türü için etkin film/dizi sağlayıcısı bulunamadı."
                     Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                 } else if (mediaType == "tv" && (initialSeason == null || initialEpisode == null)) {
                     askSeriesEpisode(options, title, tmdbId)
                 } else {
-                    chooseProviderOptions(options, title, tmdbId, mediaType, initialSeason, initialEpisode)
+                    searchProviderStreams(options, title, tmdbId, mediaType, initialSeason, initialEpisode)
                 }
             }
         }
+    }
+
+    /** Excludes entries explicitly identified as anime-only from ordinary film/TV searches. */
+    private fun isAnimeOnlyProvider(provider: Addons.ScraperProvider): Boolean {
+        val identity = (provider.id + " " + provider.name + " " + provider.description).lowercase(Locale.ROOT)
+        return listOf("anime", "manga", "anidb", "ani-zone", "anikoto", "aniworld", "animekai", "animepahe")
+            .any { identity.contains(it) }
+    }
+
+    /** Execute providers for this exact title and display only providers returning playable streams. */
+    private fun searchProviderStreams(
+        options: List<ProviderOption>, title: String, tmdbId: Int,
+        mediaType: String, season: Int?, episode: Int?
+    ) {
+        if (options.isEmpty()) { status.text = "Aranacak etkin sağlayıcı yok."; return }
+        status.text = title + " · " + options.size + " sağlayıcıda gerçek kaynak aranıyor…"
+        val found = ArrayList<FoundProviderStream>()
+        val failures = ArrayList<String>()
+        fun runAt(index: Int) {
+            if (index >= options.size) {
+                if (found.isEmpty()) {
+                    status.text = title + " · oynatılabilir kaynak bulunamadı."
+                    val details = failures.take(6).joinToString("\n")
+                    AlertDialog.Builder(this)
+                        .setTitle("Kaynak bulunamadı")
+                        .setMessage("Etkin sağlayıcılar bu içerik için oynatılabilir bağlantı döndürmedi. Sağlayıcıların istediği HTTPS alan adları için Ağ izinleri gerekebilir." +
+                            if (details.isBlank()) "" else "\n\nKontrol sonuçları:\n" + details)
+                        .setPositiveButton("Kapat", null).show()
+                } else showFoundProviderStreams(found, title, tmdbId, mediaType, season, episode)
+                return
+            }
+            val option = options[index]
+            status.text = title + " · " + (index + 1) + "/" + options.size + ": " + option.provider.name + " deneniyor…"
+            worker.execute {
+                val source = runCatching { Addons.fetchScraperSource(option.addon, option.provider) }
+                runOnUiThread {
+                    if (source.isFailure) {
+                        failures.add(option.provider.name + ": " + (source.exceptionOrNull()?.message ?: "Dosya alınamadı"))
+                        runAt(index + 1)
+                        return@runOnUiThread
+                    }
+                    val args = org.json.JSONObject().put("tmdbId", tmdbId.toString())
+                        .put("mediaType", mediaType)
+                        .put("season", season ?: org.json.JSONObject.NULL)
+                        .put("episode", episode ?: org.json.JSONObject.NULL).toString()
+                    AddonSandbox.evaluate(this, source.getOrThrow(), option.repository, option.provider.id, args,
+                        Addons.providerSettings(this, option.repository, option.provider.id)) { result ->
+                        if (!result.success) failures.add(option.provider.name + ": " + result.value.take(180))
+                        else {
+                            val parsed = runCatching { Addons.parseProviderResult(result.value) }
+                            if (parsed.isFailure) failures.add(option.provider.name + ": yanıt okunamadı")
+                            else {
+                                val providerResult = parsed.getOrThrow()
+                                providerResult.streams.forEach { stream ->
+                                    found.add(FoundProviderStream(option, stream, providerResult.subtitles))
+                                }
+                                if (providerResult.streams.isEmpty()) {
+                                    val diagnostic = providerResult.diagnostics.firstOrNull()
+                                    failures.add(option.provider.name + ": " + (diagnostic ?: "kaynak döndürmedi"))
+                                }
+                            }
+                        }
+                        runAt(index + 1)
+                    }
+                }
+            }
+        }
+        runAt(0)
+    }
+
+    private fun showFoundProviderStreams(
+        results: List<FoundProviderStream>, title: String, tmdbId: Int,
+        mediaType: String, season: Int?, episode: Int?
+    ) {
+        val labels = results.map { result ->
+            result.option.provider.name + " · " + result.stream.title +
+                if (result.stream.quality.isNotBlank()) " · " + result.stream.quality else ""
+        }.toTypedArray()
+        status.text = title + " · " + results.size + " oynatılabilir kaynak bulundu."
+        AlertDialog.Builder(this).setTitle(title + " · Bulunan kaynaklar (" + results.size + ")")
+            .setItems(labels) { _, index ->
+                val result = results[index]
+                val option = result.option
+                fun play(subtitle: Addons.ProviderSubtitle?) {
+                    launchProviderStream(option.addon, option.provider, tmdbId.toString(), mediaType,
+                        season, episode, result.stream, subtitle, title, emptyList())
+                }
+                if (result.subtitles.isEmpty()) play(null)
+                else {
+                    val subtitleLabels = (listOf("Altyazısız") + result.subtitles.map {
+                        it.name + if (it.language.isNotBlank()) " · " + it.language else ""
+                    }).toTypedArray()
+                    AlertDialog.Builder(this).setTitle("Altyazı seç")
+                        .setItems(subtitleLabels) { _, selected ->
+                            play(if (selected == 0) null else result.subtitles[selected - 1])
+                        }.setNegativeButton("Kapat", null).show()
+                }
+            }.setNegativeButton("Kapat", null).show()
     }
 
     private fun askSeriesEpisode(options: List<ProviderOption>, title: String, tmdbId: Int) {
@@ -1049,7 +1141,7 @@ class AddonManagerActivity : Activity() {
                 val episode = episodeInput.text.toString().toIntOrNull()
                 if (season == null || season < 0 || episode == null || episode < 1) {
                     Toast.makeText(this, "Geçerli sezon ve bölüm numarası gir.", Toast.LENGTH_LONG).show()
-                } else chooseProviderOptions(options, title, tmdbId, "tv", season, episode)
+                } else searchProviderStreams(options, title, tmdbId, "tv", season, episode)
             }
             .setNegativeButton("Kapat", null)
             .show()

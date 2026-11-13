@@ -58,7 +58,11 @@ object Addons {
 
     data class ProviderStream(val name: String, val title: String, val url: String, val quality: String, val format: String, val headers: Map<String, String>)
     data class ProviderSubtitle(val name: String, val language: String, val url: String, val format: String, val headers: Map<String, String>)
-    data class ProviderResult(val streams: List<ProviderStream>, val subtitles: List<ProviderSubtitle>)
+    data class ProviderResult(
+        val streams: List<ProviderStream>,
+        val subtitles: List<ProviderSubtitle>,
+        val diagnostics: List<String> = emptyList()
+    )
 
     data class CatalogItem(
         val id: String,
@@ -432,7 +436,9 @@ object Addons {
                 headers = headers
             )
         }.take(20)
-        return ProviderResult(streams, subtitles)
+        val diagnosticsJson = root.optJSONArray("diagnostics") ?: JSONArray()
+        val diagnostics = (0 until diagnosticsJson.length()).map { diagnosticsJson.optString(it).take(300) }
+        return ProviderResult(streams, subtitles, diagnostics)
     }
 
     private fun normalize(raw: String): String {

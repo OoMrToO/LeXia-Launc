@@ -202,7 +202,12 @@ class AddonSandboxService : Service() {
         globalThis.SCRAPER_ID = __get_scraper_id();
         globalThis.SCRAPER_SETTINGS = JSON.parse(__get_scraper_settings());
         globalThis.TMDB_API_KEY = __get_tmdb_api_key();
-        globalThis.console = globalThis.console || {log:function(){},info:function(){},warn:function(){},error:function(){},debug:function(){}};
+        globalThis.__providerLogs = [];
+        globalThis.console = {
+          log:function(){}, info:function(){}, debug:function(){},
+          warn:function(){globalThis.__providerLogs.push(Array.prototype.join.call(arguments," ").slice(0,300));},
+          error:function(){globalThis.__providerLogs.push(Array.prototype.join.call(arguments," ").slice(0,300));}
+        };
         if (typeof atob === "undefined") globalThis.atob = function(s) {
           var c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",o="",b=0,n=0;
           String(s).replace(/=+$/,"").split("").forEach(function(ch){var v=c.indexOf(ch);if(v<0)return;b=(b<<6)|v;n+=6;if(n>=8){n-=8;o+=String.fromCharCode((b>>n)&255);}});
@@ -231,6 +236,7 @@ class AddonSandboxService : Service() {
           if(headers&&typeof headers.forEach==="function"){var h={};headers.forEach(function(v,k){h[k]=v;});headers=h;}
           var body=options.body==null?"":String(options.body);
           var data=JSON.parse(__native_fetch(String(url),options.method||"GET",JSON.stringify(headers),body?"text":"none",body,options.redirect!=="manual"));
+          if(data.status===0) throw new Error(data.statusText||"Network request blocked");
           var hs=data.headers||{};
           function getHeader(n){var k=Object.keys(hs).find(function(x){return x.toLowerCase()===String(n).toLowerCase();});return k?hs[k]:null;}
           return {ok:!!data.ok,status:data.status||0,statusText:data.statusText||"",url:data.url||String(url),
@@ -329,7 +335,7 @@ class AddonSandboxService : Service() {
             } catch (error) {
                 console.error("Nuvio getSubtitles failed:", error && error.message ? error.message : error);
             }
-            __capture_result(JSON.stringify({streams:streams, subtitles:subtitles}));
+            __capture_result(JSON.stringify({streams:streams, subtitles:subtitles, diagnostics:globalThis.__providerLogs||[]}));
         })();
     """.trimIndent()
 
