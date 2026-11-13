@@ -172,7 +172,10 @@ class AddonPlayerActivity : Activity() {
             }
         })
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
-        current.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        externalSubtitleUri = playbackPrefs.getString(KEY_EXTERNAL_SUBTITLE_URI, null)
+            ?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        val initialItem = buildMediaItem(url, externalSubtitleUri)
+        current.setMediaItem(initialItem)
         current.prepare()
         current.playWhenReady = true
     }
@@ -213,19 +216,25 @@ class AddonPlayerActivity : Activity() {
         val type = mimeType ?: subtitleMimeType(uri) ?: return
         val position = current.currentPosition.coerceAtLeast(0L)
         val wasPlaying = current.playWhenReady
-        val subtitle = MediaItem.SubtitleConfiguration.Builder(uri)
-            .setMimeType(type)
-            .setLanguage("und")
-            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-            .build()
-        val item = MediaItem.Builder()
-            .setUri(intent.getStringExtra(EXTRA_URL).orEmpty())
-            .setSubtitleConfigurations(listOf(subtitle))
-            .build()
+        val item = buildMediaItem(intent.getStringExtra(EXTRA_URL).orEmpty(), uri, type)
         current.setMediaItem(item, position)
         current.prepare()
         current.playWhenReady = wasPlaying
         Toast.makeText(this, "Harici altyazı eklendi.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun buildMediaItem(url: String, subtitleUri: Uri?, knownMimeType: String? = null): MediaItem {
+        val builder = MediaItem.Builder().setUri(url)
+        val type = subtitleUri?.let { knownMimeType ?: subtitleMimeType(it) }
+        if (subtitleUri != null && type != null) {
+            val subtitle = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                .setMimeType(type)
+                .setLanguage("und")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+            builder.setSubtitleConfigurations(listOf(subtitle))
+        }
+        return builder.build()
     }
 
     private fun applyPreferredLanguages(current: ExoPlayer) {
@@ -237,7 +246,7 @@ class AddonPlayerActivity : Activity() {
             .build()
     }
 
-    private fun showLanguagePreference(title: String, key: String, audio: Boolean) {
+    private fun showLanguagePreference(title: String, key: String) {
         val choices = arrayOf("Otomatik", "Türkçe", "İngilizce", "Almanca", "Fransızca", "İspanyolca", "Arapça")
         val tags = arrayOf<String?>(null, "tr", "en", "de", "fr", "es", "ar")
         val selectedTag = playbackPrefs.getString(key, null)
@@ -334,8 +343,8 @@ class AddonPlayerActivity : Activity() {
                     0 -> showTrackDialog(current, C.TRACK_TYPE_AUDIO, "Ses dili")
                     1 -> showTrackDialog(current, C.TRACK_TYPE_TEXT, "Altyazı")
                     2 -> chooseExternalSubtitle()
-                    3 -> showLanguagePreference("Tercih edilen ses dili", KEY_AUDIO_LANGUAGE, true)
-                    4 -> showLanguagePreference("Tercih edilen altyazı dili", KEY_TEXT_LANGUAGE, false)
+                    3 -> showLanguagePreference("Tercih edilen ses dili", KEY_AUDIO_LANGUAGE)
+                    4 -> showLanguagePreference("Tercih edilen altyazı dili", KEY_TEXT_LANGUAGE)
                     5 -> showPlaybackSpeedDialog(current)
                 }
             }
