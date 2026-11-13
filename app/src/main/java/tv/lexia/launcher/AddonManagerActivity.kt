@@ -21,6 +21,17 @@ class AddonManagerActivity : Activity() {
         private const val EXTRA_MATCH_TYPE = "addon_match_type"
         private const val EXTRA_MATCH_ID = "addon_match_id"
         private const val EXTRA_MATCH_TMDB_ID = "addon_match_tmdb_id"
+        private const val EXTRA_AUTO_TITLE = "addon_auto_title"
+        private const val EXTRA_AUTO_TMDB_ID = "addon_auto_tmdb_id"
+        private const val EXTRA_AUTO_TYPE = "addon_auto_type"
+
+        fun openAutoSearch(context: android.content.Context, title: String, tmdbId: Int, mediaType: String) {
+            context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
+                putExtra(EXTRA_AUTO_TITLE, title)
+                putExtra(EXTRA_AUTO_TMDB_ID, tmdbId)
+                putExtra(EXTRA_AUTO_TYPE, mediaType)
+            })
+        }
 
         fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String, tmdbId: Int = 0) {
             context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
@@ -31,6 +42,12 @@ class AddonManagerActivity : Activity() {
             })
         }
     }
+
+    private data class ProviderOption(
+        val repository: String,
+        val addon: Addons.Installed,
+        val provider: Addons.ScraperProvider
+    )
 
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
@@ -68,6 +85,14 @@ class AddonManagerActivity : Activity() {
         setContentView(root)
         add.requestFocus()
         render(list)
+        val autoTmdbId = intent.getIntExtra(EXTRA_AUTO_TMDB_ID, 0)
+        if (autoTmdbId > 0) {
+            startAutoSearch(
+                intent.getStringExtra(EXTRA_AUTO_TITLE).orEmpty(),
+                autoTmdbId,
+                intent.getStringExtra(EXTRA_AUTO_TYPE).orEmpty()
+            )
+        }
         val matchedRepository = intent.getStringExtra(EXTRA_MATCH_REPOSITORY).orEmpty()
         val matchedType = intent.getStringExtra(EXTRA_MATCH_TYPE).orEmpty()
         val matchedId = intent.getStringExtra(EXTRA_MATCH_ID).orEmpty()
@@ -344,6 +369,106 @@ class AddonManagerActivity : Activity() {
                 }
                 runProvider(repository, addon, provider, tmdbId, if (isTv) "tv" else "movie", season, episode)
             }
+            .show()
+    }
+
+    /** Searches enabled Nuvio providers from the configured repository scope using the known TMDB ID. */
+    private fun startAutoSearch(title: String, tmdbId: Int, mediaType: String) {
+        val urls = Addons.urls(this)
+        val prefs = Prefs(this)
+        val repositories = when (prefs.addonMatchMode) {
+            "selected" -> listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
+                .filter { it.isNotBlank() }
+            "all" -> urls
+            else -> emptyList()
+        }
+        if (repositories.isEmpty()) {
+            status.text = "Önce Ayarlar › Eklenti eşleştirme bölümünden bir depo seç."
+            return
+        }
+        status.text = "$title · sağlayıcılar aranıyor…"
+        worker.execute {
+            val options = ArrayList<ProviderOption>()
+            for (repository in repositories) {
+                val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
+                addon.scrapers.filter { provider ->
+                    provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
+                }.forEach { provider ->
+                    options.add(ProviderOption(repository, addon, provider))
+                }
+            }
+            runOnUiThread {
+                if (options.isEmpty()) {
+                    status.text = "Bu depolarda etkin ve uyumlu sağlayıcı bulunamadı."
+                    Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                } else if (mediaType == "tv") {
+                    askSeriesEpisode(options, title, tmdbId)
+                } else {
+                    chooseProviderOptions(options, title, tmdbId, mediaType, null, null)
+                }
+            }
+        }
+    }
+
+    private fun askSeriesEpisode(options: List<ProviderOption>, title: String, tmdbId: Int) {
+        val seasonInput = EditText(this).apply {
+            hint = "Sezon numarası"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val episodeInput = EditText(this).apply {
+            hint = "Bölüm numarası"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(seasonInput)
+            addView(episodeInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title + " · Bölüm seç")
+            .setMessage("TMDB kimliği otomatik alındı. Kaynak aramak için sezon ve bölüm numarasını gir.")
+            .setView(content)
+            .setPositiveButton("Sağlayıcıları ara") { _, _ ->
+                val season = seasonInput.text.toString().toIntOrNull()
+                val episode = episodeInput.text.toString().toIntOrNull()
+                if (season == null || season < 0 || episode == null || episode < 1) {
+                    Toast.makeText(this, "Geçerli sezon ve bölüm numarası gir.", Toast.LENGTH_LONG).show()
+                } else chooseProviderOptions(options, title, tmdbId, "tv", season, episode)
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun chooseProviderOptions(
+        options: List<ProviderOption>,
+        title: String,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ) {
+        val run: (ProviderOption) -> Unit = { option ->
+            runProvider(option.repository, option.addon, option.provider, tmdbId.toString(), mediaType, season, episode)
+        }
+        if (options.size == 1) {
+            run(options.first())
+            return
+        }
+        val labels = options.map { option ->
+            option.addon.name + " · " + option.provider.name + " · " +
+                option.repository.removePrefix("https://").removeSuffix("/")
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Kaynak sağlayıcısı · " + title)
+            .setItems(labels) { _, index -> run(options[index]) }
+            .setNegativeButton("Kapat", null)
             .show()
     }
 
