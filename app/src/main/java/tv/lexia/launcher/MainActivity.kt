@@ -3547,7 +3547,7 @@ class MainActivity : Activity() {
             })
             whereView.setOnClickListener {
                 addonMatch?.let {
-                    AddonManagerActivity.openMatch(this, it.repository, it.catalogType, it.itemId)
+                    AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId)
                 }
             }
             whereView.isClickable = addonMatch != null
