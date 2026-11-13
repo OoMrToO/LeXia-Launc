@@ -67,6 +67,8 @@ jobs:
         if: env.DIST_TOKEN != ''
         run: |
           set -e
+          # A pasted secret often carries a space or line break; git rejects the URL then.
+          TOKEN=$(printf '%s' "$DIST_TOKEN" | tr -d '[:space:]')
           M=$(mktemp -d)
           mkdir -p $M/apk
           for f in pick.json version.txt test.txt kur.apk apk/app.apk apk/test.apk; do
@@ -76,9 +78,9 @@ jobs:
           git init -q -b "$DIST_BRANCH"
           git add -A
           git -c user.name="LeXia" -c user.email="lexia@users.noreply.github.com" commit -q -m "$(cat version.txt 2>/dev/null || echo files)"
-          git push -q --force "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" "$DIST_BRANCH"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${DIST_REPO}.git" "$DIST_BRANCH"
           # The first copy used the branch "tv"; it is removed.
-          git push -q "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" --delete tv 2>/dev/null || true
+          git push -q "https://x-access-token:${TOKEN}@github.com/${DIST_REPO}.git" --delete tv 2>/dev/null || true
           echo "Kopya güncellendi: $(cat version.txt 2>/dev/null)"
           sleep 5
           curl -sS -o /dev/null -w "kopya version.txt %{http_code}\n" "https://raw.githubusercontent.com/${DIST_REPO}/${DIST_BRANCH}/version.txt" || true
