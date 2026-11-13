@@ -19,6 +19,7 @@ Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `
 - **İlk kurulum:** TV'de Downloader ile `<site adresi>/kur.apk`; sihirbaz tam sürüme günceller. Sonraki güncellemeler uygulama içinden.
 - **Dosya sitesi adresi: https://lexia-tv.pages.dev** (kurulum: `/kur.apk`). Bu oturum ortamından erişim kapalı (proxy reddediyor), dosyalar buradan doğrulanamaz.
 - **Durum (12 Kasım gecesi):** dört sır eklendi; ilk derleme (#3) ve film listesi yeşil, imza anahtarı oluştu, site yayınlandı. TV'ye kurulum **henüz denenmedi**.
+- **GitHub yedeği yok (13 Kasım):** #3 güncellemeyi GitHub sürümünden almaya çalışıyordu; depo gizli olduğu için dışarıdan indirilemez (404) ve kullanıcı adı APK'ya giriyordu, kaldırıldı. Güncelleme ve film listesi yalnızca dosya sitesinden. APK'ya kullanıcı adı ya da depo adresi yazılmaz.
 - **Dikkat (eski notlardan):** kullanıcının ev Wi-Fi'sinin DNS'i `pages.dev`'i açmıyordu (telefonda DNS 1.1.1.1 yapınca düzeldi); eski uygulama bunun için herkese açık GitHub kopyasına düşüyordu, burada kopya yok. TV ulaşamazsa: TV'nin DNS'ini 1.1.1.1 yapmak ya da kendi alan adı.
 
 Aşağısı eski projenin notlarıdır (çalışma biçimi, özellikler, kararlar geçerli; site, kurulum adresleri, arkadaşlar, PR numaraları **tarihçe**; dosya yollarındaki `com/oomrtoo/tvlauncher` burada `tv/lexia/launcher`).
