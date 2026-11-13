@@ -32,6 +32,8 @@ class AddonPlayerActivity : Activity() {
     private var episode = 0
     private var durationMs = 0L
     private var resumeApplied = false
+    private var networkRetryCount = 0
+    private var pendingRetry: Runnable? = null
 
     private val progressTask = object : Runnable {
         override fun run() {
@@ -83,6 +85,7 @@ class AddonPlayerActivity : Activity() {
         player = current
         playerView.player = current
         resumeApplied = false
+        networkRetryCount = 0
         current.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
@@ -111,9 +114,37 @@ class AddonPlayerActivity : Activity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val isTemporaryNetworkError =
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+
+                if (isTemporaryNetworkError && networkRetryCount < MAX_NETWORK_RETRIES) {
+                    networkRetryCount++
+                    val retryNumber = networkRetryCount
+                    val resumePosition = current.currentPosition.coerceAtLeast(0L)
+                    val delayMs = RETRY_BASE_DELAY_MS * retryNumber
+                    Toast.makeText(
+                        this@AddonPlayerActivity,
+                        "Bağlantı kesildi. Yeniden deneniyor ($retryNumber/$MAX_NETWORK_RETRIES)…",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    pendingRetry?.let(handler::removeCallbacks)
+                    val retry = Runnable {
+                        pendingRetry = null
+                        if (player !== current || isFinishing || isDestroyed) return@Runnable
+                        current.seekTo(resumePosition)
+                        current.prepare()
+                        current.playWhenReady = true
+                    }
+                    pendingRetry = retry
+                    handler.postDelayed(retry, delayMs)
+                    return
+                }
+
                 Toast.makeText(
                     this@AddonPlayerActivity,
-                    "Video oynatılamadı veya biçim desteklenmiyor.",
+                    "Video oynatılamadı. Bağlantıyı ve medya adresini kontrol et.",
                     Toast.LENGTH_LONG
                 ).show()
                 finish()
@@ -127,11 +158,46 @@ class AddonPlayerActivity : Activity() {
 
     /** Android TV remotes commonly expose MENU or INFO for playback options. */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
-            showPlaybackMenu()
-            return true
+        val current = player
+        when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                current?.let { if (it.isPlaying) it.pause() else it.play() }
+                if (current != null) return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                current?.play()
+                if (current != null) return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                current?.pause()
+                if (current != null) return true
+            }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                current?.let { seekBy(it, SEEK_INTERVAL_MS) }
+                if (current != null) return true
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                current?.let { seekBy(it, -SEEK_INTERVAL_MS) }
+                if (current != null) return true
+            }
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
+                showPlaybackMenu()
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun seekBy(current: ExoPlayer, offsetMs: Long) {
+        val target = (current.currentPosition + offsetMs).coerceAtLeast(0L)
+        val duration = current.duration
+        current.seekTo(
+            if (offsetMs > 0 && duration > 0 && duration != C.TIME_UNSET) {
+                target.coerceAtMost(duration)
+            } else {
+                target
+            }
+        )
     }
 
     private fun showPlaybackMenu() {
@@ -196,6 +262,8 @@ class AddonPlayerActivity : Activity() {
     override fun onStop() {
         saveProgress()
         handler.removeCallbacks(progressTask)
+        pendingRetry?.let(handler::removeCallbacks)
+        pendingRetry = null
         if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
@@ -209,6 +277,10 @@ class AddonPlayerActivity : Activity() {
     }
 
     companion object {
+        private const val MAX_NETWORK_RETRIES = 3
+        private const val RETRY_BASE_DELAY_MS = 1_500L
+        private const val SEEK_INTERVAL_MS = 10_000L
+
         const val EXTRA_URL = "media_url"
         const val EXTRA_SERIES_ID = "series_id"
         const val EXTRA_SEASON = "season"
