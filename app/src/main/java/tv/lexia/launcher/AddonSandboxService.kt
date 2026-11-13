@@ -13,6 +13,7 @@ import android.os.Messenger
 import android.os.Process
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.define
+import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.quickJs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
