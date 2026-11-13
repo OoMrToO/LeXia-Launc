@@ -271,13 +271,27 @@ class AddonManagerActivity : Activity() {
                 append(latestProgress)
             }
         }
+        val canResume = latest != null && !latest.isComplete && latestEpisode != null
         AlertDialog.Builder(this)
             .setTitle(film.title)
             .setMessage(message)
-            .setPositiveButton(if (episodes.isEmpty()) "Tamam" else "Bölümler") { _, _ ->
-                if (episodes.isNotEmpty()) showEpisodes(addonName, progressId, episodes)
+            .setPositiveButton(
+                when {
+                    canResume -> "Kaldığın yerden devam et"
+                    episodes.isNotEmpty() -> "Bölümler"
+                    else -> "Tamam"
+                }
+            ) { _, _ ->
+                if (canResume) {
+                    askEpisodeSource(addonName, progressId, latestEpisode!!)
+                } else if (episodes.isNotEmpty()) {
+                    showEpisodes(addonName, progressId, episodes)
+                }
             }
-            .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
+            .setNeutralButton(if (canResume) "Bölümler" else "Detaylar") { _, _ ->
+                if (canResume) showEpisodes(addonName, progressId, episodes)
+                else DetailActivity.open(this, film)
+            }
             .setNegativeButton("Kapat", null)
             .show()
     }
@@ -332,27 +346,44 @@ class AddonManagerActivity : Activity() {
                     saved != null && saved.positionMs > 0 -> "Devam edilecek konum kaydedildi."
                     else -> "Henüz izleme ilerlemesi yok."
                 }
-                val input = EditText(this).apply {
-                    hint = "https://ornek.com/video.mp4"
-                    setSingleLine(true)
-                    setTextColor(-1)
-                    setHintTextColor(0xFF8B929E.toInt())
-                }
-                val message = buildString {
-                    append("Sezon " + episode.season + ", bölüm " + episode.episode + "\n")
-                    if (episode.released.isNotBlank()) append("Yayın: " + episode.released + "\n")
-                    append(progressText)
-                    append("\n\nKullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir.")
-                }
-                AlertDialog.Builder(this)
-                    .setTitle(episode.title)
-                    .setMessage(message)
-                    .setView(input)
-                    .setPositiveButton("Oynat") { _, _ ->
-                        openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
-                    }
-                    .setNegativeButton("Kapat", null)
-                    .show()
+                askEpisodeSource(addonName, seriesId, episode, progressText)
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun askEpisodeSource(
+        addonName: String,
+        seriesId: String,
+        episode: Addons.EpisodeItem,
+        knownProgressText: String? = null
+    ) {
+        val saved = WatchProgress.get(this, seriesId, episode.season, episode.episode)
+        val progressText = knownProgressText ?: when {
+            saved?.isComplete == true -> "Bu bölüm tamamlandı."
+            saved != null && saved.durationMs > 0 ->
+                "İlerleme: " + (saved.positionMs * 100 / saved.durationMs).coerceIn(0, 100) + "%"
+            saved != null && saved.positionMs > 0 -> "Devam edilecek konum kaydedildi."
+            else -> "Henüz izleme ilerlemesi yok."
+        }
+        val input = EditText(this).apply {
+            hint = "https://ornek.com/video.mp4"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val message = buildString {
+            append(addonName + " · Sezon " + episode.season + ", bölüm " + episode.episode + "\n")
+            if (episode.released.isNotBlank()) append("Yayın: " + episode.released + "\n")
+            append(progressText)
+            append("\n\nKullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(episode.title)
+            .setMessage(message)
+            .setView(input)
+            .setPositiveButton("Oynat") { _, _ ->
+                openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
             }
             .setNegativeButton("Kapat", null)
             .show()
