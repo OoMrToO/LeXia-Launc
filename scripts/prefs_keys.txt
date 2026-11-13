@@ -14,6 +14,7 @@ bg text
 bigText bool
 bootOpen bool
 build text
+calendar bool
 card int
 cinema bool
 city text
@@ -24,6 +25,7 @@ crashes int
 defaultsDone bool
 disliked text
 epSeen set
+error:$address text
 fav set
 genres set
 glass int
@@ -37,6 +39,9 @@ homeNudgeOff bool
 knownTv set
 lastBoot long
 lat float
+latency:$address long
+latency:$repository long
+latency:${addon.baseUrl} long
 liked text
 listAdded text
 listNudgeWeek text
@@ -62,6 +67,7 @@ pingSetup bool
 pingWeek text
 platformSeen set
 platforms set
+provider:$mediaType:$tmdbId text
 recent bool
 recentFilms text
 remind text
@@ -83,6 +89,7 @@ setupStarted bool
 sig text
 soundSet text
 startApp text
+success:$address long
 tasteAsked bool
 tester bool
 trailerAt text
