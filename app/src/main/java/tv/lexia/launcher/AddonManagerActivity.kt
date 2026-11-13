@@ -20,12 +20,14 @@ class AddonManagerActivity : Activity() {
         private const val EXTRA_MATCH_REPOSITORY = "addon_match_repository"
         private const val EXTRA_MATCH_TYPE = "addon_match_type"
         private const val EXTRA_MATCH_ID = "addon_match_id"
+        private const val EXTRA_MATCH_TMDB_ID = "addon_match_tmdb_id"
 
-        fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String) {
+        fun openMatch(context: android.content.Context, repository: String, type: String, itemId: String, tmdbId: Int = 0) {
             context.startActivity(android.content.Intent(context, AddonManagerActivity::class.java).apply {
                 putExtra(EXTRA_MATCH_REPOSITORY, repository)
                 putExtra(EXTRA_MATCH_TYPE, type)
                 putExtra(EXTRA_MATCH_ID, itemId)
+                putExtra(EXTRA_MATCH_TMDB_ID, tmdbId)
             })
         }
     }
@@ -69,12 +71,13 @@ class AddonManagerActivity : Activity() {
         val matchedRepository = intent.getStringExtra(EXTRA_MATCH_REPOSITORY).orEmpty()
         val matchedType = intent.getStringExtra(EXTRA_MATCH_TYPE).orEmpty()
         val matchedId = intent.getStringExtra(EXTRA_MATCH_ID).orEmpty()
+        val matchedTmdbId = intent.getIntExtra(EXTRA_MATCH_TMDB_ID, 0)
         if (matchedRepository.isNotBlank() && matchedType.isNotBlank() && matchedId.isNotBlank()) {
-            openMatchedItem(matchedRepository, matchedType, matchedId)
+            openMatchedItem(matchedRepository, matchedType, matchedId, matchedTmdbId)
         }
     }
 
-    private fun openMatchedItem(repository: String, type: String, itemId: String) {
+    private fun openMatchedItem(repository: String, type: String, itemId: String, tmdbId: Int) {
         status.text = "Eklentideki içerik yükleniyor…"
         worker.execute {
             try {
@@ -103,8 +106,10 @@ class AddonManagerActivity : Activity() {
                 )
                 runOnUiThread {
                     status.text = "Eşleşme bulundu: " + film.title
-                    if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes)
-                    else askMovieSource(film, progressId)
+                    if (isSeries) showSeriesOverview(film, addon.name, progressId, details.episodes, addon, tmdbId)
+                    else if (tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                        chooseProviderAndSearch(addon, tmdbId, "movie", null, null)
+                    } else askMovieSource(film, progressId)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -339,6 +344,36 @@ class AddonManagerActivity : Activity() {
                 }
                 runProvider(repository, addon, provider, tmdbId, if (isTv) "tv" else "movie", season, episode)
             }
+            .show()
+    }
+
+    /** Uses the TMDB ID already attached to the home-screen title; no manual ID entry is needed. */
+    private fun chooseProviderAndSearch(
+        addon: Addons.Installed,
+        tmdbId: Int,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ) {
+        val providers = addon.scrapers.filter { provider ->
+            provider.enabled && (provider.supportedTypes.isEmpty() || mediaType in provider.supportedTypes)
+        }
+        if (providers.isEmpty()) {
+            Toast.makeText(this, "Bu depoda etkin ve uyumlu sağlayıcı yok.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val run: (Addons.ScraperProvider) -> Unit = { provider ->
+            runProvider(addon.baseUrl, addon, provider, tmdbId.toString(), mediaType, season, episode)
+        }
+        if (providers.size == 1) {
+            run(providers.first())
+            return
+        }
+        val labels = providers.map { it.name + if (it.description.isBlank()) "" else " · " + it.description.take(70) }
+        AlertDialog.Builder(this)
+            .setTitle("Kaynak sağlayıcısı")
+            .setItems(labels.toTypedArray()) { _, index -> run(providers[index]) }
+            .setNegativeButton("Kapat", null)
             .show()
     }
 
@@ -598,7 +633,9 @@ class AddonManagerActivity : Activity() {
         film: Pick,
         addonName: String,
         progressId: String,
-        episodes: List<Addons.EpisodeItem>
+        episodes: List<Addons.EpisodeItem>,
+        addon: Addons.Installed? = null,
+        tmdbId: Int = 0
     ) {
         val latest = WatchProgress.latest(this, progressId)
         val latestEpisode = latest?.let { saved ->
@@ -648,13 +685,15 @@ class AddonManagerActivity : Activity() {
                 }
             ) { _, _ ->
                 if (canResume) {
-                    askEpisodeSource(addonName, progressId, latestEpisode!!)
+                    if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                        chooseProviderAndSearch(addon, tmdbId, "tv", latestEpisode!!.season, latestEpisode.episode)
+                    } else askEpisodeSource(addonName, progressId, latestEpisode!!)
                 } else if (episodes.isNotEmpty()) {
-                    showEpisodes(addonName, progressId, episodes)
+                    showEpisodes(addonName, progressId, episodes, addon, tmdbId)
                 }
             }
             .setNeutralButton(if (canResume) "Bölümler" else "Detaylar") { _, _ ->
-                if (canResume) showEpisodes(addonName, progressId, episodes)
+                if (canResume) showEpisodes(addonName, progressId, episodes, addon, tmdbId)
                 else DetailActivity.open(this, film)
             }
             .setNegativeButton("Kapat", null)
@@ -683,7 +722,9 @@ class AddonManagerActivity : Activity() {
     private fun showEpisodes(
         addonName: String,
         seriesId: String,
-        episodes: List<Addons.EpisodeItem>
+        episodes: List<Addons.EpisodeItem>,
+        addon: Addons.Installed? = null,
+        tmdbId: Int = 0
     ) {
         val labels = episodes.map { episode ->
             val progress = WatchProgress.get(this, seriesId, episode.season, episode.episode)
@@ -711,7 +752,9 @@ class AddonManagerActivity : Activity() {
                     saved != null && saved.positionMs > 0 -> "Devam edilecek konum kaydedildi."
                     else -> "Henüz izleme ilerlemesi yok."
                 }
-                askEpisodeSource(addonName, seriesId, episode, progressText)
+                if (addon != null && tmdbId > 0 && addon.scrapers.isNotEmpty()) {
+                    chooseProviderAndSearch(addon, tmdbId, "tv", episode.season, episode.episode)
+                } else askEpisodeSource(addonName, seriesId, episode, progressText)
             }
             .setNegativeButton("Kapat", null)
             .show()
