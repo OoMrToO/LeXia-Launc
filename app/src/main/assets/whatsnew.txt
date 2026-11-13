@@ -1,4 +1,5 @@
 # Yenilikler
+Ana ekrandaki dönen film ve diziler, ayarlardan seçtiğin eklenti depolarının kataloglarında eşleştirilebilir; bulunan eklentiyi açmak için etikete bas.
 Oynatıcı artık MP4 ve HLS yanında MPEG-DASH (.mpd) yayınlarını da destekler.
 Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hızını değiştirebilirsin.
 Dizi bölümlerinde izleme ilerlemesi görünür; son kaldığın tamamlanmamış bölüme tek seçimle dönebilirsin.
