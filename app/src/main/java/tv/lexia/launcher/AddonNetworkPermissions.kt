@@ -11,6 +11,36 @@ import java.util.Locale
  */
 object AddonNetworkPermissions {
     private const val PREFS = "lexia_addon_network_permissions"
+    private const val SESSION_TOKEN = "active_provider_session_token"
+    private const val SESSION_REPOSITORY = "active_provider_session_repository"
+    private const val SESSION_PROVIDER = "active_provider_session_id"
+    private const val SESSION_EXPIRY = "active_provider_session_expiry"
+
+    fun registerSession(context: Context, repository: String, providerId: String, token: String) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(SESSION_TOKEN, token)
+            .putString(SESSION_REPOSITORY, repository)
+            .putString(SESSION_PROVIDER, providerId)
+            .putLong(SESSION_EXPIRY, System.currentTimeMillis() + 3 * 60 * 1000L)
+            .commit()) { "Sağlayıcı oturumu başlatılamadı." }
+    }
+
+    fun isSessionAllowed(context: Context, repository: String, providerId: String, token: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return token.isNotBlank() &&
+            prefs.getString(SESSION_TOKEN, null) == token &&
+            prefs.getString(SESSION_REPOSITORY, null) == repository &&
+            prefs.getString(SESSION_PROVIDER, null) == providerId &&
+            prefs.getLong(SESSION_EXPIRY, 0L) > System.currentTimeMillis()
+    }
+
+    fun clearSession(context: Context, token: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(SESSION_TOKEN, null) == token) {
+            prefs.edit().remove(SESSION_TOKEN).remove(SESSION_REPOSITORY)
+                .remove(SESSION_PROVIDER).remove(SESSION_EXPIRY).apply()
+        }
+    }
 
     fun grantedHosts(context: Context, repository: String, providerId: String): Set<String> =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
