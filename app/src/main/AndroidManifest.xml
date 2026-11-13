@@ -190,6 +190,13 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Untrusted addon JavaScript runs under a separate, permissionless UID. -->
+        <service
+            android:name=".AddonSandboxService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":addon_sandbox" />
+
         <activity
             android:name=".AddonPlayerActivity"
             android:exported="false"
