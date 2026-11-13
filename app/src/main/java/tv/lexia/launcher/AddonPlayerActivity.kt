@@ -81,7 +81,33 @@ class AddonPlayerActivity : Activity() {
         super.onStart()
         if (!::playerView.isInitialized) return
 
+        val providerHeaders = runCatching {
+            val json = org.json.JSONObject(intent.getStringExtra(EXTRA_HEADERS).orEmpty())
+            buildMap {
+                val names = json.names() ?: org.json.JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = json.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 &&
+                        !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
+        val subtitleHeaders = runCatching {
+            val json = org.json.JSONObject(intent.getStringExtra(EXTRA_SUBTITLE_HEADERS).orEmpty())
+            buildMap {
+                val names = json.names() ?: org.json.JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = json.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 &&
+                        !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
+        val requestHeaders = providerHeaders + subtitleHeaders
         val httpFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(requestHeaders)
             .setAllowCrossProtocolRedirects(false)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
@@ -175,7 +201,16 @@ class AddonPlayerActivity : Activity() {
         val url = intent.getStringExtra(EXTRA_URL).orEmpty()
         externalSubtitleUri = playbackPrefs.getString(KEY_EXTERNAL_SUBTITLE_URI, null)
             ?.let { runCatching { Uri.parse(it) }.getOrNull() }
-        val initialItem = buildMediaItem(url, externalSubtitleUri)
+        val remoteSubtitle = intent.getStringExtra(EXTRA_SUBTITLE_URL)
+            ?.takeIf { raw -> runCatching {
+                val parsed = Uri.parse(raw)
+                parsed.scheme.equals("https", true) && !parsed.host.isNullOrBlank() && parsed.userInfo.isNullOrBlank()
+            }.getOrDefault(false) }
+            ?.let(Uri::parse)
+        val selectedSubtitle = remoteSubtitle ?: externalSubtitleUri
+        val selectedSubtitleMime = intent.getStringExtra(EXTRA_SUBTITLE_MIME)
+        val selectedSubtitleLanguage = intent.getStringExtra(EXTRA_SUBTITLE_LANGUAGE) ?: "und"
+        val initialItem = buildMediaItem(url, selectedSubtitle, selectedSubtitleMime, selectedSubtitleLanguage)
         current.setMediaItem(initialItem)
         current.prepare()
         current.playWhenReady = true
@@ -224,13 +259,18 @@ class AddonPlayerActivity : Activity() {
         Toast.makeText(this, "Harici altyazı eklendi.", Toast.LENGTH_SHORT).show()
     }
 
-    private fun buildMediaItem(url: String, subtitleUri: Uri?, knownMimeType: String? = null): MediaItem {
+    private fun buildMediaItem(
+        url: String,
+        subtitleUri: Uri?,
+        knownMimeType: String? = null,
+        subtitleLanguage: String = "und"
+    ): MediaItem {
         val builder = MediaItem.Builder().setUri(url)
         val type = subtitleUri?.let { knownMimeType ?: subtitleMimeType(it) }
         if (subtitleUri != null && type != null) {
             val subtitle = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                 .setMimeType(type)
-                .setLanguage("und")
+                .setLanguage(subtitleLanguage)
                 .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
             builder.setSubtitleConfigurations(listOf(subtitle))
@@ -430,8 +470,13 @@ class AddonPlayerActivity : Activity() {
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
         const val EXTRA_URL = "media_url"
+        const val EXTRA_HEADERS = "media_headers"
         const val EXTRA_SERIES_ID = "series_id"
         const val EXTRA_SEASON = "season"
         const val EXTRA_EPISODE = "episode"
+        const val EXTRA_SUBTITLE_URL = "subtitle_url"
+        const val EXTRA_SUBTITLE_MIME = "subtitle_mime"
+        const val EXTRA_SUBTITLE_LANGUAGE = "subtitle_language"
+        const val EXTRA_SUBTITLE_HEADERS = "subtitle_headers"
     }
 }

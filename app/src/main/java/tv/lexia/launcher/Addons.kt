@@ -15,6 +15,23 @@ import java.net.URL
  */
 object Addons {
     data class Catalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
+    data class ScraperCatalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
+    data class ScraperProvider(
+        val id: String,
+        val name: String,
+        val description: String,
+        val filename: String,
+        val version: String,
+        val supportedTypes: List<String>,
+        val formats: List<String>,
+        val enabled: Boolean,
+        val catalogs: List<ScraperCatalog>,
+        val author: String = "",
+        val logo: String = "",
+        val contentLanguage: List<String> = emptyList(),
+        val limited: Boolean = false,
+        val disabledPlatforms: List<String> = emptyList()
+    )
     data class Installed(
         val baseUrl: String,
         val id: String,
@@ -23,7 +40,9 @@ object Addons {
         val description: String,
         val types: List<String>,
         val catalogs: List<Catalog>,
-        val resources: Set<String>
+        val resources: Set<String>,
+        val format: String = "stremio",
+        val scrapers: List<ScraperProvider> = emptyList()
     )
 
     data class EpisodeItem(
@@ -36,6 +55,10 @@ object Addons {
     )
 
     data class MetaDetails(val item: CatalogItem, val episodes: List<EpisodeItem>)
+
+    data class ProviderStream(val name: String, val title: String, val url: String, val quality: String, val format: String, val headers: Map<String, String>)
+    data class ProviderSubtitle(val name: String, val language: String, val url: String, val format: String, val headers: Map<String, String>)
+    data class ProviderResult(val streams: List<ProviderStream>, val subtitles: List<ProviderSubtitle>)
 
     data class CatalogItem(
         val id: String,
@@ -91,6 +114,53 @@ object Addons {
         val typesJson = json.optJSONArray("types") ?: json.optJSONArray("supportedTypes") ?: JSONArray()
         val types = (0 until typesJson.length()).map { typesJson.optString(it) }.filter { it.isNotBlank() }
         val catalogsJson = json.optJSONArray("catalogs") ?: JSONArray()
+        val scrapersJson = json.optJSONArray("scrapers") ?: JSONArray()
+        val scrapers = (0 until scrapersJson.length()).mapNotNull { i ->
+            val item = scrapersJson.optJSONObject(i) ?: return@mapNotNull null
+            val id = item.optString("id")
+            val filename = item.optString("filename")
+            if (id.isBlank() || filename.isBlank()) return@mapNotNull null
+            val supported = item.optJSONArray("supportedTypes") ?: JSONArray()
+            val formats = item.optJSONArray("formats") ?: JSONArray()
+            val providerCatalogsJson = item.optJSONArray("catalogs") ?: JSONArray()
+            val providerCatalogs = (0 until providerCatalogsJson.length()).mapNotNull { catalogIndex ->
+                val catalog = providerCatalogsJson.optJSONObject(catalogIndex) ?: return@mapNotNull null
+                val catalogId = catalog.optString("id")
+                val catalogType = catalog.optString("type").ifBlank { catalog.optString("apiType") }
+                if (catalogId.isBlank() || catalogType.isBlank()) return@mapNotNull null
+                val extraJson = catalog.optJSONArray("extra") ?: JSONArray()
+                val extraNames = (0 until extraJson.length()).mapNotNull { extraIndex ->
+                    extraJson.optJSONObject(extraIndex)?.optString("name")?.takeIf { it.isNotBlank() }
+                }.toSet()
+                ScraperCatalog(
+                    type = catalogType,
+                    id = catalogId,
+                    name = catalog.optString("name").ifBlank { catalogId },
+                    extras = extraNames
+                )
+            }
+            ScraperProvider(
+                id = id,
+                name = item.optString("name").ifBlank { id },
+                description = item.optString("description"),
+                filename = filename,
+                version = item.optString("version"),
+                supportedTypes = (0 until supported.length()).map { supported.optString(it) }.filter { it.isNotBlank() },
+                formats = (0 until formats.length()).map { formats.optString(it) }.filter { it.isNotBlank() },
+                enabled = item.optBoolean("enabled", true),
+                catalogs = providerCatalogs,
+                author = item.optString("author"),
+                logo = item.optString("logo"),
+                contentLanguage = item.optJSONArray("contentLanguage")?.let { values ->
+                    (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+                }.orEmpty(),
+                limited = item.optBoolean("limited", false),
+                disabledPlatforms = item.optJSONArray("disabledPlatforms")?.let { values ->
+                    (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+                }.orEmpty()
+            )
+        }
+        val format = if (json.has("scrapers")) "nuvio-js" else "stremio"
         val catalogs = (0 until catalogsJson.length()).mapNotNull { i ->
             val c = catalogsJson.optJSONObject(i) ?: return@mapNotNull null
             val type = c.optString("type").ifBlank { c.optString("apiType") }
@@ -112,7 +182,9 @@ object Addons {
             description = json.optString("description"),
             types = types,
             catalogs = catalogs,
-            resources = resourceSet
+            resources = resourceSet,
+            format = format,
+            scrapers = scrapers
         )
     }
 
@@ -213,6 +285,99 @@ object Addons {
                 seasons = m.optInt("seasonCount", 0)
             )
         }
+    }
+
+    fun providerSettings(context: Context, repository: String, providerId: String): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(providerSettingsKey(repository, providerId), "{}") ?: "{}"
+
+    fun saveProviderSettings(context: Context, repository: String, providerId: String, rawJson: String): String {
+        require(rawJson.length <= 8 * 1024) { "Sağlayıcı ayarları 8 KB sınırını aşıyor." }
+        val normalized = JSONObject(rawJson).toString()
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(providerSettingsKey(repository, providerId), normalized).commit()) {
+            "Sağlayıcı ayarları kaydedilemedi."
+        }
+        return normalized
+    }
+
+    private fun providerSettingsKey(repository: String, providerId: String): String =
+        "provider_settings:" + repository.trimEnd('/') + ":" + providerId
+
+    /** Download the provider JavaScript entry file from its repository. */
+    fun fetchScraperSource(addon: Installed, provider: ScraperProvider): String {
+        require(addon.format == "nuvio-js") { "Bu depo Nuvio JavaScript deposu değil." }
+        require(provider.enabled) { "Bu sağlayıcı manifestte devre dışı." }
+        val filename = provider.filename.trim()
+        require(filename.length in 1..240 && !filename.startsWith("/") && !filename.contains("..") &&
+            !filename.contains('\\') && filename.matches(Regex("^[A-Za-z0-9_./-]+\\.js$"))) {
+            "Sağlayıcı dosya yolu geçersiz."
+        }
+        val source = getText(addon.baseUrl.trimEnd('/') + "/" + filename)
+        require(source.isNotBlank() && source.length <= 256 * 1024) {
+            "Sağlayıcı JavaScript dosyası boş veya 256 KB sınırını aşıyor."
+        }
+        return source
+    }
+
+    fun parseProviderStreams(json: String): List<ProviderStream> {
+        val array = JSONArray(json)
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val url = item.optString("url")
+            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
+            if (uri == null || !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) return@mapNotNull null
+            val headersJson = item.optJSONObject("headers") ?: JSONObject()
+            val headers = buildMap {
+                val names = headersJson.names() ?: JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = headersJson.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 && !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+            ProviderStream(
+                name = item.optString("name").ifBlank { "Sağlayıcı" },
+                title = item.optString("title").ifBlank { item.optString("name").ifBlank { "Oynat" } },
+                url = url, quality = item.optString("quality"),
+                format = item.optString("format").ifBlank { item.optString("type") },
+                headers = headers
+            )
+        }.take(30)
+    }
+
+    fun parseProviderResult(json: String): ProviderResult {
+        val root = runCatching { JSONObject(json) }.getOrNull()
+            ?: return ProviderResult(parseProviderStreams(json), emptyList())
+        val streams = parseProviderStreams(root.optJSONArray("streams")?.toString() ?: "[]")
+        val subtitlesJson = root.optJSONArray("subtitles") ?: JSONArray()
+        val subtitles = (0 until subtitlesJson.length()).mapNotNull { index ->
+            val item = subtitlesJson.optJSONObject(index) ?: return@mapNotNull null
+            val url = item.optString("url")
+            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
+            if (uri == null || !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrBlank()) return@mapNotNull null
+            val headersJson = item.optJSONObject("headers") ?: JSONObject()
+            val headers = buildMap {
+                val names = headersJson.names() ?: JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = headersJson.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 && !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+            val format = item.optString("format").ifBlank {
+                url.substringBefore('?').substringAfterLast('.', "").lowercase()
+            }
+            if (format !in setOf("srt", "vtt", "webvtt")) return@mapNotNull null
+            ProviderSubtitle(
+                name = item.optString("name").ifBlank { item.optString("label").ifBlank { "Altyazı" } },
+                language = item.optString("language").ifBlank { item.optString("lang") },
+                url = url,
+                format = format,
+                headers = headers
+            )
+        }.take(20)
+        return ProviderResult(streams, subtitles)
     }
 
     private fun normalize(raw: String): String {

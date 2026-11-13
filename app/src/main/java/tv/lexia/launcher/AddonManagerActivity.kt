@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -175,37 +177,325 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             try {
                 val addon = Addons.fetchManifest(address)
-                val results = addon.catalogs.map { catalog ->
-                    catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                }
-                runOnUiThread {
-                    status.text = if (results.isEmpty()) {
-                        addon.name + " · Katalog bulunamadı."
-                    } else {
-                        addon.name + " · " + results.size + " katalog hazır."
-                    }
-                    if (results.isNotEmpty()) {
-                        val labels = results.map { (catalog, items) ->
-                            catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                if (addon.format == "nuvio-js") {
+                    runOnUiThread {
+                        status.text = addon.name + " · Nuvio deposu tanındı · " +
+                            addon.scrapers.size + " sağlayıcı"
+                        val labels = addon.scrapers.map { provider ->
+                            provider.name + " · " +
+                                (if (provider.supportedTypes.isEmpty()) "Tür belirtilmemiş"
+                                else provider.supportedTypes.joinToString(", ")) +
+                                " · " + provider.catalogs.size + " katalog" +
+                                (if (provider.enabled) "" else " · devre dışı")
                         }.toTypedArray()
                         AlertDialog.Builder(this)
-                            .setTitle(addon.name + " · Kataloglar")
+                            .setTitle(addon.name + " · Sağlayıcılar")
+                            .setMessage(
+                                "Sağlayıcılar izole JavaScript ortamında çalıştırılabilir. " +
+                                    "Ağ erişimi varsayılan olarak kapalıdır; sağlayıcı için gereken " +
+                                    "HTTPS alan adlarını Ağ izinleri bölümünden tek tek onayla. " +
+                                    "Yalnızca kullanım hakkına sahip olduğun doğrudan medya adreslerini oynat."
+                            )
                             .setItems(labels) { _, index ->
-                                val (catalog, items) = results[index]
-                                if (items.isNullOrEmpty()) {
-                                    Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    showCatalogItems(addon, catalog, items)
-                                }
+                                val provider = addon.scrapers[index]
+                                AlertDialog.Builder(this)
+                                    .setTitle(provider.name)
+                                    .setMessage(
+                                        provider.description.ifBlank { "Açıklama yok." } + "\\n\\n" +
+                                            "Sürüm: " + provider.version + "\\n" +
+                                            "Dosya: " + provider.filename + "\\n" +
+                                            "Formatlar: " + provider.formats.joinToString(", ") + "\n" +
+                                            "Kataloglar: " + provider.catalogs.joinToString("\n") { catalog ->
+                                                catalog.name + " (" + catalog.type + ")" +
+                                                    if (catalog.extras.isEmpty()) "" else " · " + catalog.extras.joinToString(", ")
+                                            }
+                                    )
+                                    .setPositiveButton("Kaynakları ara") { _, _ -> promptProviderTest(address, addon, provider) }
+                                    .setNeutralButton("Ağ izinleri") {
+                                        _, _ -> manageProviderNetworkPermissions(address, provider.id)
+                                    }
+                                    .setNegativeButton("Ayarlar") { _, _ ->
+                                        manageProviderSettings(address, provider.id)
+                                    }
+                                    .show()
                             }
                             .setNegativeButton("Kapat", null)
                             .show()
+                    }
+                } else {
+                    val results = addon.catalogs.map { catalog ->
+                        catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
+                    }
+                    runOnUiThread {
+                        status.text = if (results.isEmpty()) {
+                            addon.name + " · Katalog bulunamadı."
+                        } else {
+                            addon.name + " · " + results.size + " katalog hazır."
+                        }
+                        if (results.isNotEmpty()) {
+                            val labels = results.map { (catalog, items) ->
+                                catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                            }.toTypedArray()
+                            AlertDialog.Builder(this)
+                                .setTitle(addon.name + " · Kataloglar")
+                                .setItems(labels) { _, index ->
+                                    val (catalog, items) = results[index]
+                                    if (items.isNullOrEmpty()) {
+                                        Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        showCatalogItems(addon, catalog, items)
+                                    }
+                                }
+                                .setNegativeButton("Kapat", null)
+                                .show()
+                        }
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread { status.text = e.message ?: "Eklenti okunamadı." }
             }
         }
+    }
+
+
+    private fun promptProviderTest(repository: String, addon: Addons.Installed, provider: Addons.ScraperProvider) {
+        val idInput = EditText(this).apply {
+            hint = "TMDB ID (ör. 550)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val seasonInput = EditText(this).apply {
+            hint = "Sezon (ör. 1)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val episodeInput = EditText(this).apply {
+            hint = "Bölüm (ör. 1)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val mediaGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val movie = RadioButton(this).apply { text = "Film"; setTextColor(-1); id = android.view.View.generateViewId() }
+        val tv = RadioButton(this).apply { text = "Dizi"; setTextColor(-1); id = android.view.View.generateViewId() }
+        val supportsMovie = provider.supportedTypes.isEmpty() || "movie" in provider.supportedTypes
+        val supportsTv = provider.supportedTypes.isEmpty() || "tv" in provider.supportedTypes
+        if (supportsMovie) mediaGroup.addView(movie)
+        if (supportsTv) mediaGroup.addView(tv)
+        val defaultTv = !supportsMovie && supportsTv
+        mediaGroup.check(if (defaultTv) tv.id else movie.id)
+        val episodeFields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(seasonInput)
+            addView(episodeInput)
+            visibility = if (defaultTv) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        mediaGroup.setOnCheckedChangeListener { _, checkedId ->
+            episodeFields.visibility = if (checkedId == tv.id) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(mediaGroup)
+            addView(idInput)
+            addView(episodeFields)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(provider.name + " · İçerik ara")
+            .setMessage("TMDB numarasını gir. Dizi için sezon ve bölüm bilgisi de gereklidir.")
+            .setView(content)
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Kaynakları bul") { _, _ ->
+                val tmdbId = idInput.text.toString().trim()
+                if (!tmdbId.matches(Regex("^[0-9]{1,12}$"))) {
+                    Toast.makeText(this, "Geçerli bir TMDB numarası gir.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                val isTv = mediaGroup.checkedRadioButtonId == tv.id
+                val season = if (isTv) seasonInput.text.toString().toIntOrNull() else null
+                val episode = if (isTv) episodeInput.text.toString().toIntOrNull() else null
+                if (isTv && (season == null || season < 0 || episode == null || episode < 1)) {
+                    Toast.makeText(this, "Geçerli sezon ve bölüm numarası gir.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                runProvider(repository, addon, provider, tmdbId, if (isTv) "tv" else "movie", season, episode)
+            }
+            .show()
+    }
+
+    private fun runProvider(
+        repository: String,
+        addon: Addons.Installed,
+        provider: Addons.ScraperProvider,
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ) {
+        status.text = provider.name + " çalıştırılıyor…"
+        worker.execute {
+            val source = runCatching { Addons.fetchScraperSource(addon, provider) }
+            if (source.isFailure) {
+                runOnUiThread { status.text = source.exceptionOrNull()?.message ?: "Sağlayıcı dosyası alınamadı." }
+                return@execute
+            }
+            val args = org.json.JSONObject()
+                .put("tmdbId", tmdbId)
+                .put("mediaType", mediaType)
+                .put("season", season ?: org.json.JSONObject.NULL)
+                .put("episode", episode ?: org.json.JSONObject.NULL)
+                .toString()
+            runOnUiThread {
+                status.text = provider.name + " kaynakları taranıyor…"
+                val settingsJson = Addons.providerSettings(this, repository, provider.id)
+                AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args, settingsJson) { result ->
+                    if (!result.success) {
+                        status.text = "Sağlayıcı hatası: " + result.value
+                        Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                        return@evaluate
+                    }
+                    val providerResult = runCatching { Addons.parseProviderResult(result.value) }.getOrElse {
+                        status.text = "Sağlayıcı yanıtı okunamadı: " + (it.message ?: "")
+                        return@evaluate
+                    }
+                    val streams = providerResult.streams
+                    status.text = provider.name + " · " + streams.size + " kaynak · " +
+                        providerResult.subtitles.size + " altyazı bulundu."
+                    if (streams.isEmpty()) {
+                        Toast.makeText(this, "Kaynak bulunamadı. Alan adı izinlerini kontrol et.", Toast.LENGTH_LONG).show()
+                        return@evaluate
+                    }
+                    val labels = streams.map { stream ->
+                        stream.title + if (stream.quality.isNotBlank()) " · " + stream.quality else ""
+                    }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle(provider.name + " · Oynatma kaynakları")
+                        .setItems(labels) { _, index ->
+                            val stream = streams[index]
+                            val subtitles = providerResult.subtitles
+                            if (subtitles.isEmpty()) {
+                                launchProviderStream(addon, tmdbId, season, episode, stream, null)
+                            } else {
+                                val subtitleLabels = (listOf("Altyazısız") + subtitles.map { subtitle ->
+                                    subtitle.name + if (subtitle.language.isNotBlank()) " · " + subtitle.language else ""
+                                }).toTypedArray()
+                                AlertDialog.Builder(this)
+                                    .setTitle("Altyazı seç")
+                                    .setItems(subtitleLabels) { _, selected ->
+                                        launchProviderStream(addon, tmdbId, season, episode, stream,
+                                            if (selected == 0) null else subtitles[selected - 1])
+                                    }
+                                    .setNegativeButton("Kapat", null)
+                                    .show()
+                            }
+                        }
+                        .setNegativeButton("Kapat", null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    private fun launchProviderStream(
+        addon: Addons.Installed,
+        tmdbId: String,
+        season: Int?,
+        episode: Int?,
+        stream: Addons.ProviderStream,
+        subtitle: Addons.ProviderSubtitle?
+    ) {
+        startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+            putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
+            putExtra(AddonPlayerActivity.EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
+            putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
+            putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
+            putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
+            if (subtitle != null) {
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_URL, subtitle.url)
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_MIME, when (subtitle.format) {
+                    "srt" -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+                    else -> androidx.media3.common.MimeTypes.TEXT_VTT
+                })
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_LANGUAGE, subtitle.language.ifBlank { "und" })
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_HEADERS, org.json.JSONObject(subtitle.headers).toString())
+            }
+        })
+    }
+
+    private fun manageProviderSettings(repository: String, providerId: String) {
+        val input = EditText(this).apply {
+            setText(Addons.providerSettings(this@AddonManagerActivity, repository, providerId))
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+            hint = "{ \"apiKey\": \"...\", \"language\": \"tr\" }"
+            minLines = 6
+            maxLines = 12
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        AlertDialog.Builder(this)
+            .setTitle(providerId + " · Sağlayıcı ayarları")
+            .setMessage("JSON nesnesi olarak kaydedilir ve JavaScript içinde SCRAPER_SETTINGS değişkeninden okunur.")
+            .setView(input)
+            .setPositiveButton("Kaydet") { _, _ ->
+                try {
+                    Addons.saveProviderSettings(this, repository, providerId, input.text.toString())
+                    Toast.makeText(this, "Sağlayıcı ayarları kaydedildi.", Toast.LENGTH_LONG).show()
+                } catch (error: Exception) {
+                    Toast.makeText(this, error.message ?: "JSON ayarları geçersiz.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("Varsayılana dön") { _, _ ->
+                Addons.saveProviderSettings(this, repository, providerId, "{}")
+                Toast.makeText(this, "Sağlayıcı ayarları sıfırlandı.", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
+    }
+
+    private fun manageProviderNetworkPermissions(repository: String, providerId: String) {
+        val current = AddonNetworkPermissions.grantedHosts(this, repository, providerId)
+        val input = EditText(this).apply {
+            hint = "api.example.com"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        val message = buildString {
+            append("Sağlayıcı: ").append(providerId).append("\n")
+            append("İzinli HTTPS alan adları: ")
+            append(if (current.isEmpty()) "Henüz yok" else current.sorted().joinToString(", "))
+            append("\n\nYalnızca tam alan adı eklenir. Joker karakter, IP ve HTTP kabul edilmez.")
+            append("\nİzin verilen alan adlarına yalnızca bu sağlayıcı, HTTPS üzerinden erişebilir.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Sağlayıcı ağ izinleri")
+            .setMessage(message)
+            .setView(input)
+            .setPositiveButton("Alan adı ekle") { _, _ ->
+                try {
+                    AddonNetworkPermissions.grant(this, repository, providerId, input.text.toString())
+                    Toast.makeText(this, "Alan adı izin listesine eklendi.", Toast.LENGTH_LONG).show()
+                    manageProviderNetworkPermissions(repository, providerId)
+                } catch (e: Exception) {
+                    Toast.makeText(this, e.message ?: "Alan adı eklenemedi.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("İzinleri temizle") { _, _ ->
+                current.forEach { host ->
+                    AddonNetworkPermissions.revoke(this, repository, providerId, host)
+                }
+                Toast.makeText(this, "Sağlayıcı ağ izinleri temizlendi.", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Kapat", null)
+            .show()
     }
 
     private fun showCatalogItems(
