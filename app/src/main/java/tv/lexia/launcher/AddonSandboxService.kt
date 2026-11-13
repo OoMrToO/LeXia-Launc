@@ -220,9 +220,53 @@ class AddonSandboxService : Service() {
             text:async function(){return data.body||"";},json:async function(){return JSON.parse(data.body||"null");},
             arrayBuffer:async function(){var s=atob(data.bodyBase64||""),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a.buffer;}};
         };
-        var module = {exports:{}};
-        var exports = module.exports;
-        (function(){ ${source} })();
+    """.trimIndent() + "\n" + cheerioPolyfill() +
+        "\nvar module = {exports:{}}; var exports = module.exports; (function(){\n" + source + "\n})();"
+
+    private fun cheerioPolyfill(): String = """
+        function createCheerioWrapper(docId, ids) {
+            var wrapper = {_docId:docId, _elementIds:ids, length:ids.length};
+            ids.forEach(function(id, index) { wrapper[index] = createCheerioWrapperFromIds(docId, [id]); });
+            wrapper.each = function(fn) { ids.forEach(function(id, i) { var item=createCheerioWrapperFromIds(docId,[id]); fn.call(item,i,item); }); return wrapper; };
+            wrapper.find = function(selector) { var found=[]; ids.forEach(function(id) { found=found.concat(JSON.parse(__cheerio_find(docId,id,selector))); }); return createCheerioWrapper(docId,found); };
+            wrapper.text = function() { return ids.length ? __cheerio_text(docId,ids.join(",")) : ""; };
+            wrapper.html = function() { return ids.length ? __cheerio_inner_html(docId,ids[0]) : ""; };
+            wrapper.attr = function(name) { if(!ids.length)return undefined; var v=__cheerio_attr(docId,ids[0],name); return v==="__UNDEFINED__"?undefined:v; };
+            wrapper.first = function() { return createCheerioWrapper(docId,ids.length?[ids[0]]:[]); };
+            wrapper.last = function() { return createCheerioWrapper(docId,ids.length?[ids[ids.length-1]]:[]); };
+            wrapper.eq = function(i) { return createCheerioWrapper(docId,i>=0&&i<ids.length?[ids[i]]:[]); };
+            wrapper.get = function(i) { return typeof i==="number"?(i>=0&&i<ids.length?createCheerioWrapper(docId,[ids[i]]):undefined):ids.map(function(id){return createCheerioWrapper(docId,[id]);}); };
+            wrapper.toArray = function() { return wrapper.get(); };
+            wrapper.map = function(fn) { var out=[]; ids.forEach(function(id,i){var item=createCheerioWrapper(docId,[id]);var v=fn.call(item,i,item);if(v!==undefined&&v!==null)out.push(v);});return {length:out.length,get:function(i){return typeof i==="number"?out[i]:out;},toArray:function(){return out;}}; };
+            wrapper.filter = function(test) { if(typeof test!=="function")return wrapper;var out=[];ids.forEach(function(id,i){var item=createCheerioWrapper(docId,[id]);if(test.call(item,i,item))out.push(id);});return createCheerioWrapper(docId,out); };
+            wrapper.next = function() { var out=[];ids.forEach(function(id){var n=__cheerio_next(docId,id);if(n!=="__NONE__")out.push(n);});return createCheerioWrapper(docId,out); };
+            wrapper.prev = function() { var out=[];ids.forEach(function(id){var n=__cheerio_prev(docId,id);if(n!=="__NONE__")out.push(n);});return createCheerioWrapper(docId,out); };
+            wrapper.children = function(selector) { return wrapper.find(selector||"*"); };
+            wrapper.parent = function() { return createCheerioWrapper(docId,[]); };
+            return wrapper;
+        }
+        function createCheerioWrapperFromIds(docId, ids) { return createCheerioWrapper(docId,ids); }
+        var cheerio = {
+            load:function(html) {
+                var docId=__cheerio_load(String(html||""));
+                var $=function(selector,context) {
+                    if(selector&&selector._elementIds)return selector;
+                    if(context&&context._elementIds) {
+                        var found=[];
+                        context._elementIds.forEach(function(id){found=found.concat(JSON.parse(__cheerio_find(docId,id,selector)));});
+                        return createCheerioWrapper(docId,found);
+                    }
+                    return createCheerioWrapper(docId,typeof selector==="string"?JSON.parse(__cheerio_select(docId,selector)):[]);
+                };
+                $.html=function(item){return __cheerio_html(docId,item&&item._elementIds&&item._elementIds.length?item._elementIds[0]:"");};
+                return $;
+            }
+        };
+        globalThis.cheerio=cheerio;
+        globalThis.require=function(name) {
+            if(name==="cheerio"||name==="cheerio-without-node-native"||name==="react-native-cheerio")return cheerio;
+            throw new Error("Module '"+name+"' is not available in the isolated provider runtime");
+        };
     """.trimIndent()
 
     private fun providerCallScript(): String = """
