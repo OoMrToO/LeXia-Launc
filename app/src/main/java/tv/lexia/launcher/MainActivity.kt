@@ -3558,8 +3558,10 @@ class MainActivity : Activity() {
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
-            val canSearchProviders = prefs.addonMatchMode != "off" &&
-                Addons.urls(this).isNotEmpty() && p.id > 0
+            // Only show the action when this exact title has a catalogue match.
+            // Cinema titles remain labelled as theatrical releases, not addon-playable.
+            val canSearchProviders = addonMatch != null && !inCinema &&
+                prefs.addonMatchMode != "off" && p.id > 0
             watchBtn.visibility = if (canSearchProviders) View.VISIBLE else View.GONE
             whereView.setOnClickListener {
                 addonMatch?.let {
