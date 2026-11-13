@@ -690,7 +690,7 @@ class AddonPlayerActivity : Activity() {
         val duration = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: durationMs
         if (position > 0) {
             durationMs = duration
-            WatchProgress.save(this, seriesId, season, episode, position, duration, contentTitle, mediaType)
+            WatchProgress.save(this, seriesId, season, episode, position, duration, contentTitle, mediaType, intent.getIntExtra(EXTRA_TMDB_ID, 0))
         }
     }
 
