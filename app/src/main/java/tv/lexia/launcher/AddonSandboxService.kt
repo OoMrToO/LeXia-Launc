@@ -271,20 +271,29 @@ class AddonSandboxService : Service() {
 
     private fun providerCallScript(): String = """
         (async function() {
+            var args = JSON.parse(__get_call_args());
+            var api = module.exports || {};
+            var streams = [];
+            var subtitles = [];
+            var getStreams = api.getStreams || globalThis.getStreams;
+            var getSubtitles = api.getSubtitles || globalThis.getSubtitles;
             try {
-                var api = module.exports || {};
-                var getStreams = api.getStreams || globalThis.getStreams;
-                if (typeof getStreams !== "function") {
-                    __capture_result("[]");
-                    return;
+                if (typeof getStreams === "function") {
+                    var found = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
+                    if (Array.isArray(found)) streams = found;
                 }
-                var args = JSON.parse(__get_call_args());
-                var streams = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
-                __capture_result(JSON.stringify(Array.isArray(streams) ? streams : []));
             } catch (error) {
-                console.error("Nuvio provider failed:", error && error.message ? error.message : error);
-                __capture_result("[]");
+                console.error("Nuvio getStreams failed:", error && error.message ? error.message : error);
             }
+            try {
+                if (typeof getSubtitles === "function") {
+                    var foundSubtitles = await getSubtitles(args.tmdbId, args.mediaType, args.season, args.episode);
+                    if (Array.isArray(foundSubtitles)) subtitles = foundSubtitles;
+                }
+            } catch (error) {
+                console.error("Nuvio getSubtitles failed:", error && error.message ? error.message : error);
+            }
+            __capture_result(JSON.stringify({streams:streams, subtitles:subtitles}));
         })();
     """.trimIndent()
 
