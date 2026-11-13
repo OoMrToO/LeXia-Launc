@@ -355,11 +355,13 @@ class AddonManagerActivity : Activity() {
                         Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                         return@evaluate
                     }
-                    val streams = runCatching { Addons.parseProviderStreams(result.value) }.getOrElse {
+                    val providerResult = runCatching { Addons.parseProviderResult(result.value) }.getOrElse {
                         status.text = "Sağlayıcı yanıtı okunamadı: " + (it.message ?: "")
                         return@evaluate
                     }
-                    status.text = provider.name + " · " + streams.size + " kaynak bulundu."
+                    val streams = providerResult.streams
+                    status.text = provider.name + " · " + streams.size + " kaynak · " +
+                        providerResult.subtitles.size + " altyazı bulundu."
                     if (streams.isEmpty()) {
                         Toast.makeText(this, "Kaynak bulunamadı. Alan adı izinlerini kontrol et.", Toast.LENGTH_LONG).show()
                         return@evaluate
@@ -371,19 +373,54 @@ class AddonManagerActivity : Activity() {
                         .setTitle(provider.name + " · Oynatma kaynakları")
                         .setItems(labels) { _, index ->
                             val stream = streams[index]
-                            startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
-                                putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
-                                putExtra(AddonPlayerActivity.EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
-                                putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
-                                putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
-                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
-                            })
+                            val subtitles = providerResult.subtitles
+                            if (subtitles.isEmpty()) {
+                                launchProviderStream(addon, tmdbId, season, episode, stream, null)
+                            } else {
+                                val subtitleLabels = (listOf("Altyazısız") + subtitles.map { subtitle ->
+                                    subtitle.name + if (subtitle.language.isNotBlank()) " · " + subtitle.language else ""
+                                }).toTypedArray()
+                                AlertDialog.Builder(this)
+                                    .setTitle("Altyazı seç")
+                                    .setItems(subtitleLabels) { _, selected ->
+                                        launchProviderStream(addon, tmdbId, season, episode, stream,
+                                            if (selected == 0) null else subtitles[selected - 1])
+                                    }
+                                    .setNegativeButton("Kapat", null)
+                                    .show()
+                            }
                         }
                         .setNegativeButton("Kapat", null)
                         .show()
                 }
             }
         }
+    }
+
+    private fun launchProviderStream(
+        addon: Addons.Installed,
+        tmdbId: String,
+        season: Int?,
+        episode: Int?,
+        stream: Addons.ProviderStream,
+        subtitle: Addons.ProviderSubtitle?
+    ) {
+        startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+            putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
+            putExtra(AddonPlayerActivity.EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
+            putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
+            putExtra(AddonPlayerActivity.EXTRA_SEASON, season ?: 0)
+            putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode ?: 1)
+            if (subtitle != null) {
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_URL, subtitle.url)
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_MIME, when (subtitle.format) {
+                    "srt" -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+                    else -> androidx.media3.common.MimeTypes.TEXT_VTT
+                })
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_LANGUAGE, subtitle.language.ifBlank { "und" })
+                putExtra(AddonPlayerActivity.EXTRA_SUBTITLE_HEADERS, org.json.JSONObject(subtitle.headers).toString())
+            }
+        })
     }
 
     private fun manageProviderNetworkPermissions(repository: String, providerId: String) {
