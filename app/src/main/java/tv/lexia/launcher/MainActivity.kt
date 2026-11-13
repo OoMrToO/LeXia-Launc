@@ -752,7 +752,9 @@ class MainActivity : Activity() {
         watchBtn.setOnClickListener {
             picks.getOrNull(pickIndex)?.let { film ->
                 AddonMatcher.find(this, film)?.let { match ->
-                    AddonManagerActivity.openMatch(this, match.repository, match.itemType, match.itemId, film.id)
+                    AddonManagerActivity.openAutoSearch(
+                    this, film.title, film.id, if (film.isSeries) "tv" else "movie"
+                )
                 }
             }
         }
@@ -3556,7 +3558,9 @@ class MainActivity : Activity() {
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
-            watchBtn.visibility = if (addonMatch != null) View.VISIBLE else View.GONE
+            val canSearchProviders = prefs.addonMatchMode != "off" &&
+                Addons.urls(this).isNotEmpty() && p.id > 0
+            watchBtn.visibility = if (canSearchProviders) View.VISIBLE else View.GONE
             whereView.setOnClickListener {
                 addonMatch?.let {
                     AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId, p.id)
