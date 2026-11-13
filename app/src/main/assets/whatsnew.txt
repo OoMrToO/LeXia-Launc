@@ -2,6 +2,8 @@
 Ana ekrandaki film ve diziler, eklenti manifestinin desteklediği arama özelliğiyle daha hızlı eşleştirilir; desteklemeyen kataloglarda güvenli metadata taraması sürer.
 Oynatıcı artık MP4 ve HLS yanında MPEG-DASH (.mpd) yayınlarını da destekler.
 Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hızını değiştirebilirsin.
+Eklenti oynatıcısında Otomatik, 480p, 720p, 1080p ve 4K görüntü kalitesi sınırı seçilebilir.
+Seçilen yayın sağlayıcısı içerik bazında hatırlanır; sonraki açılışta kullanılabilir veya değiştirilebilir.
 Dizi bölümlerinde izleme ilerlemesi görünür; son kaldığın tamamlanmamış bölüme tek seçimle dönebilirsin.
 Oynatıcı kaldığın saniyeden devam eder ve ilerlemeyi düzenli olarak kaydeder.
 Oynatıcı, TV kumandasının medya tuşlarıyla kontrol edilebilir; geçici ağ kopmalarında üç kez otomatik yeniden dener.
