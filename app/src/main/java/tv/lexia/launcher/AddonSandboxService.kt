@@ -51,6 +51,7 @@ class AddonSandboxService : Service() {
         val repository = data.getString(KEY_REPOSITORY).orEmpty()
         val providerId = data.getString(KEY_PROVIDER_ID).orEmpty()
         val callArgs = data.getString(KEY_CALL_ARGS).orEmpty()
+        val sessionToken = data.getString(KEY_SESSION_TOKEN).orEmpty()
         if (source.isBlank() || source.length > MAX_SOURCE_CHARS) {
             sendReply(reply, requestId, false, "JavaScript source is empty or exceeds the size limit.")
             return true
@@ -70,6 +71,7 @@ class AddonSandboxService : Service() {
                                 .put("bodyKind", args.getOrNull(3)?.toString() ?: "none")
                                 .put("body", args.getOrNull(4)?.toString().orEmpty())
                                 .put("followRedirects", args.getOrNull(5)?.toString()?.toBooleanStrictOrNull() ?: true)
+                                .put("sessionToken", sessionToken)
                             checkNotNull(networkBroker).fetch(repository, providerId, request.toString())
                         }
                         function("__parse_url") { args ->
@@ -159,6 +161,7 @@ class AddonSandboxService : Service() {
         const val KEY_REPOSITORY = "repository"
         const val KEY_PROVIDER_ID = "provider_id"
         const val KEY_CALL_ARGS = "call_args"
+        const val KEY_SESSION_TOKEN = "session_token"
         const val KEY_SUCCESS = "success"
         const val KEY_VALUE = "value"
         private const val MAX_SOURCE_CHARS = 256 * 1024
