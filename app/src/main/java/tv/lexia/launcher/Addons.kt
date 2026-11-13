@@ -15,6 +15,7 @@ import java.net.URL
  */
 object Addons {
     data class Catalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
+    data class ScraperCatalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
     data class ScraperProvider(
         val id: String,
         val name: String,
@@ -23,7 +24,8 @@ object Addons {
         val version: String,
         val supportedTypes: List<String>,
         val formats: List<String>,
-        val enabled: Boolean
+        val enabled: Boolean,
+        val catalogs: List<ScraperCatalog>
     )
     data class Installed(
         val baseUrl: String,
@@ -111,6 +113,23 @@ object Addons {
             if (id.isBlank() || filename.isBlank()) return@mapNotNull null
             val supported = item.optJSONArray("supportedTypes") ?: JSONArray()
             val formats = item.optJSONArray("formats") ?: JSONArray()
+            val providerCatalogsJson = item.optJSONArray("catalogs") ?: JSONArray()
+            val providerCatalogs = (0 until providerCatalogsJson.length()).mapNotNull { catalogIndex ->
+                val catalog = providerCatalogsJson.optJSONObject(catalogIndex) ?: return@mapNotNull null
+                val catalogId = catalog.optString("id")
+                val catalogType = catalog.optString("type").ifBlank { catalog.optString("apiType") }
+                if (catalogId.isBlank() || catalogType.isBlank()) return@mapNotNull null
+                val extraJson = catalog.optJSONArray("extra") ?: JSONArray()
+                val extraNames = (0 until extraJson.length()).mapNotNull { extraIndex ->
+                    extraJson.optJSONObject(extraIndex)?.optString("name")?.takeIf { it.isNotBlank() }
+                }.toSet()
+                ScraperCatalog(
+                    type = catalogType,
+                    id = catalogId,
+                    name = catalog.optString("name").ifBlank { catalogId },
+                    extras = extraNames
+                )
+            }
             ScraperProvider(
                 id = id,
                 name = item.optString("name").ifBlank { id },
@@ -119,7 +138,8 @@ object Addons {
                 version = item.optString("version"),
                 supportedTypes = (0 until supported.length()).map { supported.optString(it) }.filter { it.isNotBlank() },
                 formats = (0 until formats.length()).map { formats.optString(it) }.filter { it.isNotBlank() },
-                enabled = item.optBoolean("enabled", true)
+                enabled = item.optBoolean("enabled", true),
+                catalogs = providerCatalogs
             )
         }
         val format = if (scrapers.isNotEmpty()) "nuvio-js" else "stremio"
