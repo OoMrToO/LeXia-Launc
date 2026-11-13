@@ -13,16 +13,32 @@ object Net {
     /** The first LeXia's site: Listem's backups are still kept there, so a code from the old app works. */
     const val OLD_SITE = "https://lexialauncher.pages.dev"
 
-    /** Kept as a list so a second address can be added later without touching the callers. */
-    fun hosts(): List<String> = listOf(SITE)
+    /**
+     * A copy of the same files on GitHub (a separate account, own branch), for TVs that cannot open
+     * pages.dev: some TVs do not trust its certificate, some networks block it.
+     */
+    const val MIRROR = "https://raw.githubusercontent.com/exxsss/Lxialnch/tv"
 
-    /** Nothing to remember with a single host. */
-    fun answered(host: String, ok: Boolean) {}
+    /** When the site last failed to answer. For half an hour after, the copy is asked first, so a TV
+     *  that cannot open the site does not wait for it on every check. */
+    @Volatile private var siteFailedAt = 0L
+    private const val SITE_RETRY_MS = 30 * 60 * 1000L
 
-    /** A small file ("/pick.json?t=1") from the site. */
+    /** The site and the copy, the one more likely to answer first. */
+    fun hosts(): List<String> =
+        if (siteFailedAt != 0L && System.currentTimeMillis() - siteFailedAt in 0 until SITE_RETRY_MS) listOf(MIRROR, SITE)
+        else listOf(SITE, MIRROR)
+
+    /** Remembers whether a host answered (only the site's failures change the order). */
+    fun answered(host: String, ok: Boolean) {
+        if (host == SITE) siteFailedAt = if (ok) 0L else System.currentTimeMillis()
+    }
+
+    /** A small file ("/pick.json?t=1") from the site, or from the copy when the site does not answer. */
     fun fromHosts(path: String): String? {
         for (h in hosts()) {
             val body = get(h + path)
+            answered(h, body != null)
             if (body != null) return body
         }
         return null

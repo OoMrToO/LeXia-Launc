@@ -20,6 +20,8 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       PROJECT: lexia-tv
       WRANGLER: wrangler@3.99.0
+      DIST_TOKEN: ${{ secrets.DIST_TOKEN }}
+      DIST_REPO: exxsss/Lxialnch
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +59,26 @@ jobs:
         run: |
           npx -y $WRANGLER pages project create $PROJECT --production-branch main 2>/dev/null || true
           npx -y $WRANGLER pages deploy out --project-name $PROJECT --branch main --commit-dirty=true
+      # The same files on GitHub, for TVs that cannot open pages.dev. A separate account's public
+      # repository, on its own branch "tv" (its "main" belongs to the first LeXia): one commit, replaced
+      # each time. Skipped while the DIST_TOKEN secret is missing.
+      - name: Copy for TVs that cannot open pages.dev
+        if: env.DIST_TOKEN != ''
+        run: |
+          set -e
+          M=$(mktemp -d)
+          mkdir -p $M/apk
+          for f in pick.json version.txt test.txt kur.apk apk/app.apk apk/test.apk; do
+            if [ -f out/$f ]; then cp out/$f $M/$f; fi
+          done
+          cd $M
+          git init -q -b tv
+          git add -A
+          git -c user.name="LeXia" -c user.email="lexia@users.noreply.github.com" commit -q -m "$(cat version.txt 2>/dev/null || echo files)"
+          git push -q --force "https://x-access-token:${DIST_TOKEN}@github.com/${DIST_REPO}.git" tv
+          echo "Kopya güncellendi: $(cat version.txt 2>/dev/null)"
+          sleep 5
+          curl -sS -o /dev/null -w "kopya version.txt %{http_code}\n" "https://raw.githubusercontent.com/${DIST_REPO}/tv/version.txt" || true
       # Checks from outside that a TV can get the files (address, status, size).
       - name: Check
         run: |
