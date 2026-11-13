@@ -214,7 +214,7 @@ class AddonSandboxService : Service() {
             o+=c[a>>2]+c[((a&3)<<4)|(b>>4)]+(hb?c[((b&15)<<2)|(d>>6)]:"=")+(hc?c[d&63]:"=");}
           return o;
         };
-        function URLSearchParams(s){this.p=[];var self=this;if(typeof s==="string")s.replace(/^\?/,"").split("&").forEach(function(x){if(x){var a=x.split("=");self.append(decodeURIComponent(a[0]),decodeURIComponent(a.slice(1).join("=")));}});}
+        function URLSearchParams(s){this.p=[];var self=this;if(typeof s==="string")s.replace(/^\?/,"").split("&").forEach(function(x){if(x){var a=x.split("=");self.append(decodeURIComponent(a[0]),decodeURIComponent(a.slice(1).join("=")));}});else if(s&&typeof s==="object")Object.keys(s).forEach(function(k){self.append(k,s[k]);});}
         URLSearchParams.prototype.append=function(k,v){this.p.push([String(k),String(v)]);};
         URLSearchParams.prototype.get=function(k){var x=this.p.find(function(p){return p[0]===String(k);});return x?x[1]:null;};
         URLSearchParams.prototype.getAll=function(k){return this.p.filter(function(p){return p[0]===String(k);}).map(function(p){return p[1];});};
