@@ -224,9 +224,9 @@ object Addons {
         if (urls.isEmpty()) return emptyList()
         val wanted = if (type.equals("tv", true)) setOf("series", "tv") else setOf("movie", "film")
         val results = ArrayList<Triple<Installed, Catalog, CatalogItem>>()
-        for (address in urls.take(12)) {
+        for (address in urls.take(5)) {
             val addon = runCatching { fetchManifest(address) }.getOrNull() ?: continue
-            for (catalog in addon.catalogs.filter { it.type.lowercase() in wanted }.take(20)) {
+            for (catalog in addon.catalogs.filter { it.type.lowercase() in wanted }.take(8)) {
                 val items = runCatching { fetchCatalog(addon, catalog, search = title) }.getOrNull().orEmpty()
                 for (item in items) {
                     if (item.name.isNotBlank() && similarTitle(item.name, title)) {
