@@ -423,6 +423,10 @@ class AddonPlayerActivity : Activity() {
         private const val HTTP_FORBIDDEN = 403
         private const val HTTP_NOT_FOUND = 404
         private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val REQUEST_EXTERNAL_SUBTITLE = 4102
+        private const val KEY_AUDIO_LANGUAGE = "preferred_audio_language"
+        private const val KEY_TEXT_LANGUAGE = "preferred_text_language"
+        private const val KEY_EXTERNAL_SUBTITLE_URI = "external_subtitle_uri"
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
         const val EXTRA_URL = "media_url"
