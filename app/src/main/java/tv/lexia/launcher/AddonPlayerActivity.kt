@@ -72,6 +72,9 @@ class AddonPlayerActivity : Activity() {
             keepScreenOn = true
             isFocusable = true
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setControllerHideOnTouch(true)
+            setShowRewindButton(true)
+            setShowFastForwardButton(true)
         }
         setContentView(playerView)
         playerView.requestFocus()
@@ -392,7 +395,26 @@ class AddonPlayerActivity : Activity() {
                     6 -> showVideoQualityDialog(current)
                 }
             }
-            .show()
+            .create().also { stylePlaybackDialog(it) }.show()
+    }
+
+    private fun stylePlaybackDialog(dialog: AlertDialog) {
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(
+                android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF171B23.toInt())
+                    cornerRadius = resources.displayMetrics.density * 18f
+                    setStroke((resources.displayMetrics.density).toInt().coerceAtLeast(1), 0xFF343C49.toInt())
+                }
+            )
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(0xFFB9A7FF.toInt())
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(0xFFB9A7FF.toInt())
+            dialog.listView?.let { list ->
+                list.setBackgroundColor(0xFF171B23.toInt())
+                list.divider = android.graphics.drawable.ColorDrawable(0xFF303744.toInt())
+                list.dividerHeight = (resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            }
+        }
     }
 
     private fun showVideoQualityDialog(current: ExoPlayer) {
@@ -408,7 +430,7 @@ class AddonPlayerActivity : Activity() {
                 Toast.makeText(this, "Görüntü kalitesi: " + labels[which], Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Kapat", null)
-            .show()
+            .create().also { stylePlaybackDialog(it) }.show()
     }
 
     /** Applies a maximum video size; adaptive streams may use any resolution up to this limit. */
@@ -449,7 +471,7 @@ class AddonPlayerActivity : Activity() {
                 dialog.dismiss()
             }
             .setNegativeButton("Kapat", null)
-            .show()
+            .create().also { stylePlaybackDialog(it) }.show()
     }
 
     private fun saveProgress() {
