@@ -130,8 +130,8 @@ class AddonSandboxService : Service() {
         private const val MAX_SOURCE_CHARS = 256 * 1024
         private const val MAX_REQUEST_CHARS = 300 * 1024
         private const val MAX_RESULT_CHARS = 256 * 1024
-        private const val EXECUTION_TIMEOUT_MS = 60_000L
 
+        private const val EXECUTION_TIMEOUT_MS = 60_000L
         private const val FETCH_POLYFILL = """
             globalThis.global = globalThis;
             globalThis.window = globalThis;
@@ -153,11 +153,8 @@ class AddonSandboxService : Service() {
                 json: async function() { return JSON.parse(data.body || "null"); }
               };
             };
-            if (typeof atob === "undefined") globalThis.atob = function(v) {
-              return globalThis.Buffer ? Buffer.from(v, "base64").toString("binary") : "";
-            };
+            globalThis.console = globalThis.console || { log:function(){}, error:function(){}, warn:function(){} };
         """
-
         private const val COMMON_JS_WRAPPER = """
             const module = { exports: {} };
             const exports = module.exports;
