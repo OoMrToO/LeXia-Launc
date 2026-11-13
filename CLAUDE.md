@@ -17,6 +17,7 @@ Son güncelleme: 12 Kasım 2026 · ilk aktarım (TvLauncher #125 sonrasındaki `
 - **İş akışları:** `build.yml` (main'e push: anahtar → site adresi → iki APK → `latest` sürümü → yayın), `daily-pick.yml` (02:17 UTC film listesi → yayın), `publish.yml` (dosya sitesini kurar).
 - **Depo sırları (4):** `KEYSTORE_PASSWORD` (kullanıcının seçtiği yeni parola), `TMDB_KEY`, `CLOUDFLARE_API_TOKEN` (Pages: Edit; Kasım 2027'de bitiyor), `CLOUDFLARE_ACCOUNT_ID`.
 - **İlk kurulum:** TV'de Downloader ile `<site adresi>/kur.apk`; sihirbaz tam sürüme günceller. Sonraki güncellemeler uygulama içinden.
+- **Dosya deposu kalıyor (13 Kasım, kullanıcı onayı "A kalsın"):** kullanıcı "site" sözünden web sitesi sandı; bunun sayfasız bir dosya deposu olduğu anlatıldı. Kullanıcıya "site" değil "dosya deposu" denir. Seçenekler (depo yok: film listesi ve otomatik güncelleme yok; herkese açık GitHub kopyası: kullanıcı adı görünür) reddedildi.
 - **Dosya sitesi adresi: https://lexia-tv.pages.dev** (kurulum: `/kur.apk`). Bu oturum ortamından erişim kapalı (proxy reddediyor), dosyalar buradan doğrulanamaz.
 - **Durum (12 Kasım gecesi):** dört sır eklendi; ilk derleme (#3) ve film listesi yeşil, imza anahtarı oluştu, site yayınlandı. TV'ye kurulum **henüz denenmedi**.
 - **GitHub yedeği yok (13 Kasım):** #3 güncellemeyi GitHub sürümünden almaya çalışıyordu; depo gizli olduğu için dışarıdan indirilemez (404) ve kullanıcı adı APK'ya giriyordu, kaldırıldı. Güncelleme ve film listesi yalnızca dosya sitesinden. APK'ya kullanıcı adı ya da depo adresi yazılmaz.
