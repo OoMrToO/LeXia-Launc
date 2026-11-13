@@ -2,6 +2,8 @@ package tv.lexia.launcher
 
 import android.app.Service
 import android.content.Intent
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -10,6 +12,8 @@ import android.os.Message
 import android.os.Messenger
 import android.os.Process
 import app.cash.quickjs.QuickJs
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -23,11 +27,21 @@ import java.util.concurrent.TimeUnit
 class AddonSandboxService : Service() {
     private lateinit var worker: HandlerThread
     private lateinit var messenger: Messenger
+    @Volatile private var networkBroker: IAddonNetworkBroker? = null
+    private val brokerReady = CountDownLatch(1)
+    private val brokerConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            networkBroker = IAddonNetworkBroker.Stub.asInterface(service)
+            brokerReady.countDown()
+        }
+        override fun onServiceDisconnected(name: ComponentName?) { networkBroker = null }
+    }
 
     override fun onCreate() {
         super.onCreate()
         worker = HandlerThread("lexia-addon-js").apply { start() }
         messenger = Messenger(Handler(worker.looper, ::handleMessage))
+        bindService(Intent(this, AddonNetworkBrokerService::class.java), brokerConnection, BIND_AUTO_CREATE)
     }
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
@@ -37,6 +51,8 @@ class AddonSandboxService : Service() {
         val reply = message.replyTo ?: return true
         val requestId = message.data.getInt(KEY_REQUEST_ID)
         val source = message.data.getString(KEY_SOURCE).orEmpty()
+        val repository = message.data.getString(KEY_REPOSITORY).orEmpty()
+        val providerId = message.data.getString(KEY_PROVIDER_ID).orEmpty()
         if (source.isBlank() || source.length > MAX_SOURCE_CHARS) {
             sendReply(reply, requestId, false, "JavaScript source is empty or exceeds the size limit.")
             return true
@@ -50,8 +66,15 @@ class AddonSandboxService : Service() {
         }, EXECUTION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 
         try {
+            check(brokerReady.await(5, TimeUnit.SECONDS) && networkBroker != null) { "Addon network broker is unavailable." }
             val result = QuickJs.create().use { engine ->
-                engine.evaluate(source, "addon-provider.js")?.toString().orEmpty()
+                engine.set("Native", AddonNativeFetch::class.java, object : AddonNativeFetch {
+                    override fun fetch(requestJson: String): String {
+                        require(requestJson.length <= 300 * 1024) { "Network request too large." }
+                        return checkNotNull(networkBroker).fetch(repository, providerId, requestJson)
+                    }
+                })
+                engine.evaluate(FETCH_POLYFILL + "\n" + source, "addon-provider.js")?.toString().orEmpty()
             }
             if (result.length > MAX_RESULT_CHARS) {
                 sendReply(reply, requestId, false, "JavaScript result exceeds the size limit.")
@@ -79,6 +102,7 @@ class AddonSandboxService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unbindService(brokerConnection) }
         if (::worker.isInitialized) worker.quitSafely()
         super.onDestroy()
     }
@@ -88,10 +112,35 @@ class AddonSandboxService : Service() {
         const val MSG_RESULT = 2
         const val KEY_REQUEST_ID = "request_id"
         const val KEY_SOURCE = "source"
+        const val KEY_REPOSITORY = "repository"
+        const val KEY_PROVIDER_ID = "provider_id"
         const val KEY_SUCCESS = "success"
         const val KEY_VALUE = "value"
         private const val MAX_SOURCE_CHARS = 256 * 1024
         private const val MAX_RESULT_CHARS = 256 * 1024
         private const val EXECUTION_TIMEOUT_MS = 8_000L
+        private const val FETCH_POLYFILL = """
+            (function (g) {
+              function makeResponse(data) {
+                var headers = data.headers || {};
+                return {
+                  ok: !!data.ok, status: data.status || 0, statusText: data.statusText || "",
+                  url: data.url || "",
+                  headers: { get: function (name) {
+                    var key = Object.keys(headers).find(function (k) { return k.toLowerCase() === String(name).toLowerCase(); });
+                    return key ? headers[key] : null;
+                  }},
+                  text: function () { return Promise.resolve(data.body || ""); },
+                  json: function () { return Promise.resolve(JSON.parse(data.body || "null")); }
+                };
+              }
+              g.fetch = function (input, options) {
+                options = options || {};
+                var request = { url: String(input), method: options.method || "GET", headers: options.headers || {}, body: options.body || "" };
+                try { return Promise.resolve(makeResponse(JSON.parse(Native.fetch(JSON.stringify(request))))); }
+                catch (error) { return Promise.reject(error); }
+              };
+            })(globalThis);
+        """
     }
 }
