@@ -43,16 +43,19 @@ object SystemSettings {
      */
     fun openAccessibility(ctx: Context) {
         HomeButtonService.pause()
-        val tries = listOf(
+        // The TV's own accessibility screens, found by name: their class names differ between TVs,
+        // so a fixed list misses some (a Grundig opened only the main settings).
+        val tries = (found(ctx, "accessib") + listOf(
             cls("com.android.tv.settings.accessibility.AccessibilityActivity"),
             cls("com.android.tv.settings.system.AccessibilityActivity"),
             Intent().setClassName("com.google.android.tv.settings", "com.android.tv.settings.accessibility.AccessibilityActivity"),
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        ).onEach { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        )).distinctBy { it.component?.flattenToString() ?: it.action.orEmpty() }
+            .onEach { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .filter { it.resolveActivity(ctx.packageManager) != null }
         val a = ctx as? android.app.Activity
         fun fallback() {
-            Glass.toast(ctx, "TV Ayarları › Sistem › Erişilebilirlik › “LeXia Ana Sayfa tuşu”nu aç.", long = true)
+            Glass.toast(ctx, "Cihaz Tercihleri (ya da Sistem) › Erişilebilirlik › “LeXia Ana Sayfa tuşu”nu aç.", long = true)
             open(ctx, Screen.ALL)
         }
         fun attempt(i: Int) {
@@ -77,6 +80,23 @@ object SystemSettings {
             }, 1500)
         }
         attempt(0)
+    }
+
+    /** Screens of the TV's settings apps that other apps may open and whose name has [word] in it. */
+    private fun found(ctx: Context, word: String): List<Intent> {
+        val out = ArrayList<Intent>()
+        for (pkg in listOf(TV, "com.google.android.tv.settings")) {
+            val screens = try {
+                ctx.packageManager.getPackageInfo(pkg, android.content.pm.PackageManager.GET_ACTIVITIES).activities
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            for (screen in screens) {
+                if (!screen.exported || !screen.enabled) continue
+                if (word in screen.name.lowercase()) out.add(Intent().setClassName(pkg, screen.name))
+            }
+        }
+        return out
     }
 
     fun open(ctx: Context, s: Screen) {
