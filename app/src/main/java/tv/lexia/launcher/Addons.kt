@@ -25,7 +25,12 @@ object Addons {
         val supportedTypes: List<String>,
         val formats: List<String>,
         val enabled: Boolean,
-        val catalogs: List<ScraperCatalog>
+        val catalogs: List<ScraperCatalog>,
+        val author: String = "",
+        val logo: String = "",
+        val contentLanguage: List<String> = emptyList(),
+        val limited: Boolean = false,
+        val disabledPlatforms: List<String> = emptyList()
     )
     data class Installed(
         val baseUrl: String,
@@ -141,10 +146,19 @@ object Addons {
                 supportedTypes = (0 until supported.length()).map { supported.optString(it) }.filter { it.isNotBlank() },
                 formats = (0 until formats.length()).map { formats.optString(it) }.filter { it.isNotBlank() },
                 enabled = item.optBoolean("enabled", true),
-                catalogs = providerCatalogs
+                catalogs = providerCatalogs,
+                author = item.optString("author"),
+                logo = item.optString("logo"),
+                contentLanguage = item.optJSONArray("contentLanguage")?.let { values ->
+                    (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+                }.orEmpty(),
+                limited = item.optBoolean("limited", false),
+                disabledPlatforms = item.optJSONArray("disabledPlatforms")?.let { values ->
+                    (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+                }.orEmpty()
             )
         }
-        val format = if (scrapers.isNotEmpty()) "nuvio-js" else "stremio"
+        val format = if (json.has("scrapers")) "nuvio-js" else "stremio"
         val catalogs = (0 until catalogsJson.length()).mapNotNull { i ->
             val c = catalogsJson.optJSONObject(i) ?: return@mapNotNull null
             val type = c.optString("type").ifBlank { c.optString("apiType") }
