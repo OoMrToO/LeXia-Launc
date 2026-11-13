@@ -209,7 +209,7 @@ class AddonManagerActivity : Activity() {
                                                     if (catalog.extras.isEmpty()) "" else " · " + catalog.extras.joinToString(", ")
                                             }
                                     )
-                                    .setPositiveButton("Tamam", null)
+                                    .setPositiveButton("Kaynakları ara") { _, _ -> promptProviderTest(address, addon, provider) }
                                     .setNeutralButton("Ağ izinleri") {
                                         _, _ -> manageProviderNetworkPermissions(address, provider.id)
                                     }
@@ -253,6 +253,82 @@ class AddonManagerActivity : Activity() {
         }
     }
 
+
+    private fun promptProviderTest(repository: String, addon: Addons.Installed, provider: Addons.ScraperProvider) {
+        val idInput = EditText(this).apply {
+            hint = "TMDB ID (ör. 550)"
+            setSingleLine(true)
+            setTextColor(-1)
+            setHintTextColor(0xFF8B929E.toInt())
+        }
+        AlertDialog.Builder(this)
+            .setTitle(provider.name + " · İçerik ara")
+            .setMessage("Film için TMDB numarasını gir. Sağlayıcı yetkili ağ izinleriyle çalıştırılacak.")
+            .setView(idInput)
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Kaynakları bul") { _, _ ->
+                val tmdbId = idInput.text.toString().trim()
+                if (!tmdbId.matches(Regex("^[0-9]{1,12}$"))) {
+                    Toast.makeText(this, "Geçerli bir TMDB numarası gir.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                runProvider(repository, addon, provider, tmdbId)
+            }
+            .show()
+    }
+
+    private fun runProvider(repository: String, addon: Addons.Installed, provider: Addons.ScraperProvider, tmdbId: String) {
+        status.text = provider.name + " çalıştırılıyor…"
+        worker.execute {
+            val source = runCatching { Addons.fetchScraperSource(addon, provider) }
+            if (source.isFailure) {
+                runOnUiThread { status.text = source.exceptionOrNull()?.message ?: "Sağlayıcı dosyası alınamadı." }
+                return@execute
+            }
+            val args = org.json.JSONObject()
+                .put("tmdbId", tmdbId)
+                .put("mediaType", "movie")
+                .put("season", org.json.JSONObject.NULL)
+                .put("episode", org.json.JSONObject.NULL)
+                .toString()
+            runOnUiThread {
+                status.text = provider.name + " kaynakları taranıyor…"
+                AddonSandbox.evaluate(this, source.getOrThrow(), repository, provider.id, args) { result ->
+                    if (!result.success) {
+                        status.text = "Sağlayıcı hatası: " + result.value
+                        Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
+                        return@evaluate
+                    }
+                    val streams = runCatching { Addons.parseProviderStreams(result.value) }.getOrElse {
+                        status.text = "Sağlayıcı yanıtı okunamadı: " + (it.message ?: "")
+                        return@evaluate
+                    }
+                    status.text = provider.name + " · " + streams.size + " kaynak bulundu."
+                    if (streams.isEmpty()) {
+                        Toast.makeText(this, "Kaynak bulunamadı. Alan adı izinlerini kontrol et.", Toast.LENGTH_LONG).show()
+                        return@evaluate
+                    }
+                    val labels = streams.map { stream ->
+                        stream.title + if (stream.quality.isNotBlank()) " · " + stream.quality else ""
+                    }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle(provider.name + " · Oynatma kaynakları")
+                        .setItems(labels) { _, index ->
+                            val stream = streams[index]
+                            startActivity(android.content.Intent(this, AddonPlayerActivity::class.java).apply {
+                                putExtra(AddonPlayerActivity.EXTRA_URL, stream.url)
+                                putExtra(AddonPlayerActivity.EXTRA_HEADERS, org.json.JSONObject(stream.headers).toString())
+                                putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, addon.baseUrl + "|" + tmdbId)
+                                putExtra(AddonPlayerActivity.EXTRA_SEASON, 0)
+                                putExtra(AddonPlayerActivity.EXTRA_EPISODE, 1)
+                            })
+                        }
+                        .setNegativeButton("Kapat", null)
+                        .show()
+                }
+            }
+        }
+    }
 
     private fun manageProviderNetworkPermissions(repository: String, providerId: String) {
         val current = AddonNetworkPermissions.grantedHosts(this, repository, providerId)
