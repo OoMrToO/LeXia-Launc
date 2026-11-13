@@ -14,7 +14,7 @@ import java.net.URL
  * download or execute addon code and does not call stream/source endpoints.
  */
 object Addons {
-    data class Catalog(val type: String, val id: String, val name: String)
+    data class Catalog(val type: String, val id: String, val name: String, val extras: Set<String> = emptySet())
     data class Installed(
         val baseUrl: String,
         val id: String,
@@ -96,7 +96,13 @@ object Addons {
             val type = c.optString("type").ifBlank { c.optString("apiType") }
             val id = c.optString("id")
             if (type.isBlank() || id.isBlank()) null
-            else Catalog(type, id, c.optString("name").ifBlank { id })
+            else {
+                val extrasJson = c.optJSONArray("extra") ?: JSONArray()
+                val extras = (0 until extrasJson.length()).mapNotNull { index ->
+                    extrasJson.optJSONObject(index)?.optString("name")?.takeIf { it.isNotBlank() }
+                }.toSet()
+                Catalog(type, id, c.optString("name").ifBlank { id }, extras)
+            }
         }
         return Installed(
             baseUrl = base.removeSuffix("/manifest.json"),
@@ -166,7 +172,7 @@ object Addons {
         fetchMetaDetails(addon, type, id).episodes
 
     /** Fetches only catalogue metadata. Addon stream/source resources are never requested. */
-    fun fetchCatalog(addon: Installed, catalog: Catalog, skip: Int = 0): List<CatalogItem> {
+    fun fetchCatalog(addon: Installed, catalog: Catalog, skip: Int = 0, search: String = ""): List<CatalogItem> {
         require("catalog" in addon.resources || addon.resources.isEmpty()) {
             "Bu eklenti katalog kaynağı sunmuyor."
         }
@@ -177,9 +183,14 @@ object Addons {
             "Katalog kimliği geçersiz."
         }
         val encodedCatalogId = java.net.URLEncoder.encode(catalog.id, "UTF-8").replace("+", "%20")
-        val url = addon.baseUrl.trimEnd('/') +
-            "/catalog/${catalog.type}/$encodedCatalogId.json" +
-            if (skip > 0) "?skip=${skip.coerceAtMost(10000)}" else ""
+        val query = ArrayList<String>()
+        if (skip > 0) query.add("skip=${skip.coerceAtMost(10000)}")
+        if (search.isNotBlank()) {
+            require(search.length <= 120) { "Arama metni çok uzun." }
+            query.add("search=" + java.net.URLEncoder.encode(search.trim(), "UTF-8").replace("+", "%20"))
+        }
+        val suffix = if (query.isEmpty()) "" else "?" + query.joinToString("&")
+        val url = addon.baseUrl.trimEnd('/') + "/catalog/${catalog.type}/$encodedCatalogId.json" + suffix
         val metas = JSONObject(getText(url)).optJSONArray("metas") ?: JSONArray()
         return (0 until metas.length()).mapNotNull { i ->
             val m = metas.optJSONObject(i) ?: return@mapNotNull null
