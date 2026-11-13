@@ -1,10 +1,10 @@
-# Yenilikler
-Ana ekrandaki film ve diziler, eklenti manifestinin desteklediği arama özelliğiyle daha hızlı eşleştirilir; desteklemeyen kataloglarda güvenli metadata taraması sürer.
-Oynatıcı artık MP4 ve HLS yanında MPEG-DASH (.mpd) yayınlarını da destekler.
-Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hızını değiştirebilirsin.
-Eklenti oynatıcısında Otomatik, 480p, 720p, 1080p ve 4K görüntü kalitesi sınırı seçilebilir.
-Seçilen yayın sağlayıcısı içerik bazında hatırlanır; sonraki açılışta kullanılabilir veya değiştirilebilir.
-Dizi bölümlerinde izleme ilerlemesi görünür; son kaldığın tamamlanmamış bölüme tek seçimle dönebilirsin.
-Oynatıcı kaldığın saniyeden devam eder ve ilerlemeyi düzenli olarak kaydeder.
-Oynatıcı, TV kumandasının medya tuşlarıyla kontrol edilebilir; geçici ağ kopmalarında üç kez otomatik yeniden dener.
-Oynatıcı tamponlama sırasında yükleniyor göstergesi sunar; geçici HTTP sunucu hatalarında yeniden dener ve 401/403/404 gibi kalıcı hataları açıklar.
+# Each line is one item on the "Yenilikler" card shown after an update. Keep it short.
+Bu ay hangi platform? Listendeki filmlerin çoğu neredeyse bu ay ona abone ol. Zilde ve Listem'de.
+Listemi yedekle: Ayarlar › Bakım'da bir kod al; yeni TV'de kodu gir, listelerin geri gelsin.
+Film düellosu: “Ne izlesem?”de iki film yan yana, 5 turda bu akşamın filmi. Hafta içi gece kısa filmler önde.
+Yeni Ayarlar: seçenekler yan yana, açıklama seçili satırın altında, seçim satırdan satıra kayar.
+Daha şık: kart filmin renginde parlar, OK'e basınca içe göçer, fragmanlar perde gibi açılır, yeni sesler.
+“3 yeni” ve “Sende var” etiketleri, Günaydın kartı, Son baktıkların satırı; platforma gelen filmi haber veririm.
+Daha akıcı: Keşfet hemen açılır, 30'ar 30'ar gösterir (“30 daha göster”), yeni “Sırala” seçeneği. Az bellekli TV'de hafif mod önerilir.
+Bildirimler: üstüne gelince noktası söner; “Netflix: 4 yeni yapım”a basınca hepsi listelenir. Ana Sayfa rehberi TV ayarını buluyor.
+Takvim ve Hafta sonu rehberindeki dizilerin sayfası artık dolu; açılan ekranın afişleri önce gelir. Açılış hatası düzeltildi.

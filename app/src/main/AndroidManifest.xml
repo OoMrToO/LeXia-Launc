@@ -190,23 +190,5 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <service android:name=".AddonNetworkBrokerService" android:exported="true" android:process=":addon_network" />
-
-        <!-- Untrusted addon JavaScript runs under a separate, permissionless UID. -->
-        <service
-            android:name=".AddonSandboxService"
-            android:exported="false"
-            android:isolatedProcess="true"
-            android:process=":addon_sandbox" />
-
-        <activity
-            android:name=".AddonPlayerActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
-
-        <activity
-            android:name=".AddonManagerActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
     </application>
 </manifest>

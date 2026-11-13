@@ -564,15 +564,6 @@ class SettingsActivity : Activity() {
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
-            Row(
-                "Eklentiler",
-                "HTTPS eklenti depolarını ekle; manifest ve katalog bilgilerini görüntüle.",
-                chevron = true,
-                action = { startActivity(Intent(this, AddonManagerActivity::class.java)) },
-                value = { Addons.urls(this).size.let { if (it == 0) "" else "$it depo" } }
-            ),
-            sub("Eklenti eşleştirme", "▶ İzle düğmesinde hangi depoların sağlayıcıları aransın; tüm depoları ya da tek bir depoyu seç.", { addonMatchPage() },
-                value = { when (prefs.addonMatchMode) { "all" -> "Tüm depolar"; "selected" -> "Favori depo"; else -> "Kapalı" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
@@ -691,42 +682,6 @@ class SettingsActivity : Activity() {
                 { prefs.lite }, { prefs.lite = it }
             )
         )
-    }
-
-    private fun addonMatchPage() = Page(
-        "Eklenti eşleştirme", R.drawable.ic_tv,
-        keys = listOf("addonMatchMode", "addonMatchRepository")
-    ) {
-        val items = ArrayList<Item>()
-        items.add(Note(
-            "▶ İzle düğmesi, ana ekrandaki filmin TMDB numarasını otomatik alır ve burada seçtiğin depolardaki etkin Nuvio sağlayıcılarına gönderir. " +
-                "Birden fazla sağlayıcı varsa aralarından seçim yaparsın; tek sağlayıcı varsa doğrudan aranır. " +
-                "Kapalı seçeneği otomatik sağlayıcı aramasını durdurur."
-        ))
-        items.add(Header("ARAMA KAPSAMI"))
-        items.add(choice(
-            "Eklentilerde ara",
-            "Kapalı: otomatik sağlayıcı araması kapalı. Tüm depolar: eklediğin bütün depolar. Favori depo: yalnızca seçtiğin depo aranır.",
-            listOf("off", "all", "selected"),
-            listOf("Kapalı", "Tüm depolar", "Favori depo"),
-            { prefs.addonMatchMode },
-            { prefs.addonMatchMode = it }
-        ))
-        val urls = Addons.urls(this)
-        items.add(Header("FAVORİ EKLENTİ SİTESİ"))
-        if (urls.isEmpty()) {
-            items.add(Note("Henüz eklenti deposu eklenmedi. Önce Ayarlar › Eklentiler bölümünden HTTPS depo adresi ekle."))
-        } else {
-            items.add(choice(
-                "Depo seç",
-                "Favori depo modu açıkken yalnızca bu adresin katalogları taranır.",
-                urls,
-                urls.map { it.removePrefix("https://").removeSuffix("/") },
-                { prefs.addonMatchRepository.takeIf { it in urls } ?: urls.first() },
-                { prefs.addonMatchRepository = it }
-            ))
-        }
-        items
     }
 
     private val allGenres = Prefs.GENRES

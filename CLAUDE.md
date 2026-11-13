@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
+Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 
 ## 1. Çalışma biçimi
 
@@ -14,12 +14,14 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 - **Mesaj sonu:** yayınlanan sürüm numarası ve TV'de ne yapılacağı ("Güncelleme geldi" düğmesi).
 - **Gizlilik:** APK'ya kullanıcı adı, e-posta ya da depo adresi yazılmaz. Depo gizli kalır.
 
-## 2. İki geliştirici: Claude ve ChatGPT
+## 2. Eklentiler kaldırıldı (13 Kasım 2026 akşamı, kullanıcı kararı)
 
-- Kullanıcı aynı depoda ChatGPT (Codex) ile de çalışıyor. İkisi de bu dosyayı okur, kendi dalında çalışır, değişiklik PR olarak gelir; `main`'e doğrudan yalnızca not değişiklikleri yazılır.
-- **Eklenti ve oynatıcı kısmı ChatGPT'nin işi:** Stremio/Nuvio uyumlu eklenti yönetimi, katalog eşleştirme ve Media3 oynatıcı (`Addon*.kt`, `WatchProgress.kt`, Ayarlar › Eklentiler, Ayarlar › Eklenti eşleştirme). Kullanıcı bu kısmı istedi ve ChatGPT'ye yaptırıyor.
-- **Claude oturumları bu kısmı geliştirmez, incelemez, düzeltmez, birleştirmez** (Claude'un kendi sınırı: bu eklentiler çoğunlukla telifli içeriği izinsiz yayınlar). Kullanıcıya bunu bir kez, kısa söyle; tekrar tekrar ders verme. Eklenti dışındaki her işte (ana ekran, ayarlar, film listesi, derleme, güncelleme) Claude çalışır ve ChatGPT'nin PR'larının eklenti dışı etkisini (çökme, ana ekran, ayarlar) inceleyebilir.
-- ChatGPT'nin teknik notları (oynatıcı biçimleri, eşleştirme ayrıntıları) PR açıklamalarında ve kendi eklediği satırlardadır; buraya kısaca: eşleştirme varsayılan **kapalı** (`Prefs.addonMatchMode` "off"), açılınca hero'daki "nerede izlenir" rozeti eklenti adını gösterir.
+- Kullanıcı ChatGPT (Codex) ile Stremio/Nuvio uyumlu eklenti yönetimi, katalog eşleştirme, Nuvio JavaScript sağlayıcılarını çalıştıran kum havuzu (QuickJS) ve Media3 oynatıcı ekletmişti (PR #1–#26 arası). Çalıştıramadı ve **"Nuvio'ya dair her şeyi sil, temize çek"** dedi.
+- **Silinenler:** `Addon*.kt`, `IAddonNetworkBroker.kt`, `WatchProgress.kt`, Ayarlar › Eklentiler ve Eklenti eşleştirme, ana ekrandaki eşleştirme/“İzle” bağlantıları, Media3 ve QuickJS kütüphaneleri, uygulama kaydındaki iki hizmet ve iki ekran. `MainActivity`, `Prefs`, `SettingsActivity`, manifest, `app/build.gradle.kts`, `whatsnew.txt` eklentisiz hallerine döndü. Derleme araçları yine AGP 8.5.2 / Kotlin 1.9.24 / Gradle 8.9 (ChatGPT 8.13.2 / 2.3.0 / 8.13 yapmıştı). Uygulama yine **kütüphanesiz**.
+- **TV'de kalan veri:** `App.dropAddonData()` her açılışta adı "addon" içeren ayar dosyalarını ve `lexia_watch_progress`'i siler. `scripts/prefs_keys.txt`'deki eklenti anahtarları listede kalır (adlar başka türle yeniden kullanılmasın).
+- **Kalan tek ChatGPT değişikliği:** film sayfasında özetin “HİKÂYE” başlıklı kutusu (`DetailActivity`, #22); eklentiyle ilgisi yok, TV'de denenmedi.
+- **Bundan sonra:** eklenti, yayın kaynağı, Nuvio/Stremio entegrasyonu ve uygulama içi film oynatma bu depoya **yeniden eklenmez**. Claude oturumları bu tür kodu yazmaz, incelemez, düzeltmez, birleştirmez; kullanıcıya bir kez kısa söylenir. Başka bir araç yine eklerse kullanıcıya haber verilir.
+- Kullanıcı başka araçla da çalışabilir: iş hep güncel `main`'den dal açılarak, PR ile yapılır.
 
 ## 3. Cihaz ve kurulum
 
@@ -35,7 +37,7 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 
 ## 4. Depo, derleme, yayın
 
-- Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 34, Kotlin 1.9.24, AGP 8.5.2. Kütüphane: yalnızca Media3 (ChatGPT'nin oynatıcısı için); geri kalan her şey düz Android View.
+- Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 34, Kotlin 1.9.24, AGP 8.5.2. Hiç kütüphane yok; her şey düz Android View.
 - **İş akışları:** `build.yml` (main'e push: imza anahtarı → dosya deposu adresi → `full` + `setup` APK → GitHub `latest` sürümü → yayın), `pr-build.yml` (PR'larda debug derleme; tek PR kontrolü), `daily-pick.yml` (her gün 02:17 UTC `scripts/pick.py` → `pick.json` → yayın), `publish.yml` (dosya deposuna yükler). Yalnızca `.md`, `pick.json`, `docs/**`, `scripts/pick.py` ve yayın/PR iş akışları değişince APK derlenmez.
 - **Dosya deposu** (Cloudflare Pages projesi `lexia-tv`, **https://lexia-tv.pages.dev**; sayfası yok, noindex): `pick.json`, `version.txt`, `apk/app.apk`, `kur.apk`, `test.txt` + `apk/test.apk` (test modu için aynı dosyalar), `_headers`, `robots.txt`. Adresi derlemede Cloudflare'den sorulup `BuildConfig.SITE`'a yazılır. Bu oturum ortamından erişim kapalı; doğrulama GitHub iş kayıtlarından yapılır. Kullanıcı 13 Kasım'da bu yapıyı onayladı ("A kalsın").
 - **İmza:** `app/signing.p12` ilk derlemede üretildi (`CN=LeXia`, takma ad `lexia`), parolası yalnızca `KEYSTORE_PASSWORD` sırrında ve kullanıcıda. Parola değişir ya da anahtar silinirse TV'deki uygulama kaldırılıp yeniden kurulmalı.
@@ -48,7 +50,7 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 ## 5. Geliştirme akışı (Claude)
 
 1. `git fetch origin main && git checkout -B claude/<iş> origin/main` (ChatGPT de çalıştığı için hep güncel `main`'den başla).
-2. Tip kontrolü (Android SDK yok): `kotlin-compiler-embeddable:1.9.24` + `org.robolectric:android-all:14-robolectric-10818077` Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. Media3 kullanan eklenti dosyaları taslakla derlenmez; gerekirse onlar dışarıda bırakılır ya da Media3 jar'ları eklenir. Asıl doğrulama `pr-build`.
+2. Tip kontrolü (Android SDK yok): `kotlin-compiler-embeddable:1.9.24` + `org.robolectric:android-all:14-robolectric-10818077` Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. Asıl doğrulama `pr-build`.
 3. Commit → push → PR → `pr-build` yeşil → birleştir (`expectedHeadSha` 40 karakter) → `build.yml` bitince sürüm numarasını kullanıcıya yaz.
 4. **Ayar anahtarları:** yeni `SharedPreferences` anahtarı `scripts/prefs_keys.txt`'ye türüyle eklenir; `scripts/check_prefs.py` her derlemede eski adların başka türle kullanılmasını yakalar (eski projede #119 çökmesi).
 5. Bu ortamda `git push` sonrası "This repository moved" mesajı zararsız (depo adı büyük/küçük harf).
@@ -70,7 +72,6 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 
 ## 8. Açık işler
 
-- **13 Kasım, ChatGPT:** `codex/home-watch-button-v25` dalında ana ekrana, TMDB kimliği bulunan film/diziler ve etkin depo kapsamı varken görünen `▶ İzle` düğmesi eklendi. Düğme, TMDB ID'yi otomatik alıp `all`/`selected` kapsamındaki Nuvio depolarının etkin ve uyumlu sağlayıcılarını tarar; tek sağlayıcı varsa çalıştırır, birden fazlaysa seçim sunar. Dizide sezon/bölüm sorulur. Yeni kurulumlarda kapsam `all`. Kalite tercihi ve sağlayıcı sabitleme sonraki aşamalardır.
 
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
@@ -82,8 +83,8 @@ Son güncelleme: 13 Kasım 2026 (notlar sadeleştirildi).
 | PR | Kim | İçerik |
 |---|---|---|
 | — | Claude | İlk aktarım: yeni paket adı, sayaçsız, dosya deposu, uzaktan ayarlar ve Yenilikler kartı kapalı, sırlar ve iş akışları |
-| #1, #2, #6, #8–#10, #12, #14–#16 | ChatGPT | Eklenti yönetimi, katalog, bölüm ilerlemesi, Media3 oynatıcı (HLS, DASH, altyazı, dil), ana ekran eklenti eşleştirmesi (varsayılan kapalı) |
-| #3 | ChatGPT | Güncellemede GitHub yedeği (çalışmıyordu; #5'te kaldırıldı) |
-| #4 | ChatGPT | Oynatıcı kumanda kontrolleri |
-| #5 | Claude | GitHub yedeği ve APK'daki kullanıcı adı kaldırıldı |
-| — | Claude | Yinelenen PR kontrolü (`addon-branch-check`) kaldırıldı; notlar sadeleştirildi |
+| #1–#4, #6–#16, #20–#26 | ChatGPT | Eklenti yönetimi, Nuvio sağlayıcıları, Media3 oynatıcı, ana ekran eşleştirmesi; **hepsi kaldırıldı** (bölüm 2). #3'ün GitHub yedeği #5'te kaldırılmıştı |
+| #5 | Claude | Çalışmayan GitHub yedeği ve APK'daki kullanıcı adı kaldırıldı |
+| #17, #18 | Claude | Dosyaların `exxsss/Lxialnch` kopyası (rastgele adlı dal), uygulama site cevap vermezse kopyadan alır |
+| #19 | Claude | Ana Sayfa rehberi TV'nin erişilebilirlik ekranını adından bulur |
+| bu PR | Claude | Eklentiler ve Nuvio ile ilgili her şey silindi, derleme araçları eski sürümlerine döndü |
