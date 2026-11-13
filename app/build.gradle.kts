@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "tv.lexia.launcher"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "tv.lexia.launcher"
@@ -62,7 +62,7 @@ android {
         }
     }
 
-    // The app has no translations; lint's release check would only slow the build.
+    // The app has no libraries and no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -76,22 +76,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
-
-dependencies {
-    // Native QuickJS engine; no Java/Android objects are exposed to addon code.
-    implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
-    implementation("org.jsoup:jsoup:1.17.2")
-    implementation("org.webjars.npm:crypto-js:4.2.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-}

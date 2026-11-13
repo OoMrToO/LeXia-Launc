@@ -110,7 +110,6 @@ class MainActivity : Activity() {
     private lateinit var whyView: TextView
     private lateinit var descView: TextView
     private lateinit var buttons: LinearLayout
-    private lateinit var watchBtn: TextView
     private lateinit var trailerBtn: TextView
     private lateinit var listBtn: TextView
     private lateinit var progress: LinearLayout
@@ -747,19 +746,6 @@ class MainActivity : Activity() {
         buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.visibility = View.INVISIBLE
-        watchBtn = ui.pill("▶   İzle", 64, 23, primary = true)
-        watchBtn.visibility = View.GONE
-        watchBtn.setOnClickListener {
-            picks.getOrNull(pickIndex)?.let { film ->
-                val isCinemaRelease = cinema.any { it.key == film.key }
-                if (!isCinemaRelease && film.id > 0 && prefs.addonMatchMode != "off" &&
-                    AddonLibrary.enabledRepositories(this).isNotEmpty()) {
-                    AddonManagerActivity.openAutoSearch(
-                        this, film.title, film.id, if (film.isSeries) "tv" else "movie"
-                    )
-                }
-            }
-        }
         trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
         trailerBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { trailer(it) } }
         listBtn = ui.pill("+   Listeme Ekle", 64, 23)
@@ -768,7 +754,7 @@ class MainActivity : Activity() {
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
         val nextBtn = ui.pill("Sonraki", 64, 23)
         nextBtn.setOnClickListener { next() }
-        for (b in listOf(watchBtn, trailerBtn, infoBtn, listBtn, nextBtn)) {
+        for (b in listOf(trailerBtn, infoBtn, listBtn, nextBtn)) {
             val old = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 old?.onFocusChange(v, f)
@@ -779,7 +765,6 @@ class MainActivity : Activity() {
             }
         }
         progress = ui.hbox()
-        buttons.addView(watchBtn)
         buttons.addView(trailerBtn)
         buttons.addView(infoBtn)
         buttons.addView(listBtn)
@@ -3248,16 +3233,6 @@ class MainActivity : Activity() {
                     genreSig = "-"
                     applyGenres()
                 }
-                if (AddonMatcher.enabled(this@MainActivity)) {
-                    val matchCandidates = (list + top + topTv + nowList + soonList + plat + localTitles +
-                        genres.flatMap { it.second }).distinctBy { it.key }
-                    Thread {
-                        AddonMatcher.refresh(this@MainActivity, matchCandidates)
-                        runOnUiThread {
-                            if (!isFinishing && prefs.addonMatchMode != "off") showPick()
-                        }
-                    }.start()
-                }
             }
         }
     }
@@ -3552,26 +3527,12 @@ class MainActivity : Activity() {
             certView.visibility = if (p.cert.isEmpty()) View.GONE else View.VISIBLE
             // Where to watch it: the platform it is new on, else one it streams on, else cinemas.
             val inCinema = cinema.any { it.key == p.key }
-            val addonMatch = if (prefs.addonMatchMode == "off") null else AddonMatcher.find(this, p)
             ui.setWhere(whereView, when {
-                addonMatch != null -> "EKLENTİ · " + addonMatch.addonName
                 p.provider.isNotEmpty() -> p.provider
                 inCinema -> ""
                 p.where.isNotEmpty() -> p.where.first()
                 else -> null
             })
-            // Show provider search for every identified non-cinema title when an addon repository is enabled.
-            // Cinema titles must never expose the addon playback action.
-            val canSearchProviders = !inCinema && prefs.addonMatchMode != "off" &&
-                p.id > 0 && AddonLibrary.enabledRepositories(this).isNotEmpty()
-            watchBtn.visibility = if (canSearchProviders) View.VISIBLE else View.GONE
-            whereView.setOnClickListener {
-                addonMatch?.let {
-                    AddonManagerActivity.openMatch(this, it.repository, it.itemType, it.itemId, p.id)
-                }
-            }
-            whereView.isClickable = addonMatch != null
-            whereView.isFocusable = addonMatch != null
             val parts = ArrayList<String>()
             if (p.year.isNotEmpty()) parts.add(p.year)
             if (p.runtime > 0) parts.add(if (p.runtime >= 60) "${p.runtime / 60} sa ${p.runtime % 60} dk" else "${p.runtime} dk")
@@ -3969,17 +3930,6 @@ class MainActivity : Activity() {
         showTopRows()
         applyGenres()
         val now = System.currentTimeMillis()
-        val addonCandidates = (allPicks + top10 + top10tv + cinema + soon + platformList + localList +
-            genrePools.flatMap { it.second }).distinctBy { it.key }
-        if (AddonMatcher.enabled(this) && addonCandidates.isNotEmpty() &&
-            AddonMatcher.needsRefresh(this, addonCandidates)) {
-            Thread {
-                AddonMatcher.refresh(this@MainActivity, addonCandidates)
-                runOnUiThread {
-                    if (!isFinishing && prefs.addonMatchMode != "off") showPick()
-                }
-            }.start()
-        }
         if (prefs.showPicks && (allPicks.isEmpty() || now - lastPicks > 3 * 60 * 60 * 1000L)) startPicks()
         val wsig = "${prefs.weather}|${prefs.city}|${prefs.ambience}|${prefs.lite}"
         if (!prefs.weather) weatherBox.visibility = View.GONE
