@@ -1,6 +1,8 @@
 # Every settings name LeXia has used, with its type. Checked by scripts/check_prefs.py on every build.
 # Never change a type here and never reuse a name with another type: TVs still hold the old value.
 # "recent" stays bool (app order switch); the film list moved to "recentFilms" in #119.
+addonMatchMode text
+addonMatchRepository text
 ambience bool
 appShape text
 appSort text
