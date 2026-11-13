@@ -86,7 +86,17 @@ class AddonSandboxService : Service() {
                                 .put("hash", uri.rawFragment?.let { "#$it" } ?: "")
                                 .toString()
                         }
-                        evaluate<String>(providerScript(source, callArgs))
+                        var resultJson = "[]"
+                        function("__capture_result") { args ->
+                            resultJson = args.getOrNull(0)?.toString() ?: "[]"
+                            null
+                        }
+                        function("__get_call_args") { callArgs }
+                        function("__get_scraper_id") { providerId }
+                        function("__get_scraper_settings") { "{}" }
+                        evaluate<Any?>(providerScript(source))
+                        evaluate<Any?>(providerCallScript())
+                        resultJson
                     }
                 }
             }
@@ -97,9 +107,10 @@ class AddonSandboxService : Service() {
         return true
     }
 
-    private fun providerScript(source: String, callArgs: String): String = """
+    private fun providerScript(source: String): String = """
         globalThis.global = globalThis; globalThis.window = globalThis; globalThis.self = globalThis;
-        globalThis.SCRAPER_SETTINGS = {};
+        globalThis.SCRAPER_ID = __get_scraper_id();
+        globalThis.SCRAPER_SETTINGS = JSON.parse(__get_scraper_settings());
         globalThis.console = globalThis.console || {log:function(){},info:function(){},warn:function(){},error:function(){},debug:function(){}};
         if (typeof atob === "undefined") globalThis.atob = function(s) {
           var c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",o="",b=0,n=0;
@@ -115,9 +126,11 @@ class AddonSandboxService : Service() {
         function URLSearchParams(s){this.p=[];var self=this;if(typeof s==="string")s.replace(/^\?/,"").split("&").forEach(function(x){if(x){var a=x.split("=");self.append(decodeURIComponent(a[0]),decodeURIComponent(a.slice(1).join("=")));}});}
         URLSearchParams.prototype.append=function(k,v){this.p.push([String(k),String(v)]);};
         URLSearchParams.prototype.get=function(k){var x=this.p.find(function(p){return p[0]===String(k);});return x?x[1]:null;};
+        URLSearchParams.prototype.getAll=function(k){return this.p.filter(function(p){return p[0]===String(k);}).map(function(p){return p[1];});};
         URLSearchParams.prototype.set=function(k,v){this.delete(k);this.append(k,v);};
         URLSearchParams.prototype.has=function(k){return this.get(k)!==null;};
         URLSearchParams.prototype.delete=function(k){this.p=this.p.filter(function(p){return p[0]!==String(k);});};
+        URLSearchParams.prototype.forEach=function(fn){this.p.forEach(function(p){fn(p[1],p[0]);});};
         URLSearchParams.prototype.toString=function(){return this.p.map(function(p){return encodeURIComponent(p[0])+"="+encodeURIComponent(p[1]);}).join("&");};
         function URL(s,b){var u=String(s);if(b&&!/^https?:\/\//i.test(u)){var x=String(b).match(/^https?:\/\/[^/]+/i);u=u.charAt(0)==="/"?((x?x[0]:"")+u):String(b).replace(/[^/]*$/,"")+u;}
           var d=JSON.parse(__parse_url(u));this.href=u;this.protocol=d.protocol;this.host=d.host;this.hostname=d.hostname;this.port=d.port;this.pathname=d.pathname;this.search=d.search;this.hash=d.hash;this.origin=d.protocol+"//"+d.host;this.searchParams=new URLSearchParams(d.search);}
@@ -126,7 +139,7 @@ class AddonSandboxService : Service() {
           options=options||{}; var headers=options.headers||{};
           if(headers&&typeof headers.forEach==="function"){var h={};headers.forEach(function(v,k){h[k]=v;});headers=h;}
           var body=options.body==null?"":String(options.body);
-          var data=JSON.parse(__native_fetch(String(url),options.method||"GET",JSON.stringify(headers),"text",body,options.redirect!=="manual"));
+          var data=JSON.parse(__native_fetch(String(url),options.method||"GET",JSON.stringify(headers),body?"text":"none",body,options.redirect!=="manual"));
           var hs=data.headers||{};
           function getHeader(n){var k=Object.keys(hs).find(function(x){return x.toLowerCase()===String(n).toLowerCase();});return k?hs[k]:null;}
           return {ok:!!data.ok,status:data.status||0,statusText:data.statusText||"",url:data.url||String(url),
@@ -134,12 +147,28 @@ class AddonSandboxService : Service() {
             text:async function(){return data.body||"";},json:async function(){return JSON.parse(data.body||"null");},
             arrayBuffer:async function(){var s=atob(data.bodyBase64||""),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a.buffer;}};
         };
-        const module={exports:{}}; const exports=module.exports;
-        ${source}
-        const args=JSON.parse(${JSONObject.quote(callArgs)});
-        const api=module.exports||{}; const getStreams=api.getStreams||globalThis.getStreams;
-        if(typeof getStreams!=="function") JSON.stringify([]);
-        else { const streams=await getStreams(args.tmdbId,args.mediaType,args.season,args.episode); JSON.stringify(Array.isArray(streams)?streams:[]); }
+        var module = {exports:{}};
+        var exports = module.exports;
+        (function(){ ${source} })();
+    """.trimIndent()
+
+    private fun providerCallScript(): String = """
+        (async function() {
+            try {
+                var api = module.exports || {};
+                var getStreams = api.getStreams || globalThis.getStreams;
+                if (typeof getStreams !== "function") {
+                    __capture_result("[]");
+                    return;
+                }
+                var args = JSON.parse(__get_call_args());
+                var streams = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
+                __capture_result(JSON.stringify(Array.isArray(streams) ? streams : []));
+            } catch (error) {
+                console.error("Nuvio provider failed:", error && error.message ? error.message : error);
+                __capture_result("[]");
+            }
+        })();
     """.trimIndent()
 
     private fun sendReply(target: Messenger, requestId: Int, success: Boolean, value: String) {
