@@ -111,6 +111,7 @@ class MainActivity : Activity() {
     private lateinit var descView: TextView
     private lateinit var buttons: LinearLayout
     private lateinit var trailerBtn: TextView
+    private lateinit var playBtn: TextView
     private lateinit var listBtn: TextView
     private lateinit var progress: LinearLayout
     private var progressAnim: Animator? = null
@@ -746,15 +747,22 @@ class MainActivity : Activity() {
         buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.visibility = View.INVISIBLE
-        trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
+        trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23)
         trailerBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { trailer(it) } }
+        playBtn = ui.pill("▶   İzle", 64, 23, primary = true)
+        playBtn.setOnClickListener {
+            picks.getOrNull(pickIndex)?.let { selected ->
+                if (selected.id > 0) HomePlaybackActivity.open(this, selected)
+                else Toast.makeText(this, "Bu içerik için TMDB kimliği bulunamadı.", Toast.LENGTH_LONG).show()
+            }
+        }
         listBtn = ui.pill("+   Listeme Ekle", 64, 23)
         listBtn.setOnClickListener { toggleList() }
         val infoBtn = ui.pill("Detaylar", 64, 23)
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
         val nextBtn = ui.pill("Sonraki", 64, 23)
         nextBtn.setOnClickListener { next() }
-        for (b in listOf(trailerBtn, infoBtn, listBtn, nextBtn)) {
+        for (b in listOf(playBtn, trailerBtn, infoBtn, listBtn, nextBtn)) {
             val old = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 old?.onFocusChange(v, f)
@@ -765,6 +773,7 @@ class MainActivity : Activity() {
             }
         }
         progress = ui.hbox()
+        buttons.addView(playBtn)
         buttons.addView(trailerBtn)
         buttons.addView(infoBtn)
         buttons.addView(listBtn)
