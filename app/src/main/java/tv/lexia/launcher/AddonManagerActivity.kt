@@ -1092,7 +1092,7 @@ class AddonManagerActivity : Activity() {
             .setMessage("Yalnızca kullanım hakkına sahip olduğun doğrudan HTTPS medya adresini gir. Eklenti kaynak uçları çağrılmaz.")
             .setView(input)
             .setPositiveButton("Oynat") { _, _ ->
-                openDirectPlayer(input.text.toString(), progressId, 0, 1)
+                openDirectPlayer(input.text.toString(), progressId, 0, 1, film.title, "movie")
             }
             .setNeutralButton("Detaylar") { _, _ -> DetailActivity.open(this, film) }
             .setNegativeButton("Kapat", null)
@@ -1172,13 +1172,20 @@ class AddonManagerActivity : Activity() {
             .setMessage(message)
             .setView(input)
             .setPositiveButton("Oynat") { _, _ ->
-                openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode)
+                openDirectPlayer(input.text.toString(), seriesId, episode.season, episode.episode, episode.title, "tv")
             }
             .setNegativeButton("Kapat", null)
             .show()
     }
 
-    private fun openDirectPlayer(rawUrl: String, progressId: String, season: Int, episode: Int) {
+    private fun openDirectPlayer(
+        rawUrl: String,
+        progressId: String,
+        season: Int,
+        episode: Int,
+        contentTitle: String = "",
+        mediaType: String = "tv"
+    ) {
         val source = rawUrl.trim()
         val uri = runCatching { android.net.Uri.parse(source) }.getOrNull()
         if (uri == null || !uri.scheme.equals("https", true) ||
@@ -1191,6 +1198,8 @@ class AddonManagerActivity : Activity() {
             putExtra(AddonPlayerActivity.EXTRA_SERIES_ID, progressId)
             putExtra(AddonPlayerActivity.EXTRA_SEASON, season)
             putExtra(AddonPlayerActivity.EXTRA_EPISODE, episode)
+            putExtra(AddonPlayerActivity.EXTRA_CONTENT_TITLE, contentTitle)
+            putExtra(AddonPlayerActivity.EXTRA_MEDIA_TYPE, mediaType)
         })
     }
 
