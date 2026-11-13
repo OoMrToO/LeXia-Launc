@@ -91,15 +91,15 @@ object AddonMatcher {
                     catalog.type.equals("tv", true)
                 val candidates = wanted.filter { it.isSeries == expectedSeries }
                 if (candidates.isEmpty()) continue
-                val candidateNames = candidates.associateBy { normalize(it.title) }
+                val candidateNames = candidates.groupBy { normalize(it.title) }
                 var skip = 0
                 var pageNumber = 0
                 while (pageNumber < 3) {
                     val page = runCatching { Addons.fetchCatalog(addon, catalog, skip) }.getOrNull() ?: break
                     for (item in page) {
                         val normalized = normalize(item.name)
-                        val pick = candidateNames[normalized] ?: continue
-                        if (!sameYear(pick.year, item.releaseInfo)) continue
+                        val pick = candidateNames[normalized]
+                            ?.firstOrNull { sameYear(it.year, item.releaseInfo) } ?: continue
                         val key = pick.key.ifBlank { pick.title }
                         if (key !in found) {
                             found[key] = JSONObject()
