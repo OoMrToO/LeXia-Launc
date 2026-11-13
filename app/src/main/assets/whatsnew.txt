@@ -4,3 +4,4 @@ Eklenti oynatıcısında kumandadan ses dili ve altyazı seçebilir, oynatma hı
 Dizi bölümlerinde izleme ilerlemesi görünür; son kaldığın tamamlanmamış bölüme tek seçimle dönebilirsin.
 Oynatıcı kaldığın saniyeden devam eder ve ilerlemeyi düzenli olarak kaydeder.
 Oynatıcı, TV kumandasının medya tuşlarıyla kontrol edilebilir; geçici ağ kopmalarında üç kez otomatik yeniden dener.
+Oynatıcı tamponlama sırasında yükleniyor göstergesi sunar; geçici HTTP sunucu hatalarında yeniden dener ve 401/403/404 gibi kalıcı hataları açıklar.
