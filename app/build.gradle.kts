@@ -88,6 +88,7 @@ dependencies {
     // Native QuickJS engine; no Java/Android objects are exposed to addon code.
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
     implementation("org.jsoup:jsoup:1.17.2")
+    implementation("org.webjars.npm:crypto-js:4.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
