@@ -175,31 +175,67 @@ class AddonManagerActivity : Activity() {
         worker.execute {
             try {
                 val addon = Addons.fetchManifest(address)
-                val results = addon.catalogs.map { catalog ->
-                    catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
-                }
-                runOnUiThread {
-                    status.text = if (results.isEmpty()) {
-                        addon.name + " · Katalog bulunamadı."
-                    } else {
-                        addon.name + " · " + results.size + " katalog hazır."
-                    }
-                    if (results.isNotEmpty()) {
-                        val labels = results.map { (catalog, items) ->
-                            catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                if (addon.format == "nuvio-js") {
+                    runOnUiThread {
+                        status.text = addon.name + " · Nuvio deposu tanındı · " +
+                            addon.scrapers.size + " sağlayıcı"
+                        val labels = addon.scrapers.map { provider ->
+                            provider.name + " · " +
+                                (if (provider.supportedTypes.isEmpty()) "Tür belirtilmemiş"
+                                else provider.supportedTypes.joinToString(", ")) +
+                                (if (provider.enabled) "" else " · devre dışı")
                         }.toTypedArray()
                         AlertDialog.Builder(this)
-                            .setTitle(addon.name + " · Kataloglar")
+                            .setTitle(addon.name + " · Sağlayıcılar")
+                            .setMessage(
+                                "Manifest başarıyla okundu. Bu depo JavaScript sağlayıcıları kullanıyor. " +
+                                    "LeXia'da Nuvio JavaScript çalışma motoru henüz bulunmadığından " +
+                                    "sağlayıcı kodları çalıştırılmıyor; bu nedenle katalog ve oynatma " +
+                                    "kaynakları henüz yüklenemez."
+                            )
                             .setItems(labels) { _, index ->
-                                val (catalog, items) = results[index]
-                                if (items.isNullOrEmpty()) {
-                                    Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    showCatalogItems(addon, catalog, items)
-                                }
+                                val provider = addon.scrapers[index]
+                                AlertDialog.Builder(this)
+                                    .setTitle(provider.name)
+                                    .setMessage(
+                                        provider.description.ifBlank { "Açıklama yok." } + "\\n\\n" +
+                                            "Sürüm: " + provider.version + "\\n" +
+                                            "Dosya: " + provider.filename + "\\n" +
+                                            "Formatlar: " + provider.formats.joinToString(", ")
+                                    )
+                                    .setPositiveButton("Tamam", null)
+                                    .show()
                             }
                             .setNegativeButton("Kapat", null)
                             .show()
+                    }
+                } else {
+                    val results = addon.catalogs.map { catalog ->
+                        catalog to runCatching { Addons.fetchCatalog(addon, catalog) }.getOrNull()
+                    }
+                    runOnUiThread {
+                        status.text = if (results.isEmpty()) {
+                            addon.name + " · Katalog bulunamadı."
+                        } else {
+                            addon.name + " · " + results.size + " katalog hazır."
+                        }
+                        if (results.isNotEmpty()) {
+                            val labels = results.map { (catalog, items) ->
+                                catalog.name + " · " + (items?.size?.toString() ?: "okunamadı") + " kayıt"
+                            }.toTypedArray()
+                            AlertDialog.Builder(this)
+                                .setTitle(addon.name + " · Kataloglar")
+                                .setItems(labels) { _, index ->
+                                    val (catalog, items) = results[index]
+                                    if (items.isNullOrEmpty()) {
+                                        Toast.makeText(this, "Bu katalog yüklenemedi veya boş.", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        showCatalogItems(addon, catalog, items)
+                                    }
+                                }
+                                .setNegativeButton("Kapat", null)
+                                .show()
+                        }
                     }
                 }
             } catch (e: Exception) {
