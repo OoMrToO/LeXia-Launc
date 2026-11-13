@@ -55,8 +55,7 @@ object AddonMatcher {
         }
 
         val wanted = picks.filter { it.title.isNotBlank() }.distinctBy { it.key.ifBlank { it.title } }
-        val names = wanted.associateBy { normalize(it.title) }
-        if (names.isEmpty()) return
+        if (wanted.isEmpty()) return
         val found = LinkedHashMap<String, JSONObject>()
 
         for (repository in repositories) {
@@ -68,9 +67,9 @@ object AddonMatcher {
                 if (candidates.isEmpty()) continue
                 val candidateNames = candidates.associateBy { normalize(it.title) }
                 var skip = 0
-                repeat(3) {
-                    val page = runCatching { Addons.fetchCatalog(addon, catalog, skip) }.getOrNull()
-                        ?: return@repeat
+                var pageNumber = 0
+                while (pageNumber < 3) {
+                    val page = runCatching { Addons.fetchCatalog(addon, catalog, skip) }.getOrNull() ?: break
                     for (item in page) {
                         val normalized = normalize(item.name)
                         val pick = candidateNames[normalized] ?: continue
@@ -86,8 +85,9 @@ object AddonMatcher {
                                 .put("itemType", item.type.ifBlank { catalog.type })
                         }
                     }
-                    if (page.size < 100) return@repeat
+                    if (page.size < 100) break
                     skip += page.size
+                    pageNumber++
                 }
             }
         }
