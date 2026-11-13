@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Message
+import android.os.Looper
 import android.os.Messenger
 import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.quickJs
@@ -61,6 +62,9 @@ class AddonSandboxService : Service() {
             sendReply(reply, requestId, false, "JavaScript source is empty or exceeds the size limit.")
             return true
         }
+        val watchdogHandler = Handler(Looper.getMainLooper())
+        val watchdog = Runnable { android.os.Process.killProcess(android.os.Process.myPid()) }
+        watchdogHandler.postDelayed(watchdog, EXECUTION_TIMEOUT_MS + WATCHDOG_GRACE_MS)
         try {
             check(brokerReady.await(5, TimeUnit.SECONDS) && networkBroker != null) {
                 "Addon network broker is unavailable."
@@ -174,9 +178,15 @@ class AddonSandboxService : Service() {
                     }
                 }
             }
-            sendReply(reply, requestId, true, result.take(MAX_RESULT_CHARS))
+            if (result.length > MAX_RESULT_CHARS) {
+                sendReply(reply, requestId, false, "Provider result exceeds the size limit.")
+            } else {
+                sendReply(reply, requestId, true, result)
+            }
         } catch (error: Throwable) {
             sendReply(reply, requestId, false, (error.message ?: error.javaClass.simpleName).take(1000))
+        } finally {
+            watchdogHandler.removeCallbacks(watchdog)
         }
         return true
     }
@@ -324,5 +334,6 @@ class AddonSandboxService : Service() {
         private const val MAX_SOURCE_CHARS = 256 * 1024
         private const val MAX_RESULT_CHARS = 256 * 1024
         private const val EXECUTION_TIMEOUT_MS = 60_000L
+        private const val WATCHDOG_GRACE_MS = 2_000L
     }
 }
