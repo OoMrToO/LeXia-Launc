@@ -22,6 +22,8 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
+import android.util.TypedValue
 import androidx.media3.ui.TrackSelectionDialogBuilder
 
 /** Plays a direct HTTPS media URL supplied by the user or an authorized provider. */
@@ -129,6 +131,7 @@ class AddonPlayerActivity : Activity() {
                     durationMs = current.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
                     applyPreferredLanguages(current)
                     applyPreferredVideoQuality(current)
+                    applySubtitleAppearance()
                     if (!resumeApplied) {
                         val saved = WatchProgress.get(this@AddonPlayerActivity, seriesId, season, episode)
                         if (saved != null && !saved.isComplete && saved.positionMs > 5_000) {
@@ -291,6 +294,60 @@ class AddonPlayerActivity : Activity() {
             .build()
     }
 
+    private fun applySubtitleAppearance() {
+        val subtitleView = if (::playerView.isInitialized) playerView.subtitleView else null
+        subtitleView?.setFixedTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            playbackPrefs.getFloat(KEY_SUBTITLE_SIZE, 22f).coerceIn(16f, 36f)
+        )
+        subtitleView?.setBottomPaddingFraction(
+            playbackPrefs.getFloat(KEY_SUBTITLE_POSITION, 0.08f).coerceIn(0.02f, 0.28f)
+        )
+        subtitleView?.setStyle(CaptionStyleCompat(
+            android.graphics.Color.WHITE,
+            android.graphics.Color.TRANSPARENT,
+            android.graphics.Color.TRANSPARENT,
+            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+            android.graphics.Color.BLACK,
+            null
+        ))
+    }
+
+    private fun showSubtitleAppearanceDialog() {
+        val labels = arrayOf("Küçük", "Normal", "Büyük", "Çok büyük")
+        val sizes = floatArrayOf(18f, 22f, 27f, 32f)
+        val selected = sizes.indices.minByOrNull {
+            kotlin.math.abs(sizes[it] - playbackPrefs.getFloat(KEY_SUBTITLE_SIZE, 22f))
+        } ?: 1
+        AlertDialog.Builder(this)
+            .setTitle("Altyazı boyutu")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                playbackPrefs.edit().putFloat(KEY_SUBTITLE_SIZE, sizes[which]).apply()
+                applySubtitleAppearance()
+                dialog.dismiss()
+                showSubtitlePositionDialog()
+            }
+            .setNegativeButton("Kapat", null)
+            .create().also { stylePlaybackDialog(it) }.show()
+    }
+
+    private fun showSubtitlePositionDialog() {
+        val labels = arrayOf("Ekran altı", "Biraz yukarı", "Orta-alt")
+        val values = floatArrayOf(0.08f, 0.15f, 0.23f)
+        val selected = values.indices.minByOrNull {
+            kotlin.math.abs(values[it] - playbackPrefs.getFloat(KEY_SUBTITLE_POSITION, 0.08f))
+        } ?: 0
+        AlertDialog.Builder(this)
+            .setTitle("Altyazı konumu")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                playbackPrefs.edit().putFloat(KEY_SUBTITLE_POSITION, values[which]).apply()
+                applySubtitleAppearance()
+                dialog.dismiss()
+            }
+            .setNegativeButton("Kapat", null)
+            .create().also { stylePlaybackDialog(it) }.show()
+    }
+
     private fun showLanguagePreference(title: String, key: String) {
         val choices = arrayOf("Otomatik", "Türkçe", "İngilizce", "Almanca", "Fransızca", "İspanyolca", "Arapça")
         val tags = arrayOf<String?>(null, "tr", "en", "de", "fr", "es", "ar")
@@ -382,6 +439,7 @@ class AddonPlayerActivity : Activity() {
                 "Harici altyazı yükle",
                 "Tercih edilen ses dili",
                 "Tercih edilen altyazı dili",
+                "Altyazı boyutu ve konumu",
                 "Oynatma hızı",
                 "Görüntü kalitesi"
             )) { _, which ->
@@ -391,8 +449,9 @@ class AddonPlayerActivity : Activity() {
                     2 -> chooseExternalSubtitle()
                     3 -> showLanguagePreference("Tercih edilen ses dili", KEY_AUDIO_LANGUAGE)
                     4 -> showLanguagePreference("Tercih edilen altyazı dili", KEY_TEXT_LANGUAGE)
-                    5 -> showPlaybackSpeedDialog(current)
-                    6 -> showVideoQualityDialog(current)
+                    5 -> showSubtitleAppearanceDialog()
+                    6 -> showPlaybackSpeedDialog(current)
+                    7 -> showVideoQualityDialog(current)
                 }
             }
             .create().also { stylePlaybackDialog(it) }.show()
@@ -520,6 +579,8 @@ class AddonPlayerActivity : Activity() {
         private const val REQUEST_EXTERNAL_SUBTITLE = 4102
         private const val KEY_AUDIO_LANGUAGE = "preferred_audio_language"
         private const val KEY_TEXT_LANGUAGE = "preferred_text_language"
+        private const val KEY_SUBTITLE_SIZE = "preferred_subtitle_size"
+        private const val KEY_SUBTITLE_POSITION = "preferred_subtitle_position"
         private const val KEY_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_EXTERNAL_SUBTITLE_URI = "external_subtitle_uri"
         private val HTTP_SERVER_ERROR_RANGE = 500..599
