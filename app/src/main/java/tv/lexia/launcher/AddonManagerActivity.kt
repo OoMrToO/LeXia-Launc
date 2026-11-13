@@ -189,11 +189,10 @@ class AddonManagerActivity : Activity() {
                         AlertDialog.Builder(this)
                             .setTitle(addon.name + " · Sağlayıcılar")
                             .setMessage(
-                                "Manifest ve sağlayıcı katalog tanımları okundu. " +
-                                    "Kataloglar sağlayıcı JavaScript koduyla üretildiği için " +
-                                    "LeXia'da henüz çalıştırılamıyor. Bu ekranda katalog adları " +
-                                    "ve desteklenen içerik türleri gösterilir; oynatma kaynakları " +
-                                    "yüklenmez."
+                                "Sağlayıcılar izole JavaScript ortamında çalıştırılabilir. " +
+                                    "Ağ erişimi varsayılan olarak kapalıdır; sağlayıcı için gereken " +
+                                    "HTTPS alan adlarını Ağ izinleri bölümünden tek tek onayla. " +
+                                    "Yalnızca kullanım hakkına sahip olduğun doğrudan medya adreslerini oynat."
                             )
                             .setItems(labels) { _, index ->
                                 val provider = addon.scrapers[index]
@@ -343,7 +342,7 @@ class AddonManagerActivity : Activity() {
             append("İzinli HTTPS alan adları: ")
             append(if (current.isEmpty()) "Henüz yok" else current.sorted().joinToString(", "))
             append("\n\nYalnızca tam alan adı eklenir. Joker karakter, IP ve HTTP kabul edilmez.")
-            append("\nBu izin listesi hazırlanmıştır; JavaScript ağ köprüsü henüz etkin değildir.")
+            append("\nİzin verilen alan adlarına yalnızca bu sağlayıcı, HTTPS üzerinden erişebilir.")
         }
         AlertDialog.Builder(this)
             .setTitle("Sağlayıcı ağ izinleri")
