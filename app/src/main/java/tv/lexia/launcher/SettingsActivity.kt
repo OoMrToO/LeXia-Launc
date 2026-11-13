@@ -573,6 +573,8 @@ class SettingsActivity : Activity() {
             ),
             sub("Eklenti eşleştirme", "Ana ekranda dönen film ve dizileri eklenti kataloglarında ara; hangi depoda bulunacağını seç.", { addonMatchPage() },
                 value = { when (prefs.addonMatchMode) { "all" -> "Tüm depolar"; "selected" -> "Favori depo"; else -> "Kapalı" } }),
+            sub("Oynatma ve sağlayıcılar", "Ana ekrandan otomatik kaynak bulma, kalite önceliği ve site tercihleri.", { playbackPage() },
+                value = { when (HomePlaybackPrefs.mode(this)) { "pinned" -> "Sabit depo"; "pinned_provider" -> "Sabit sağlayıcı"; else -> "Tüm sağlayıcılar" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
@@ -726,6 +728,65 @@ class SettingsActivity : Activity() {
                 { prefs.addonMatchRepository = it }
             ))
         }
+        items
+    }
+
+    private fun playbackPage() = Page(
+        "Oynatma ve sağlayıcılar", R.drawable.ic_tv,
+        keys = listOf("homePlaybackMode", "homePlaybackQuality", "homePlaybackLanguage")
+    ) {
+        val repositories = Addons.urls(this)
+        val items = ArrayList<Item>()
+        items.add(Note(
+            "Ana ekrandaki İzle düğmesi içerik TMDB numarasını otomatik kullanır. " +
+                "Açık sağlayıcılar paralel olmayan güvenli sırayla taranır; kaynaklar kalite tercihine göre sıralanır. " +
+                "Bir sağlayıcı çalışmıyorsa onun HTTPS alan adı iznini Eklentiler bölümünden vermen gerekir."
+        ))
+        items.add(Header("ARAMA KAPSAMI"))
+        items.add(choice(
+            "Sağlayıcılar",
+            "Tümü: açık olan bütün sağlayıcıları dene. Sabit depo: yalnızca seçtiğin depoyu tara.",
+            listOf("all", "pinned"), listOf("Tüm sağlayıcılar", "Sabit depo"),
+            { HomePlaybackPrefs.mode(this).let { if (it == "pinned") "pinned" else "all" } },
+            { HomePlaybackPrefs.setMode(this, it) }
+        ))
+        items.add(Row(
+            "Depo seç",
+            "Sabit depo modu için kullanılacak Nuvio deposu.",
+            value = { HomePlaybackPrefs.pinnedRepository(this).ifBlank { "Seçilmedi" }.removePrefix("https://").removeSuffix("/") },
+            action = {
+                if (repositories.isEmpty()) {
+                    Glass.toast(this, "Önce Eklentiler bölümünden depo ekle.")
+                } else Dialogs.chooseOne(this, "Sabit depo", repositories,
+                    repositories.indexOf(HomePlaybackPrefs.pinnedRepository(this)).coerceAtLeast(0)) {
+                    HomePlaybackPrefs.setPinnedRepository(this, repositories[it])
+                    refreshValues()
+                }
+            }
+        ))
+        items.add(Row(
+            "Sağlayıcıları aç / kapat",
+            "Her depodaki Nuvio sağlayıcısını ayrı ayrı etkinleştir veya devre dışı bırak.",
+            chevron = true,
+            action = { startActivity(Intent(this, HomePlaybackProvidersActivity::class.java)) }
+        ))
+        items.add(Header("KALİTE VE DİL"))
+        items.add(choice(
+            "Kalite önceliği",
+            "Kaynaklar bu tercihe göre sıralanır; seçilen kalite bulunamazsa diğer kaynaklar da gösterilir.",
+            listOf("2160", "1080", "720", "any"),
+            listOf("4K", "1080p", "720p", "Fark etmez"),
+            { HomePlaybackPrefs.quality(this) },
+            { HomePlaybackPrefs.setQuality(this, it) }
+        ))
+        items.add(choice(
+            "Altyazı dili",
+            "Kaynak seçerken altyazı listesindeki tercih ettiğin dil.",
+            listOf("tr", "en", "any"),
+            listOf("Türkçe", "İngilizce", "Fark etmez"),
+            { HomePlaybackPrefs.language(this) },
+            { HomePlaybackPrefs.setLanguage(this, it) }
+        ))
         items
     }
 
