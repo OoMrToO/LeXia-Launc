@@ -1,8 +1,8 @@
 package tv.lexia.launcher
 
 import android.app.Service
-import android.content.Intent
 import android.content.ComponentName
+import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
@@ -11,17 +11,19 @@ import android.os.IBinder
 import android.os.Message
 import android.os.Messenger
 import android.os.Process
-import app.cash.quickjs.QuickJs
+import com.dokar.quickjs.binding.asyncFunction
+import com.dokar.quickjs.binding.define
+import com.dokar.quickjs.quickJs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Executes bounded JavaScript in an isolated Android UID.
- *
- * This process has no INTERNET permission (isolatedProcess); host I/O is deliberately
- * not exposed to JavaScript. A watchdog terminates the whole sandbox process if native
- * evaluation does not return before the deadline.
+ * Executes provider JavaScript in an isolated Android UID. Network is available only
+ * through the provider-scoped Binder broker and exact HTTPS host grants.
  */
 class AddonSandboxService : Service() {
     private lateinit var worker: HandlerThread
@@ -30,7 +32,7 @@ class AddonSandboxService : Service() {
     private val brokerReady = CountDownLatch(1)
     private val brokerConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            networkBroker = IAddonNetworkBroker.Stub.asInterface(service)
+            networkBroker = IAddonNetworkBroker.asInterface(service!!)
             brokerReady.countDown()
         }
         override fun onServiceDisconnected(name: ComponentName?) { networkBroker = null }
@@ -48,32 +50,43 @@ class AddonSandboxService : Service() {
     private fun handleMessage(message: Message): Boolean {
         if (message.what != MSG_EVALUATE) return false
         val reply = message.replyTo ?: return true
-        val requestId = message.data.getInt(KEY_REQUEST_ID)
-        val source = message.data.getString(KEY_SOURCE).orEmpty()
-        val repository = message.data.getString(KEY_REPOSITORY).orEmpty()
-        val providerId = message.data.getString(KEY_PROVIDER_ID).orEmpty()
+        val data = message.data
+        val requestId = data.getInt(KEY_REQUEST_ID)
+        val source = data.getString(KEY_SOURCE).orEmpty()
+        val repository = data.getString(KEY_REPOSITORY).orEmpty()
+        val providerId = data.getString(KEY_PROVIDER_ID).orEmpty()
+        val callArgs = data.getString(KEY_CALL_ARGS).orEmpty()
         if (source.isBlank() || source.length > MAX_SOURCE_CHARS) {
             sendReply(reply, requestId, false, "JavaScript source is empty or exceeds the size limit.")
             return true
         }
-
-        val watchdog = Executors.newSingleThreadScheduledExecutor()
-        val timeout = watchdog.schedule({
-            // QuickJS's synchronous evaluate API has no safe cross-thread interrupt.
-            // Killing this isolated process is the hard execution-time boundary.
-            Process.killProcess(Process.myPid())
-        }, EXECUTION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-
         try {
-            check(brokerReady.await(5, TimeUnit.SECONDS) && networkBroker != null) { "Addon network broker is unavailable." }
-            val result = QuickJs.create().use { engine ->
-                engine.set("Native", AddonNativeFetch::class.java, object : AddonNativeFetch {
-                    override fun fetch(requestJson: String): String {
-                        require(requestJson.length <= 300 * 1024) { "Network request too large." }
-                        return checkNotNull(networkBroker).fetch(repository, providerId, requestJson)
+            check(brokerReady.await(5, TimeUnit.SECONDS) && networkBroker != null) {
+                "Addon network broker is unavailable."
+            }
+            val result = runBlocking(Dispatchers.IO) {
+                withTimeout(EXECUTION_TIMEOUT_MS) {
+                    quickJs(Dispatchers.IO) {
+                        define("console") {
+                            function("log") { args -> android.util.Log.d("LeXiaAddon:$providerId", args.joinToString(" ")) }
+                            function("error") { args -> android.util.Log.e("LeXiaAddon:$providerId", args.joinToString(" ")) }
+                            function("warn") { args -> android.util.Log.w("LeXiaAddon:$providerId", args.joinToString(" ")) }
+                        }
+                        define("Native") {
+                            asyncFunction("fetch") { args ->
+                                val requestJson = args.firstOrNull()?.toString().orEmpty()
+                                require(requestJson.length <= MAX_REQUEST_CHARS) { "Network request too large." }
+                                checkNotNull(networkBroker).fetch(repository, providerId, requestJson)
+                            }
+                        }
+                        evaluate<String>(
+                            FETCH_POLYFILL + "\n" + COMMON_JS_WRAPPER
+                                .replace("__PROVIDER_SOURCE__", source)
+                                .replace("__CALL_ARGS__", JSONObject.quote(callArgs)),
+                            filename = "provider-$providerId.js"
+                        ) ?: "[]"
                     }
-                })
-                engine.evaluate(FETCH_POLYFILL + "\n" + source, "addon-provider.js")?.toString().orEmpty()
+                }
             }
             if (result.length > MAX_RESULT_CHARS) {
                 sendReply(reply, requestId, false, "JavaScript result exceeds the size limit.")
@@ -82,9 +95,6 @@ class AddonSandboxService : Service() {
             }
         } catch (error: Throwable) {
             sendReply(reply, requestId, false, (error.message ?: error.javaClass.simpleName).take(1000))
-        } finally {
-            timeout.cancel(false)
-            watchdog.shutdownNow()
         }
         return true
     }
@@ -113,33 +123,52 @@ class AddonSandboxService : Service() {
         const val KEY_SOURCE = "source"
         const val KEY_REPOSITORY = "repository"
         const val KEY_PROVIDER_ID = "provider_id"
+        const val KEY_CALL_ARGS = "call_args"
         const val KEY_SUCCESS = "success"
         const val KEY_VALUE = "value"
         private const val MAX_SOURCE_CHARS = 256 * 1024
+        private const val MAX_REQUEST_CHARS = 300 * 1024
         private const val MAX_RESULT_CHARS = 256 * 1024
-        private const val EXECUTION_TIMEOUT_MS = 8_000L
+        private const val EXECUTION_TIMEOUT_MS = 60_000L
+
         private const val FETCH_POLYFILL = """
-            (function (g) {
-              function makeResponse(data) {
-                var headers = data.headers || {};
-                return {
-                  ok: !!data.ok, status: data.status || 0, statusText: data.statusText || "",
-                  url: data.url || "",
-                  headers: { get: function (name) {
-                    var key = Object.keys(headers).find(function (k) { return k.toLowerCase() === String(name).toLowerCase(); });
-                    return key ? headers[key] : null;
-                  }},
-                  text: function () { return Promise.resolve(data.body || ""); },
-                  json: function () { return Promise.resolve(JSON.parse(data.body || "null")); }
-                };
-              }
-              g.fetch = function (input, options) {
-                options = options || {};
-                var request = { url: String(input), method: options.method || "GET", headers: options.headers || {}, body: options.body || "" };
-                try { return Promise.resolve(makeResponse(JSON.parse(Native.fetch(JSON.stringify(request))))); }
-                catch (error) { return Promise.reject(error); }
+            globalThis.global = globalThis;
+            globalThis.window = globalThis;
+            globalThis.self = globalThis;
+            globalThis.fetch = async function(input, options) {
+              options = options || {};
+              const req = { url: String(input), method: options.method || "GET",
+                headers: options.headers || {}, body: options.body == null ? "" : String(options.body) };
+              const data = JSON.parse(await Native.fetch(JSON.stringify(req)));
+              const headers = data.headers || {};
+              return {
+                ok: !!data.ok, status: data.status || 0, statusText: data.statusText || "",
+                url: data.url || "",
+                headers: { get: function(name) {
+                  const key = Object.keys(headers).find(k => k.toLowerCase() === String(name).toLowerCase());
+                  return key ? headers[key] : null;
+                }},
+                text: async function() { return data.body || ""; },
+                json: async function() { return JSON.parse(data.body || "null"); }
               };
-            })(globalThis);
+            };
+            if (typeof atob === "undefined") globalThis.atob = function(v) {
+              return globalThis.Buffer ? Buffer.from(v, "base64").toString("binary") : "";
+            };
+        """
+
+        private const val COMMON_JS_WRAPPER = """
+            (async function() {
+              const module = { exports: {} };
+              const exports = module.exports;
+              __PROVIDER_SOURCE__
+              const api = module.exports || {};
+              const getStreams = api.getStreams || globalThis.getStreams;
+              if (typeof getStreams !== "function") return "[]";
+              const args = JSON.parse(__CALL_ARGS__);
+              const streams = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
+              return JSON.stringify(Array.isArray(streams) ? streams : []);
+            })()
         """
     }
 }
