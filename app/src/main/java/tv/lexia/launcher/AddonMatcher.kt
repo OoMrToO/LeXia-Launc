@@ -28,15 +28,15 @@ object AddonMatcher {
     fun needsRefresh(context: Context, picks: List<Pick>): Boolean {
         val prefs = Prefs(context)
         val repositories = when (prefs.addonMatchMode) {
-            "all" -> Addons.urls(context).sorted()
+            "all" -> AddonLibrary.enabledRepositories(context)
             "selected" -> {
-                val urls = Addons.urls(context)
+                val urls = AddonLibrary.enabledRepositories(context)
                 listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
                     .filter { it.isNotBlank() }
             }
             else -> emptyList()
         }
-        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" +
+        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" + AddonLibrary.configurationSignature(context) + "#" +
             picks.map { it.key.ifBlank { it.title } }.sorted().joinToString("|")
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(SIGNATURE, "") != signature
     }
@@ -64,15 +64,15 @@ object AddonMatcher {
     fun refresh(context: Context, picks: List<Pick>) {
         val prefs = Prefs(context)
         val repositories = when (prefs.addonMatchMode) {
-            "all" -> Addons.urls(context)
+            "all" -> AddonLibrary.enabledRepositories(context)
             "selected" -> {
-                val urls = Addons.urls(context)
+                val urls = AddonLibrary.enabledRepositories(context)
                 listOf(prefs.addonMatchRepository.takeIf { it in urls } ?: urls.firstOrNull().orEmpty())
                     .filter { it.isNotBlank() }
             }
             else -> emptyList()
         }
-        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" +
+        val signature = prefs.addonMatchMode + "|" + repositories.joinToString("|") + "#" + AddonLibrary.configurationSignature(context) + "#" +
             picks.map { it.key.ifBlank { it.title } }.sorted().joinToString("|")
         if (repositories.isEmpty()) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -87,7 +87,9 @@ object AddonMatcher {
         for (repository in repositories) {
             val addon = runCatching { Addons.fetchManifest(repository) }.getOrNull() ?: continue
             if ("meta" !in addon.resources && addon.resources.isNotEmpty()) continue
-            for (catalog in addon.catalogs.take(8)) {
+            for (catalog in AddonLibrary.orderedCatalogs(context, repository, addon.catalogs).filter {
+                AddonLibrary.isCatalogEnabled(context, repository, it)
+            }.take(8)) {
                 val expectedSeries = catalog.type.equals("series", true) ||
                     catalog.type.equals("tv", true)
                 val expectedMovie = catalog.type.equals("movie", true)
