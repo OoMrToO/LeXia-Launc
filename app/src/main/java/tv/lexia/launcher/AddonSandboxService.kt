@@ -16,6 +16,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import org.json.JSONArray
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -60,6 +64,8 @@ class AddonSandboxService : Service() {
             check(brokerReady.await(5, TimeUnit.SECONDS) && networkBroker != null) {
                 "Addon network broker is unavailable."
             }
+            val documentCache = mutableMapOf<String, Document>()
+            val elementCache = mutableMapOf<String, Element>()
             val result = runBlocking(Dispatchers.IO) {
                 withTimeout(EXECUTION_TIMEOUT_MS) {
                     quickJs(Dispatchers.IO) {
@@ -85,6 +91,73 @@ class AddonSandboxService : Service() {
                                 .put("search", uri.rawQuery?.let { "?$it" } ?: "")
                                 .put("hash", uri.rawFragment?.let { "#$it" } ?: "")
                                 .toString()
+                        }
+                        function("__cheerio_load") { args ->
+                            val docId = java.util.UUID.randomUUID().toString()
+                            documentCache[docId] = Jsoup.parse(args.getOrNull(0)?.toString().orEmpty())
+                            docId
+                        }
+                        function("__cheerio_select") { args ->
+                            val docId = args.getOrNull(0)?.toString().orEmpty()
+                            val selector = args.getOrNull(1)?.toString().orEmpty()
+                            val ids = runCatching {
+                                documentCache[docId]?.select(selector)?.mapIndexed { index, element ->
+                                    val id = "$docId:$index:${element.hashCode()}"
+                                    elementCache[id] = element
+                                    id
+                                }.orEmpty()
+                            }.getOrDefault(emptyList())
+                            JSONArray(ids).toString()
+                        }
+                        function("__cheerio_find") { args ->
+                            val docId = args.getOrNull(0)?.toString().orEmpty()
+                            val parentId = args.getOrNull(1)?.toString().orEmpty()
+                            val selector = args.getOrNull(2)?.toString().orEmpty()
+                            val ids = runCatching {
+                                elementCache[parentId]?.select(selector)?.mapIndexed { index, element ->
+                                    val id = "$docId:find:$index:${element.hashCode()}"
+                                    elementCache[id] = element
+                                    id
+                                }.orEmpty()
+                            }.getOrDefault(emptyList())
+                            JSONArray(ids).toString()
+                        }
+                        function("__cheerio_text") { args ->
+                            args.getOrNull(1)?.toString().orEmpty().split(',').mapNotNull { elementCache[it]?.text() }.joinToString(" ")
+                        }
+                        function("__cheerio_html") { args ->
+                            val docId = args.getOrNull(0)?.toString().orEmpty()
+                            val elementId = args.getOrNull(1)?.toString().orEmpty()
+                            if (elementId.isEmpty()) documentCache[docId]?.html().orEmpty()
+                            else elementCache[elementId]?.html().orEmpty()
+                        }
+                        function("__cheerio_inner_html") { args ->
+                            elementCache[args.getOrNull(1)?.toString().orEmpty()]?.html().orEmpty()
+                        }
+                        function("__cheerio_attr") { args ->
+                            val elementId = args.getOrNull(1)?.toString().orEmpty()
+                            val attr = args.getOrNull(2)?.toString().orEmpty()
+                            elementCache[elementId]?.attr(attr)?.takeIf { it.isNotEmpty() } ?: "__UNDEFINED__"
+                        }
+                        function("__cheerio_next") { args ->
+                            val docId = args.getOrNull(0)?.toString().orEmpty()
+                            val element = elementCache[args.getOrNull(1)?.toString().orEmpty()]
+                            val next = element?.nextElementSibling()
+                            if (next == null) "__NONE__" else {
+                                val id = "$docId:next:${next.hashCode()}"
+                                elementCache[id] = next
+                                id
+                            }
+                        }
+                        function("__cheerio_prev") { args ->
+                            val docId = args.getOrNull(0)?.toString().orEmpty()
+                            val element = elementCache[args.getOrNull(1)?.toString().orEmpty()]
+                            val prev = element?.previousElementSibling()
+                            if (prev == null) "__NONE__" else {
+                                val id = "$docId:prev:${prev.hashCode()}"
+                                elementCache[id] = prev
+                                id
+                            }
                         }
                         var resultJson = "[]"
                         function("__capture_result") { args ->
