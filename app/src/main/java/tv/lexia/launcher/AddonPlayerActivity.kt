@@ -81,7 +81,20 @@ class AddonPlayerActivity : Activity() {
         super.onStart()
         if (!::playerView.isInitialized) return
 
+        val providerHeaders = runCatching {
+            val json = org.json.JSONObject(intent.getStringExtra(EXTRA_HEADERS).orEmpty())
+            buildMap {
+                val names = json.names() ?: org.json.JSONArray()
+                for (i in 0 until names.length()) {
+                    val key = names.optString(i)
+                    val value = json.optString(key)
+                    if (key.length <= 80 && value.length <= 2048 &&
+                        !value.contains("\\r") && !value.contains("\\n")) put(key, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
         val httpFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(providerHeaders)
             .setAllowCrossProtocolRedirects(false)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
@@ -430,6 +443,7 @@ class AddonPlayerActivity : Activity() {
         private val HTTP_SERVER_ERROR_RANGE = 500..599
 
         const val EXTRA_URL = "media_url"
+        const val EXTRA_HEADERS = "media_headers"
         const val EXTRA_SERIES_ID = "series_id"
         const val EXTRA_SEASON = "season"
         const val EXTRA_EPISODE = "episode"
