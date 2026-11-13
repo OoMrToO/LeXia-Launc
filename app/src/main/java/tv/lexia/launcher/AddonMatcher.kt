@@ -41,21 +41,23 @@ object AddonMatcher {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(SIGNATURE, "") != signature
     }
 
-    fun find(context: Context, pick: Pick): Match? = try {
-        val root = JSONObject(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(DATA, "{}") ?: "{}")
-        val key = pick.key.ifBlank { pick.title }
-        val item = root.optJSONObject(key) ?: return null
-        Match(
-            repository = item.optString("repository"),
-            addonName = item.optString("addonName"),
-            catalogType = item.optString("catalogType"),
-            catalogName = item.optString("catalogName"),
-            itemId = item.optString("itemId"),
-            itemType = item.optString("itemType")
-        ).takeIf { it.repository.isNotBlank() && it.itemId.isNotBlank() }
-    } catch (_: Exception) {
-        null
+    fun find(context: Context, pick: Pick): Match? {
+        return try {
+            val root = JSONObject(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(DATA, "{}") ?: "{}")
+            val key = pick.key.ifBlank { pick.title }
+            val item = root.optJSONObject(key) ?: return null
+            Match(
+                repository = item.optString("repository"),
+                addonName = item.optString("addonName"),
+                catalogType = item.optString("catalogType"),
+                catalogName = item.optString("catalogName"),
+                itemId = item.optString("itemId"),
+                itemType = item.optString("itemType")
+            ).takeIf { it.repository.isNotBlank() && it.itemId.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** Call from a worker thread. Replaces the cache for the supplied current home-screen titles. */
