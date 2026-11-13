@@ -277,7 +277,7 @@ object Addons {
         require(provider.enabled) { "Bu sağlayıcı manifestte devre dışı." }
         val filename = provider.filename.trim()
         require(filename.length in 1..240 && !filename.startsWith("/") && !filename.contains("..") &&
-            !filename.contains('\\\\') && filename.matches(Regex("^[A-Za-z0-9_./-]+\\\\.js$"))) {
+            !filename.contains('\\') && filename.matches(Regex("^[A-Za-z0-9_./-]+\\.js$"))) {
             "Sağlayıcı dosya yolu geçersiz."
         }
         val source = getText(addon.baseUrl.trimEnd('/') + "/" + filename)
