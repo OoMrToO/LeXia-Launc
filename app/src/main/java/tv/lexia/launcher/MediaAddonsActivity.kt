@@ -180,7 +180,7 @@ class MediaAddonsActivity : Activity() {
         val input = EditText(this).apply {
             hint = "https://sunucu-adresi"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            singleLine = true
+            isSingleLine = true
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             setPadding(dp(16), dp(12), dp(16), dp(12))
