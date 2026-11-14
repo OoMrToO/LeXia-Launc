@@ -182,13 +182,14 @@ class PlayerActivity : Activity() {
             showAudioTracks()
             return true
         }
-        return super.dispatchKeyEvent(event)
+        // The player sees the remote first (any D-pad press brings its controls back); what it
+        // does not use goes on to the focused button.
+        return (::playerView.isInitialized && playerView.dispatchKeyEvent(event)) || super.dispatchKeyEvent(event)
     }
 
     private fun buildPlayerUi() {
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
-            isFocusableInTouchMode = true
         }
 
         playerView = PlayerView(this).apply {
@@ -249,6 +250,7 @@ class PlayerActivity : Activity() {
         )
 
         setContentView(root)
+        playerView.requestFocus()
     }
 
     private fun initializePlayer() {

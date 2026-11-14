@@ -41,7 +41,6 @@ class MediaAddonsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(44), dp(28), dp(44), dp(28))
             setBackgroundColor(Color.rgb(9, 11, 17))
-            isFocusableInTouchMode = true
         }
 
         val header = TextView(this).apply {
@@ -116,7 +115,8 @@ class MediaAddonsActivity : Activity() {
             )
         )
         setContentView(root)
-        root.requestFocus()
+        // The remote starts on the first button; a focused container would swallow every D-pad press.
+        add.requestFocus()
     }
 
     private fun renderAddons() {
@@ -275,15 +275,22 @@ class MediaAddonsActivity : Activity() {
         isClickable = true
         setTextColor(Color.WHITE)
         setPadding(dp(20), dp(13), dp(20), dp(13))
-        background = GradientDrawable().apply {
+        val idle = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
             setColor(if (primary) Color.rgb(66, 91, 180) else Color.rgb(34, 39, 51))
             setStroke(dp(1), if (primary) Color.rgb(126, 150, 255) else Color.rgb(62, 71, 91))
         }
+        // Focused: white with dark text, so the selected button is unmistakable from the sofa.
+        val focusedLook = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(Color.WHITE)
+        }
+        background = idle
         setOnFocusChangeListener { view, focused ->
+            view.background = if (focused) focusedLook else idle
+            (view as TextView).setTextColor(if (focused) Color.rgb(9, 11, 17) else Color.WHITE)
             view.scaleX = if (focused) 1.04f else 1f
             view.scaleY = if (focused) 1.04f else 1f
-            view.alpha = if (focused) 1f else 0.9f
         }
     }
 
