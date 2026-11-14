@@ -188,6 +188,40 @@ internal class MediaAddonRepository(context: Context) {
             .take(MAX_EPISODES)
     }
 
+    /** Queries Stremio subtitle resources independently of stream resources. */
+    fun fetchSubtitles(type: String, videoId: String): List<MediaSubtitle> {
+        require(type == "movie" || type == "series") { "Desteklenmeyen içerik türü." }
+        require(videoId.isNotBlank() && videoId.length <= 300) { "Geçersiz içerik kimliği." }
+
+        val result = LinkedHashMap<String, MediaSubtitle>()
+        for (addon in installedAddons()) {
+            val resource = addon.resources.firstOrNull {
+                it.equals("subtitles", true) || it.equals("subtitle", true)
+            } ?: continue
+            if (!supports(addon, type) || !supportsId(addon, videoId)) continue
+            try {
+                val root = getJson(endpoint(addon.baseUrl, resource, type, videoId))
+                val subtitles = root.optJSONArray("subtitles") ?: continue
+                for (i in 0 until minOf(subtitles.length(), MAX_SUBTITLES)) {
+                    val item = subtitles.optJSONObject(i) ?: continue
+                    val url = item.optString("url")
+                    if (!isDirectHttpUrl(url)) continue
+                    val language = item.optString("lang")
+                        .ifBlank { item.optString("language") }
+                        .ifBlank { "und" }.take(16)
+                    val label = item.optString("label")
+                        .ifBlank { item.optString("name") }
+                        .ifBlank { language.uppercase() }.take(80)
+                    result.putIfAbsent("$url|$language", MediaSubtitle(url, language, label))
+                    if (result.size >= MAX_SUBTITLES) return result.values.toList()
+                }
+            } catch (_: Exception) {
+                // A broken subtitle endpoint must not hide streams or other subtitle providers.
+            }
+        }
+        return result.values.toList()
+    }
+
     /** Returns direct HTTP(S) stream choices from every enabled installed add-on. */
     fun fetchStreams(type: String, videoId: String): List<MediaStream> {
         require(type == "movie" || type == "series") { "Desteklenmeyen içerik türü." }
@@ -374,6 +408,7 @@ internal class MediaAddonRepository(context: Context) {
         const val KEY_INSTALLED = "installed_v1"
         const val MAX_RESPONSE_BYTES = 5 * 1024 * 1024
         const val MAX_STREAMS = 80
+        const val MAX_SUBTITLES = 40
         const val MAX_EPISODES = 200
         const val MAX_HEADERS = 20
         val IMDB_ID = Regex("^tt[0-9]{7,10}$")
