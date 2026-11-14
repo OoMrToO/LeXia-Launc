@@ -15,10 +15,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.util.concurrent.Executors
 
-/** TV-remote-friendly manager for user-installed Stremio-compatible source add-ons. */
+/** TV-remote-friendly manager for Stremio add-ons and Nuvio JavaScript scraper repositories. */
 class MediaAddonsActivity : Activity() {
 
     private val repository by lazy { MediaAddonRepository(this) }
+    private val nuvioRepository by lazy { NuvioJsRepository(this) }
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
     private lateinit var list: LinearLayout
@@ -122,19 +123,59 @@ class MediaAddonsActivity : Activity() {
     private fun renderAddons() {
         list.removeAllViews()
         val addons = repository.installedAddons()
-        status.text = if (addons.isEmpty()) {
-            "Henüz eklenti kurulmadı."
-        } else {
-            "${addons.size} eklenti kurulu"
-        }
+        val nuvioRepos = nuvioRepository.installedRepositories()
+        val nuvioCount = nuvioRepos.sumOf { it.scrapers.size }
+        status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} Nuvio deposu  ·  $nuvioCount JS scraper"
 
-        if (addons.isEmpty()) {
+        if (addons.isEmpty() && nuvioRepos.isEmpty()) {
             list.addView(
                 infoCard(
                     "İlk kaynağını ekle",
                     "Özel veya topluluk tarafından sunulan uyumlu eklentilerin adresini buraya ekleyebilirsin."
                 )
             )
+        }
+
+        nuvioRepos.forEach { repo ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(22), dp(17), dp(22), dp(17))
+                background = panelBackground()
+            }
+            card.addView(TextView(this).apply {
+                text = repo.name
+                textSize = 21f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            card.addView(TextView(this).apply {
+                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}"
+                textSize = 14f
+                setTextColor(Color.rgb(125, 151, 255))
+                setPadding(0, dp(5), 0, dp(4))
+            })
+            card.addView(TextView(this).apply {
+                text = repo.manifestUrl
+                textSize = 13f
+                setTextColor(Color.rgb(133, 164, 225))
+                maxLines = 2
+            })
+            card.addView(TextView(this).apply {
+                text = repo.scrapers.take(8).joinToString("  ·  ") { it.name } +
+                    if (repo.scrapers.size > 8) "  ·  +${repo.scrapers.size - 8}" else ""
+                textSize = 13f
+                setTextColor(Color.rgb(155, 165, 184))
+                setPadding(0, dp(7), 0, 0)
+                maxLines = 2
+            })
+            val remove = action("Nuvio deposunu kaldır").apply {
+                setOnClickListener { confirmRemoveNuvio(repo.id, repo.name) }
+            }
+            card.addView(remove, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) })
+            addCardToList(card)
         }
 
         addons.forEach { addon ->
@@ -187,7 +228,7 @@ class MediaAddonsActivity : Activity() {
         }
         val dialog = AlertDialog.Builder(this)
             .setTitle("Kaynak eklentisi ekle")
-            .setMessage("Eklentinin ana adresini veya /manifest.json adresini gir.")
+            .setMessage("Stremio manifest adresini veya Nuvio JS deposunun manifest.json adresini gir.")
             .setView(input)
             .setNegativeButton("İptal", null)
             .setPositiveButton("Doğrula ve ekle", null)
@@ -205,10 +246,20 @@ class MediaAddonsActivity : Activity() {
                 dialog.dismiss()
                 worker.execute {
                     try {
-                        val addon = repository.addAddon(address)
+                        val addon = try {
+                            repository.addAddon(address)
+                        } catch (_: Exception) {
+                            val nuvio = nuvioRepository.addRepository(address)
+                            runOnUiThread {
+                                busy = false
+                                status.text = "${nuvio.name} eklendi · ${nuvio.scrapers.size} Nuvio JS scraper"
+                                renderAddons()
+                            }
+                            return@execute
+                        }
                         runOnUiThread {
                             busy = false
-                            status.text = "${addon.name} eklendi."
+                            status.text = "${addon.name} Stremio eklentisi eklendi."
                             renderAddons()
                         }
                     } catch (e: Exception) {
@@ -232,6 +283,18 @@ class MediaAddonsActivity : Activity() {
             .setNegativeButton("Vazgeç", null)
             .setPositiveButton("Kaldır") { _, _ ->
                 repository.removeAddon(url)
+                renderAddons()
+            }
+            .show()
+    }
+
+    private fun confirmRemoveNuvio(repositoryId: String, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Nuvio deposu kaldırılsın mı?")
+            .setMessage("$name deposu ve indirilen scraper önbelleği kaldırılacak.")
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Kaldır") { _, _ ->
+                nuvioRepository.removeRepository(repositoryId)
                 renderAddons()
             }
             .show()
