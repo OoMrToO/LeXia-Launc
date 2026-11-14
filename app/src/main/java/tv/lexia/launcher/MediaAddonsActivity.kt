@@ -149,7 +149,7 @@ class MediaAddonsActivity : Activity() {
                 typeface = Typeface.DEFAULT_BOLD
             })
             card.addView(TextView(this).apply {
-                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}"
+                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}  ·  ${if (repo.enabled) "ETKİN" else "DEVRE DIŞI"}"
                 textSize = 14f
                 setTextColor(Color.rgb(125, 151, 255))
                 setPadding(0, dp(5), 0, dp(4))
@@ -223,6 +223,12 @@ class MediaAddonsActivity : Activity() {
                 card.addView(row)
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            repoActions.addView(action(if (repo.enabled) "Depoyu devre dışı bırak" else "Depoyu etkinleştir", primary = !repo.enabled).apply {
+                setOnClickListener {
+                    nuvioRepository.setRepositoryEnabled(repo.id, !repo.enabled)
+                    renderAddons()
+                }
+            })
             val allEnabled = repo.scrapers.all { it.enabled }
             repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
                 setOnClickListener {
