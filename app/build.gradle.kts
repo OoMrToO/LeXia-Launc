@@ -16,6 +16,9 @@ android {
         buildConfigField("String", "BUILD_NO", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
         // The address of the files site (film list, updates); the build workflow looks it up.
         buildConfigField("String", "SITE", "\"${System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"}\"")
+        // Nuvio scrapers use TMDB to resolve the selected title before searching providers.
+        val tmdbApiKey = System.getenv("TMDB_API_KEY").orEmpty()
+        buildConfigField("String", "TMDB_API_KEY", "\"${tmdbApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     // "full" is the normal app. "setup" leaves out the Home button service, which Play Protect

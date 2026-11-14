@@ -254,36 +254,46 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun showStreams(streams: List<MediaStream>, playbackTitle: String, mediaKey: String) {
-        status.text = "${streams.size} doğrudan oynatılabilir kaynak"
+        // Keep each add-on / Nuvio scraper visually separate, like Nuvio's provider list.
+        val providers = streams.groupBy { stream ->
+            stream.addonName.trim().ifBlank { "Diğer kaynaklar" }
+        }
+        status.text = "${streams.size} doğrudan oynatılabilir kaynak · ${providers.size} sağlayıcı"
         content.removeAllViews()
         addSectionTitle("YAYIN KAYNAKLARI")
-        streams.forEachIndexed { index, stream ->
-            val details = listOf(stream.addonName, stream.description)
-                .filter { it.isNotBlank() && it != stream.name }
-                .distinct()
-                .joinToString("  ·  ")
-            addCard(
-                stream.name.ifBlank { "Kaynak ${index + 1}" },
-                details,
-                if (stream.subtitles.isEmpty()) "Oynat" else "Oynat  ·  ${stream.subtitles.size} altyazı",
-                primary = index == 0
-            ) {
-                try {
-                    PlayerActivity.open(
-                        this,
-                        stream.url,
-                        playbackTitle,
-                        mediaKey,
-                        stream.headers,
-                        stream.subtitles.map {
-                            SubtitleTrack(it.url, language = it.language, label = it.label)
-                        },
-                        watchKey = film.key,
-                        markWatchedOnCompletion = !film.isSeries
-                    )
-                } catch (e: Exception) {
-                    status.text = e.message ?: "Oynatıcı açılamadı."
+
+        var globalIndex = 0
+        providers.forEach { (providerName, providerStreams) ->
+            addSectionTitle("${providerName.uppercase()}  ·  ${providerStreams.size} KAYNAK")
+            providerStreams.forEach { stream ->
+                val details = listOf(stream.description)
+                    .filter { it.isNotBlank() && it != stream.name }
+                    .distinct()
+                    .joinToString("  ·  ")
+                addCard(
+                    stream.name.ifBlank { "Kaynak ${globalIndex + 1}" },
+                    details,
+                    if (stream.subtitles.isEmpty()) "Oynat" else "Oynat  ·  ${stream.subtitles.size} altyazı",
+                    primary = globalIndex == 0
+                ) {
+                    try {
+                        PlayerActivity.open(
+                            this,
+                            stream.url,
+                            playbackTitle,
+                            mediaKey,
+                            stream.headers,
+                            stream.subtitles.map {
+                                SubtitleTrack(it.url, language = it.language, label = it.label)
+                            },
+                            watchKey = film.key,
+                            markWatchedOnCompletion = !film.isSeries
+                        )
+                    } catch (e: Exception) {
+                        status.text = e.message ?: "Oynatıcı açılamadı."
+                    }
                 }
+                globalIndex++
             }
         }
         if (film.isSeries) {

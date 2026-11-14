@@ -180,6 +180,10 @@ internal class NuvioJsRepository(context: Context) {
             .take(MAX_SCRAPERS_PER_SEARCH)
 
         if (scrapers.isEmpty()) return@runBlocking emptyList()
+        if (BuildConfig.TMDB_API_KEY.isBlank()) {
+            Log.w(TAG, "TMDB_API_KEY is empty; Nuvio scrapers that resolve title metadata through TMDB may return no streams.")
+        }
+        Log.i(TAG, "Starting ${scrapers.size} Nuvio scrapers for type=${normalizedType}, id=${nuvioMediaId}, season=${resolvedSeason}, episode=${resolvedEpisode}")
 
         val semaphore = Semaphore(MAX_PARALLEL_SCRAPERS)
         val results = coroutineScope {
@@ -189,15 +193,21 @@ internal class NuvioJsRepository(context: Context) {
                         try {
                             val code = loadScraperCode(repo, scraper)
                             if (code.isBlank()) return@withPermit emptyList()
-                            runtime.execute(
+                            Log.d(TAG, "Executing Nuvio scraper ${scraper.name} (${scraper.id})")
+                            val rawStreams = runtime.execute(
                                 code = code,
                                 mediaId = nuvioMediaId,
                                 mediaType = normalizedType,
                                 season = resolvedSeason,
                                 episode = resolvedEpisode,
                                 scraperId = scraper.id
-                            ).mapNotNull { result ->
-                                if (!isHttps(result.url)) return@mapNotNull null
+                            )
+                            Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
+                            rawStreams.mapNotNull { result ->
+                                if (!isHttps(result.url)) {
+                                    Log.w(TAG, "Rejected non-HTTPS stream from ${scraper.name}")
+                                    return@mapNotNull null
+                                }
                                 MediaStream(
                                     addonName = scraper.name,
                                     name = result.title.ifBlank { scraper.name },
