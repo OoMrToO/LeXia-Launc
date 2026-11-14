@@ -138,9 +138,10 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun loadMovieStreams() {
         runTask("Film kaynakları aranıyor…", {
-            val mediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
-            repository.fetchStreams("movie", mediaId) +
-                nuvioRepository.fetchStreams(mediaId, "movie")
+            // Stremio add-ons commonly expect IMDb IDs; Nuvio's getStreams contract expects a TMDB ID.
+            val stremioMediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
+            repository.fetchStreams("movie", stremioMediaId) +
+                nuvioRepository.fetchStreams(film.id.toString(), "movie")
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
