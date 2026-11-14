@@ -231,7 +231,8 @@ internal class NuvioJsRepository(context: Context) {
                 }
             }.flatMap { it.await() }
         }
-        results.distinctBy { it.url }.take(MAX_STREAMS)
+        // Keep identical URLs from different scrapers: provider attribution is part of Nuvio's UI.
+        results.distinctBy { "${it.addonName.lowercase()}|${it.url}" }.take(MAX_STREAMS)
     }
 
     private fun loadScraperCode(repo: NuvioRepositoryInfo, scraper: NuvioScraperInfo): String {
