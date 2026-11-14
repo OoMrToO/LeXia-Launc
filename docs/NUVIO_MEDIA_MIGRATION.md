@@ -79,3 +79,15 @@ Bu nedenle Nuvio `PluginRuntime.kt` dosyasını olduğu gibi kopyalamak, mevcut 
 5. Her aşamayı küçük değişiklik ve CI derlemesiyle doğrula.
 
 Bu denetim bir kod portu değildir; henüz uygulama kaynak kodu değiştirilmedi.
+
+
+## İlk uygulama adımı: Stremio bağımsız altyazı kaynakları
+
+14 Kasım 2026 tarihinde LeXia'ya gerçek kod değişikliği yapıldı:
+
+- `MediaAddonRepository.fetchSubtitles(type, videoId)`, manifestte `subtitles` veya `subtitle` kaynağı bildiren eklentilerin `/subtitles/{type}/{id}.json` endpoint'ini sorgular.
+- Yalnızca doğrudan HTTPS altyazı URL'leri kabul edilir; dil/etiket normalize edilir, tekrarlar ayıklanır ve sonuç sayısı sınırlandırılır.
+- Altyazı-only eklentiler artık kurulabilir; stream araması yine yalnızca stream kaynağı sunan eklentileri kullanır.
+- `MediaSourcePickerActivity`, film ve bölüm için bağımsız altyazı sonuçlarını bulup akışların mevcut altyazı listesine ekler. Bir altyazı endpoint'inin hata vermesi akış aramasını kesmez.
+- Nuvio JS altyazı akışları mevcut şekilde korunur; tekrarlar URL + dil ile ayıklanır.
+- Bu adım, altyazı istek başlıklarını Media3'e aktarmayı henüz çözmez. Stremio'nun standart altyazı kaynağı modelinde header alanı yoktur; Nuvio JS altyazı başlıkları için ayrı bir Media3 veri kaynağı adaptörü gerekir.
