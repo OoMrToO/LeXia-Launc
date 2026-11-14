@@ -108,7 +108,9 @@ internal class NuvioJsRuntime {
                     val bodyKind = args.getOrNull(3)?.toString().orEmpty().ifBlank { "none" }
                     val body = args.getOrNull(4)?.toString().orEmpty()
                     val follow = args.getOrNull(5)?.toString()?.toBooleanStrictOrNull() ?: true
-                    nativeFetch(url, method, headers, bodyKind, body, follow, activeCalls)
+                    val timeoutMs = args.getOrNull(6)?.toString()?.toLongOrNull()
+                        ?.coerceIn(1L, MAX_FETCH_TIMEOUT_MS) ?: DEFAULT_FETCH_TIMEOUT_MS
+                    nativeFetch(url, method, headers, bodyKind, body, follow, timeoutMs, activeCalls)
                 }
 
                 function("__native_parse_url") { args ->
@@ -313,6 +315,7 @@ internal class NuvioJsRuntime {
         bodyKind: String,
         body: String,
         followRedirects: Boolean,
+        timeoutMs: Long,
         activeCalls: MutableSet<Call>
     ): String {
         return try {
@@ -345,7 +348,11 @@ internal class NuvioJsRuntime {
                 "HEAD" -> request.head()
                 else -> request.get()
             }
-            val client = if (followRedirects) http else http.newBuilder().followRedirects(false).followSslRedirects(false).build()
+            val client = http.newBuilder()
+                .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                .followRedirects(followRedirects)
+                .followSslRedirects(followRedirects)
+                .build()
             val call = client.newCall(request.build())
             activeCalls.add(call)
             try {
@@ -628,7 +635,10 @@ internal class NuvioJsRuntime {
             if (!headerMap["User-Agent"] && !headerMap["user-agent"]) {
                 headerMap["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
             }
-            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body.kind, body.value, String(follow)));
+            var timeoutMs = signal && typeof signal.timeoutMs === "number" ? signal.timeoutMs : 0;
+            if (init.timeout && typeof init.timeout === "number") timeoutMs = init.timeout;
+            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body.kind, body.value, String(follow), String(timeoutMs)));
+            if (!response.status) throw new Error(response.statusText || "Network request failed");
             var responseHeaders = new Headers(response.headers || {});
             var textBody = response.body || "";
             var responseBytes = __fetch_base64_to_bytes(response.bodyBase64 || "");
@@ -660,9 +670,45 @@ internal class NuvioJsRuntime {
             return result;
         };
 
+        globalThis.AbortSignal = globalThis.AbortSignal || function() {
+            this.aborted = false;
+            this.reason = undefined;
+            this.timeoutMs = 0;
+            this.onabort = null;
+            this.addEventListener = function(type, listener) {
+                if (type === "abort" && this.aborted && typeof listener === "function") listener.call(this, { type: "abort", target: this });
+            };
+            this.removeEventListener = function() {};
+            this.throwIfAborted = function() {
+                if (this.aborted) {
+                    var error = this.reason instanceof Error ? this.reason : new Error("The operation was aborted.");
+                    error.name = "AbortError";
+                    throw error;
+                }
+            };
+        };
+        globalThis.AbortSignal.timeout = function(milliseconds) {
+            var signal = new AbortSignal();
+            signal.timeoutMs = Math.max(1, Math.min(Number(milliseconds) || 1, 120000));
+            // The native HTTP call enforces this deadline while fetch is blocked.
+            signal.reason = new Error("The operation timed out.");
+            signal.reason.name = "TimeoutError";
+            return signal;
+        };
+        globalThis.AbortSignal.abort = function(reason) {
+            var signal = new AbortSignal();
+            signal.aborted = true;
+            signal.reason = reason || new Error("The operation was aborted.");
+            return signal;
+        };
         globalThis.AbortController = globalThis.AbortController || function() {
-            this.signal = { aborted: false, addEventListener: function() {}, removeEventListener: function() {} };
-            this.abort = function() { this.signal.aborted = true; };
+            var signal = new AbortSignal();
+            this.signal = signal;
+            this.abort = function(reason) {
+                signal.aborted = true;
+                signal.reason = reason || new Error("The operation was aborted.");
+                if (typeof signal.onabort === "function") signal.onabort({ type: "abort", target: signal });
+            };
         };
         globalThis.setTimeout = globalThis.setTimeout || function(fn) { Promise.resolve().then(fn); return 0; };
         globalThis.clearTimeout = globalThis.clearTimeout || function() {};
