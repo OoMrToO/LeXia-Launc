@@ -149,6 +149,15 @@ internal class NuvioJsRepository(context: Context) {
         }
     }
 
+    fun scraperSettings(repositoryId: String, scraperId: String): String =
+        prefs.getString("settings_" + repositoryId + "_" + scraperId, "{}") ?: "{}"
+
+    fun setScraperSettings(repositoryId: String, scraperId: String, settingsJson: String) {
+        val parsed = runCatching { JSONObject(settingsJson) }.getOrNull()
+            ?: throw IllegalArgumentException("Ayarlar geçerli bir JSON nesnesi olmalı.")
+        prefs.edit().putString("settings_" + repositoryId + "_" + scraperId, parsed.toString()).apply()
+    }
+
     fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) {
         val updated = installedRepositories().map { repo ->
             if (repo.id != repositoryId) repo
@@ -209,7 +218,8 @@ internal class NuvioJsRepository(context: Context) {
                                     mediaType = normalizedType,
                                     season = resolvedSeason,
                                     episode = resolvedEpisode,
-                                    scraperId = scraper.id
+                                    scraperId = scraper.id,
+                                    settingsJson = scraperSettings(repo.id, scraper.id)
                                 )
                                 Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
                                 rawStreams.mapNotNull { result ->
