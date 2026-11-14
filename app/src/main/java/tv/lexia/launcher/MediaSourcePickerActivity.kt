@@ -128,7 +128,8 @@ class MediaSourcePickerActivity : Activity() {
             return
         }
         val installed = repository.installedAddons()
-        if (installed.isEmpty()) {
+        val nuvioInstalled = nuvioRepository.installedRepositories()
+        if (installed.isEmpty() && nuvioInstalled.isEmpty()) {
             showNoAddons()
             return
         }
