@@ -178,6 +178,8 @@ class MediaSourcePickerActivity : Activity() {
             // Stremio add-ons commonly expect IMDb IDs; Nuvio's getStreams contract expects a TMDB ID.
             val stremioMediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
             fetchCombinedStreams(
+                subtitleType = "movie",
+                subtitleId = stremioMediaId,
                 stremio = { repository.fetchStreams("movie", stremioMediaId) },
                 nuvio = { nuvioRepository.fetchStreams(film.id.toString(), "movie") }
             )
@@ -282,6 +284,8 @@ class MediaSourcePickerActivity : Activity() {
         }
         runTask("Kaynaklar aranıyor · $title", {
             fetchCombinedStreams(
+                subtitleType = "series",
+                subtitleId = videoId,
                 stremio = { repository.fetchStreams("series", videoId) },
                 nuvio = { nuvioRepository.fetchStreams(nuvioEpisodeId, "tv") }
             )
@@ -306,6 +310,8 @@ class MediaSourcePickerActivity : Activity() {
      * prevent Nuvio JS scrapers from running (and vice versa).
      */
     private fun fetchCombinedStreams(
+        subtitleType: String,
+        subtitleId: String,
         stremio: () -> List<MediaStream>,
         nuvio: () -> List<MediaStream>
     ): List<MediaStream> {
@@ -316,6 +322,18 @@ class MediaSourcePickerActivity : Activity() {
         runCatching { nuvio() }
             .onSuccess { results += it }
             .onFailure { Log.w("LeXiaSources", "Nuvio JS source search failed: ${it.message}", it) }
+        val addonSubtitles = runCatching {
+            repository.fetchSubtitles(subtitleType, subtitleId)
+        }.onFailure {
+            Log.w("LeXiaSources", "Stremio subtitle search failed: ${it.message}", it)
+        }.getOrDefault(emptyList())
+        if (addonSubtitles.isNotEmpty()) {
+            return results.map { stream ->
+                stream.copy(subtitles = (stream.subtitles + addonSubtitles)
+                    .distinctBy { "${it.url}|${it.language}" }
+                    .take(20))
+            }
+        }
         return results
     }
 
