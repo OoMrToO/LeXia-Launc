@@ -322,23 +322,25 @@ internal class NuvioJsRuntime {
             val headers = runCatching { JSONObject(rawHeaders) }.getOrDefault(JSONObject())
             val request = Request.Builder().url(rawUrl)
             val keys = headers.keys()
+            var hasUserAgent = false
+            var contentType = ""
             while (keys.hasNext()) {
                 val key = keys.next()
                 val value = headers.optString(key)
+                if (key.equals("User-Agent", true)) hasUserAgent = value.isNotBlank()
+                if (key.equals("Content-Type", true)) contentType = value
                 if (key.isNotBlank() && value.isNotBlank() && !key.equals("Accept-Encoding", true)) {
                     request.header(key, value)
                 }
             }
-            if (headers.optString("User-Agent").isBlank()) {
-                request.header("User-Agent", "Mozilla/5.0 (Android TV; LeXia)")
-            }
+            if (!hasUserAgent) request.header("User-Agent", "Mozilla/5.0 (Android TV; LeXia)")
             val bytes = when (bodyKind) {
                 "base64" -> runCatching { Base64.decode(body, Base64.DEFAULT) }.getOrDefault(ByteArray(0))
                 "text" -> body.toByteArray(Charsets.UTF_8)
                 else -> ByteArray(0)
             }
             val requestBody = bytes.toRequestBody(
-                (headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()
+                (contentType.ifBlank { "application/octet-stream" }).toMediaType()
             )
             when (method.uppercase()) {
                 "POST" -> request.post(requestBody)
@@ -346,7 +348,8 @@ internal class NuvioJsRuntime {
                 "PATCH" -> request.patch(requestBody)
                 "DELETE" -> if (bodyKind == "none" || bytes.isEmpty()) request.delete() else request.delete(requestBody)
                 "HEAD" -> request.head()
-                else -> request.get()
+                "GET" -> request.get()
+                else -> request.method(method.uppercase(), if (bodyKind == "none") null else requestBody)
             }
             val client = http.newBuilder()
                 .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -510,6 +513,22 @@ internal class NuvioJsRuntime {
 
         globalThis.atob = function(value) { return __native_base64("decode", String(value)); };
         globalThis.btoa = function(value) { return __native_base64("encode", String(value)); };
+        globalThis.TextEncoder = globalThis.TextEncoder || function() {};
+        TextEncoder.prototype.encode = function(value) {
+            var binary = unescape(encodeURIComponent(String(value)));
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        };
+        globalThis.TextDecoder = globalThis.TextDecoder || function(label) { this.encoding = label || "utf-8"; };
+        TextDecoder.prototype.decode = function(input) {
+            if (!input) return "";
+            var bytes = input instanceof ArrayBuffer ? new Uint8Array(input) :
+                (ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : input);
+            var binary = "";
+            for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            try { return decodeURIComponent(escape(binary)); } catch (e) { return binary; }
+        };
 
         globalThis.Buffer = globalThis.Buffer || {
             from: function(value, encoding) {
