@@ -365,18 +365,28 @@ internal class NuvioJsRuntime {
                         responseHeaders.put(name, response.header(name).orEmpty())
                     }
                     val responseBody = response.body
-                    val bytesRead = responseBody?.byteStream()?.use { input ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        var total = 0
-                        while (total < MAX_RESPONSE_BYTES) {
-                            val count = input.read(buffer, 0, minOf(buffer.size, MAX_RESPONSE_BYTES - total))
-                            if (count <= 0) break
-                            output.write(buffer, 0, count)
-                            total += count
+                    val contentEncoding = response.header("Content-Encoding")?.lowercase()?.trim()
+                    val bounded = responseBody?.byteStream()?.use { raw ->
+                        val decoded = when (contentEncoding) {
+                            "gzip" -> GZIPInputStream(raw)
+                            "deflate" -> InflaterInputStream(raw)
+                            else -> raw
                         }
-                        output.toByteArray()
-                    } ?: ByteArray(0)
+                        decoded.use { input ->
+                            val output = ByteArrayOutputStream(minOf(MAX_RESPONSE_BYTES, 16 * 1024))
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (total < MAX_RESPONSE_BYTES) {
+                                val count = input.read(buffer, 0, minOf(buffer.size, MAX_RESPONSE_BYTES - total))
+                                if (count <= 0) break
+                                output.write(buffer, 0, count)
+                                total += count
+                            }
+                            val truncated = total >= MAX_RESPONSE_BYTES && input.read() != -1
+                            output.toByteArray() to truncated
+                        }
+                    } ?: (ByteArray(0) to false)
+                    val bytesRead = bounded.first
                     val charset: Charset = responseBody?.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
                     JSONObject()
                         .put("ok", response.isSuccessful)
@@ -386,6 +396,7 @@ internal class NuvioJsRuntime {
                         .put("body", String(bytesRead, charset))
                         .put("bodyBase64", Base64.encodeToString(bytesRead, Base64.NO_WRAP))
                         .put("headers", responseHeaders)
+                        .put("truncated", bounded.second)
                         .toString()
                 }
             } finally {
