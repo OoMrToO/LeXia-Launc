@@ -114,8 +114,10 @@ internal class MediaAddonRepository(context: Context) {
 
         val types = strings(json.optJSONArray("types"))
         val resources = parseResourceNames(json.optJSONArray("resources"))
-        require("stream" in resources) {
-            "Bu eklenti video kaynağı sunmuyor (stream kaynağı yok)."
+        require("stream" in resources || resources.any {
+            it.equals("subtitles", true) || it.equals("subtitle", true)
+        }) {
+            "Bu eklenti video veya altyazı kaynağı sunmuyor."
         }
         require(types.isEmpty() || types.any { it == "movie" || it == "series" || it == "tv" }) {
             "Eklenti film veya dizi desteği bildirmiyor."
