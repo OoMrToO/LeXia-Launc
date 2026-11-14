@@ -252,7 +252,8 @@ class PlayerActivity : Activity() {
     }
 
     private fun initializePlayer() {
-        val rawUri = intent.getStringExtra(EXTRA_URI).orEmpty()
+        // Opened by LeXia with an extra, or by another app with a VIEW intent.
+        val rawUri = intent.getStringExtra(EXTRA_URI).orEmpty().ifBlank { intent.dataString.orEmpty() }
         val uri = Uri.parse(rawUri)
         if (!isSupportedPlaybackUri(uri)) {
             Toast.makeText(this, "Geçersiz video adresi", Toast.LENGTH_LONG).show()

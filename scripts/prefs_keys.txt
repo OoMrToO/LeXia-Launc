@@ -102,3 +102,6 @@ watched set
 weather bool
 weather_code int
 weekendSeen text
+${key}_duration long
+${key}_position long
+${key}_updated long

@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
+Son güncelleme: 14 Kasım 2026 (medya oynatma ve eklentiler geri geldi, #28 + #29).
 
 ## 1. Çalışma biçimi
 
@@ -14,14 +14,14 @@ Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 - **Mesaj sonu:** yayınlanan sürüm numarası ve TV'de ne yapılacağı ("Güncelleme geldi" düğmesi).
 - **Gizlilik:** APK'ya kullanıcı adı, e-posta ya da depo adresi yazılmaz. Depo gizli kalır.
 
-## 2. Eklentiler kaldırıldı (13 Kasım 2026 akşamı, kullanıcı kararı)
+## 2. Medya oynatma ve eklentiler (14 Kasım 2026'da geri geldi, kullanıcı kararı)
 
-- Kullanıcı ChatGPT (Codex) ile Stremio/Nuvio uyumlu eklenti yönetimi, katalog eşleştirme, Nuvio JavaScript sağlayıcılarını çalıştıran kum havuzu (QuickJS) ve Media3 oynatıcı ekletmişti (PR #1–#26 arası). Çalıştıramadı ve **"Nuvio'ya dair her şeyi sil, temize çek"** dedi.
-- **Silinenler:** `Addon*.kt`, `IAddonNetworkBroker.kt`, `WatchProgress.kt`, Ayarlar › Eklentiler ve Eklenti eşleştirme, ana ekrandaki eşleştirme/“İzle” bağlantıları, Media3 ve QuickJS kütüphaneleri, uygulama kaydındaki iki hizmet ve iki ekran. `MainActivity`, `Prefs`, `SettingsActivity`, manifest, `app/build.gradle.kts`, `whatsnew.txt` eklentisiz hallerine döndü. Derleme araçları yine AGP 8.5.2 / Kotlin 1.9.24 / Gradle 8.9 (ChatGPT 8.13.2 / 2.3.0 / 8.13 yapmıştı). Uygulama yine **kütüphanesiz**.
-- **TV'de kalan veri:** `App.dropAddonData()` her açılışta adı "addon" içeren ayar dosyalarını ve `lexia_watch_progress`'i siler. `scripts/prefs_keys.txt`'deki eklenti anahtarları listede kalır (adlar başka türle yeniden kullanılmasın).
-- **Kalan tek ChatGPT değişikliği:** film sayfasında özetin “HİKÂYE” başlıklı kutusu (`DetailActivity`, #22); eklentiyle ilgisi yok, TV'de denenmedi.
-- **Bundan sonra:** eklenti, yayın kaynağı, Nuvio/Stremio entegrasyonu ve uygulama içi film oynatma bu depoya **yeniden eklenmez**. Claude oturumları bu tür kodu yazmaz, incelemez, düzeltmez, birleştirmez; kullanıcıya bir kez kısa söylenir. Başka bir araç yine eklerse kullanıcıya haber verilir.
-- Kullanıcı başka araçla da çalışabilir: iş hep güncel `main`'den dal açılarak, PR ile yapılır.
+- **Geçmiş:** ChatGPT'nin ilk eklenti/Nuvio denemesi (PR #1–#26) 13 Kasım akşamı kullanıcının "temize çek" demesiyle silinmişti (#27). 14 Kasım'da kullanıcı **kararını değiştirdi**: ChatGPT'ye yeniden yazdırdığı #28 ve #29'un birleştirilip yayına alınmasını istedi. Eski "bu kod yeniden eklenmez, Claude dokunmaz" kuralı **geçersiz**; Claude bu kodu da düzeltir ve birleştirir.
+- **#28 (ChatGPT):** Media3 1.11.1 (ExoPlayer, HLS, DASH, SmoothStreaming) + OkHttp 4.12.0; `PlayerActivity` (kumanda, ses/altyazı seçimi, kaldığı yerden devam), `MediaAddonRepository` (Stremio uyumlu eklenti manifestleri, ayar dosyası `media_addons`), `MediaAddonsActivity` (Ayarlar › "Medya kaynakları"), `MediaSourcePickerActivity` (film sayfasındaki yeni **"Oynat"** düğmesi; artık ilk odak onda, "Fragmanı İzle" ikinci), `MediaPlaybackStore`. Derleme araçları **AGP 8.13.2 / Kotlin 2.3.21 / Gradle 8.13, compile/target SDK 36** (minSdk 24). Uygulama artık **kütüphaneli**.
+- **#29 (ChatGPT):** #28 ile aynı oynatıcıyı daha basit hâliyle ekliyordu; çakıştı. Ondan yalnızca **dışarıdan video açma** kaldı: `PlayerActivity` dışa açık, `video/*`, `audio/*` ve HLS için VIEW isteği alır (adres `intent.data`'dan okunur). Oynatıcı ve Media3 sürümü #28'inki.
+- **Claude'un birleştirirken düzelttikleri:** `App.dropAddonData()` kaldırıldı (her açılışta adı "addon" içeren ayarları siliyordu; `media_addons` her açılışta silinecekti); `MediaPlaybackStore` anahtarları `scripts/prefs_keys.txt`'ye eklendi (yoksa `build.yml` kırılıyordu); manifestte tek `PlayerActivity` kaydı.
+- **Kapsam (ChatGPT'nin notu):** yalnızca manifestli Stremio uyumlu eklentiler ve doğrudan HTTPS adresleri. Torrent/debrid, CloudStream eklentileri, MPV yok. **TV'de hiçbiri denenmedi.**
+- Kullanıcı başka araçla da çalışır: iş hep güncel `main`'den dal açılarak, PR ile yapılır. Aynı işi yapan iki PR açılırsa çakışır; Claude tek dalda toplar.
 
 ## 3. Cihaz ve kurulum
 
@@ -37,7 +37,7 @@ Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 
 ## 4. Depo, derleme, yayın
 
-- Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 34, Kotlin 1.9.24, AGP 8.5.2. Hiç kütüphane yok; her şey düz Android View.
+- Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 36, Kotlin 2.3.21, AGP 8.13.2. Kütüphaneler: Media3 ve OkHttp (yalnızca oynatma için); arayüz yine düz Android View.
 - **İş akışları:** `build.yml` (main'e push: imza anahtarı → dosya deposu adresi → `full` + `setup` APK → GitHub `latest` sürümü → yayın), `pr-build.yml` (PR'larda debug derleme; tek PR kontrolü), `daily-pick.yml` (her gün 02:17 UTC `scripts/pick.py` → `pick.json` → yayın), `publish.yml` (dosya deposuna yükler). Yalnızca `.md`, `pick.json`, `docs/**`, `scripts/pick.py` ve yayın/PR iş akışları değişince APK derlenmez.
 - **Dosya deposu** (Cloudflare Pages projesi `lexia-tv`, **https://lexia-tv.pages.dev**; sayfası yok, noindex): `pick.json`, `version.txt`, `apk/app.apk`, `kur.apk`, `test.txt` + `apk/test.apk` (test modu için aynı dosyalar), `_headers`, `robots.txt`. Adresi derlemede Cloudflare'den sorulup `BuildConfig.SITE`'a yazılır. Bu oturum ortamından erişim kapalı; doğrulama GitHub iş kayıtlarından yapılır. Kullanıcı 13 Kasım'da bu yapıyı onayladı ("A kalsın").
 - **İmza:** `app/signing.p12` ilk derlemede üretildi (`CN=LeXia`, takma ad `lexia`), parolası yalnızca `KEYSTORE_PASSWORD` sırrında ve kullanıcıda. Parola değişir ya da anahtar silinirse TV'deki uygulama kaldırılıp yeniden kurulmalı.
@@ -50,7 +50,7 @@ Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 ## 5. Geliştirme akışı (Claude)
 
 1. `git fetch origin main && git checkout -B claude/<iş> origin/main` (ChatGPT de çalıştığı için hep güncel `main`'den başla).
-2. Tip kontrolü (Android SDK yok): `kotlin-compiler-embeddable:1.9.24` + `org.robolectric:android-all:14-robolectric-10818077` Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. Asıl doğrulama `pr-build`.
+2. Tip kontrolü (Android SDK yok; Media3 eklendiğinden oynatma dosyaları bu yolla denetlenemez): `kotlin-compiler-embeddable` + `org.robolectric:android-all:14-robolectric-10818077` Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. Asıl doğrulama `pr-build`.
 3. Commit → push → PR → `pr-build` yeşil → birleştir (`expectedHeadSha` 40 karakter) → `build.yml` bitince sürüm numarasını kullanıcıya yaz.
 4. **Ayar anahtarları:** yeni `SharedPreferences` anahtarı `scripts/prefs_keys.txt`'ye türüyle eklenir; `scripts/check_prefs.py` her derlemede eski adların başka türle kullanılmasını yakalar (eski projede #119 çökmesi).
 5. Bu ortamda `git push` sonrası "This repository moved" mesajı zararsız (depo adı büyük/küçük harf).
@@ -72,6 +72,7 @@ Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 
 ## 8. Açık işler
 
+- Oynatma ve eklentiler (#28, #29) TV'de denenmedi: "Oynat" düğmesi, Ayarlar › Medya kaynakları, kumanda, altyazı.
 
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
@@ -87,4 +88,6 @@ Son güncelleme: 13 Kasım 2026 (eklentiler kaldırıldı).
 | #5 | Claude | Çalışmayan GitHub yedeği ve APK'daki kullanıcı adı kaldırıldı |
 | #17, #18 | Claude | Dosyaların `exxsss/Lxialnch` kopyası (rastgele adlı dal), uygulama site cevap vermezse kopyadan alır |
 | #19 | Claude | Ana Sayfa rehberi TV'nin erişilebilirlik ekranını adından bulur |
-| bu PR | Claude | Eklentiler ve Nuvio ile ilgili her şey silindi, derleme araçları eski sürümlerine döndü |
+| #27 | Claude | Eklentiler ve Nuvio ile ilgili her şey silindi, derleme araçları eski sürümlerine döndü |
+| #28, #29 | ChatGPT | Media3 oynatıcı, Stremio uyumlu eklentiler, kaynak seçici, dışarıdan video açma (bölüm 2) |
+| bu PR | Claude | #28 ve #29 tek dalda birleştirildi; çakışmalar, açılıştaki eklenti temizliği ve ayar anahtarları düzeltildi |
