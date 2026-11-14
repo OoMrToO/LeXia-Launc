@@ -72,7 +72,7 @@ internal class MediaAddonRepository(context: Context) {
         .readTimeout(18, TimeUnit.SECONDS)
         .callTimeout(22, TimeUnit.SECONDS)
         .followRedirects(true)
-        .followSslRedirects(true)
+        .followSslRedirects(false)
         .build()
 
     fun installedAddons(): List<InstalledMediaAddon> {
