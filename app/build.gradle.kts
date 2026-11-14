@@ -91,4 +91,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Sandboxed Nuvio JS scraper runtime.
+    implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
+    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("com.google.code.gson:gson:2.10.1")
 }
