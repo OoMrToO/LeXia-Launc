@@ -205,6 +205,9 @@ class MediaAddonsActivity : Activity() {
                     setTextColor(Color.rgb(150, 160, 180))
                 })
                 row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(action("Test et").apply {
+                    setOnClickListener { showScraperTestDialog(repo.id, scraper) }
+                })
                 if (scraper.hasSettings) {
                     row.addView(action("Ayarlar").apply {
                         setOnClickListener { showScraperSettings(repo.id, scraper) }
@@ -220,6 +223,13 @@ class MediaAddonsActivity : Activity() {
                 card.addView(row)
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val allEnabled = repo.scrapers.all { it.enabled }
+            repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
+                setOnClickListener {
+                    repo.scrapers.forEach { nuvioRepository.setScraperEnabled(repo.id, it.id, !allEnabled) }
+                    renderAddons()
+                }
+            })
             repoActions.addView(action("Depoyu güncelle").apply {
                 setOnClickListener { refreshNuvioRepository(repo.id, repo.name) }
             })
@@ -371,6 +381,55 @@ class MediaAddonsActivity : Activity() {
         }
         dialog.show()
         dialog.window?.setLayout(dp(680), LinearLayout.LayoutParams.WRAP_CONTENT)
+        input.requestFocus()
+    }
+
+    private fun showScraperTestDialog(repositoryId: String, scraper: NuvioScraperInfo) {
+        val input = EditText(this).apply {
+            hint = "Örn. 550"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            isSingleLine = true
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("${scraper.name} · Sağlayıcı testi")
+            .setMessage("Film için TMDB kimliğini gir. Test yalnızca bu scraper'ı çalıştırır; diğer sağlayıcılar etkilenmez.")
+            .setView(input)
+            .setNegativeButton("İptal", null)
+            .setPositiveButton("Testi başlat", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val mediaId = input.text?.toString()?.trim().orEmpty()
+                if (mediaId.isBlank()) {
+                    input.error = "TMDB kimliği gerekli"
+                    return@setOnClickListener
+                }
+                if (busy) return@setOnClickListener
+                busy = true
+                status.text = "${scraper.name} test ediliyor…"
+                dialog.dismiss()
+                worker.execute {
+                    val result = runCatching {
+                        nuvioRepository.testScraper(repositoryId, scraper.id, mediaId)
+                    }
+                    runOnUiThread {
+                        busy = false
+                        val report = result.getOrNull()
+                        status.text = if (report != null) {
+                            "${report.scraperName}: ${report.message} (${report.elapsedMs} ms)"
+                        } else {
+                            result.exceptionOrNull()?.message ?: "Sağlayıcı testi başarısız."
+                        }
+                        renderAddons()
+                    }
+                }
+            }
+        }
+        dialog.show()
+        dialog.window?.setLayout(dp(600), LinearLayout.LayoutParams.WRAP_CONTENT)
         input.requestFocus()
     }
 
