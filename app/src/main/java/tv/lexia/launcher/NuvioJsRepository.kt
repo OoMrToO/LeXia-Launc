@@ -3,6 +3,8 @@ package tv.lexia.launcher
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
@@ -55,9 +57,9 @@ internal class NuvioJsRepository(context: Context) {
     private val codeDirectory = File(appContext.filesDir, "nuvio_js_scrapers")
     private val runtime = NuvioJsRuntime()
     private val http = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(22, TimeUnit.SECONDS)
-        .callTimeout(28, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -191,38 +193,45 @@ internal class NuvioJsRepository(context: Context) {
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
                         try {
-                            val code = loadScraperCode(repo, scraper)
-                            if (code.isBlank()) return@withPermit emptyList()
-                            Log.d(TAG, "Executing Nuvio scraper ${scraper.name} (${scraper.id})")
-                            val rawStreams = runtime.execute(
-                                code = code,
-                                mediaId = nuvioMediaId,
-                                mediaType = normalizedType,
-                                season = resolvedSeason,
-                                episode = resolvedEpisode,
-                                scraperId = scraper.id
-                            )
-                            Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
-                            rawStreams.mapNotNull { result ->
-                                if (!isHttps(result.url)) {
-                                    Log.w(TAG, "Rejected non-HTTPS stream from ${scraper.name}")
-                                    return@mapNotNull null
-                                }
-                                MediaStream(
-                                    addonName = scraper.name,
-                                    name = result.title.ifBlank { scraper.name },
-                                    description = listOf(result.quality, scraper.description)
-                                        .filter { it.isNotBlank() }
-                                        .distinct()
-                                        .joinToString(" · ")
-                                        .take(300),
-                                    url = result.url,
-                                    headers = result.headers,
-                                    subtitles = result.subtitles.map {
-                                        MediaSubtitle(it.url, it.language, it.language.uppercase())
-                                    }
+                            withTimeoutOrNull(SCRAPER_TIMEOUT_MS) {
+                                val code = loadScraperCode(repo, scraper)
+                                if (code.isBlank()) return@withTimeoutOrNull emptyList()
+                                Log.d(TAG, "Executing Nuvio scraper ${scraper.name} (${scraper.id})")
+                                val rawStreams = runtime.execute(
+                                    code = code,
+                                    mediaId = nuvioMediaId,
+                                    mediaType = normalizedType,
+                                    season = resolvedSeason,
+                                    episode = resolvedEpisode,
+                                    scraperId = scraper.id
                                 )
+                                Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
+                                rawStreams.mapNotNull { result ->
+                                    if (!isHttps(result.url)) {
+                                        Log.w(TAG, "Rejected non-HTTPS stream from ${scraper.name}")
+                                        return@mapNotNull null
+                                    }
+                                    MediaStream(
+                                        addonName = scraper.name,
+                                        name = result.title.ifBlank { scraper.name },
+                                        description = listOf(result.quality, scraper.description)
+                                            .filter { it.isNotBlank() }
+                                            .distinct()
+                                            .joinToString(" · ")
+                                            .take(300),
+                                        url = result.url,
+                                        headers = result.headers,
+                                        subtitles = result.subtitles.map {
+                                            MediaSubtitle(it.url, it.language, it.language.uppercase())
+                                        }
+                                    )
+                                }
+                            } ?: run {
+                                Log.w(TAG, "Nuvio scraper ${scraper.name} timed out after ${SCRAPER_TIMEOUT_MS}ms")
+                                emptyList()
                             }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (error: Exception) {
                             Log.w(TAG, "Nuvio scraper ${scraper.name} failed: ${error.message}")
                             emptyList()
@@ -395,8 +404,9 @@ internal class NuvioJsRepository(context: Context) {
         const val KEY_REPOSITORIES = "repositories_v1"
         const val MAX_MANIFEST_BYTES = 3 * 1024 * 1024
         const val MAX_CODE_BYTES = 2 * 1024 * 1024
-        const val MAX_SCRAPERS_PER_SEARCH = 42
-        const val MAX_PARALLEL_SCRAPERS = 4
+        const val MAX_SCRAPERS_PER_SEARCH = 32
+        const val MAX_PARALLEL_SCRAPERS = 8
+        const val SCRAPER_TIMEOUT_MS = 20_000L
         const val MAX_STREAMS = 60
         val CODE_CACHE_TTL_MS = TimeUnit.HOURS.toMillis(6)
     }
