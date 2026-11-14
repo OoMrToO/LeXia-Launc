@@ -9,6 +9,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Call
 import okhttp3.Headers
@@ -25,6 +27,7 @@ import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.nio.charset.Charset
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
@@ -99,6 +102,11 @@ internal class NuvioJsRuntime {
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
         val executionError = java.util.concurrent.atomic.AtomicReference("")
+        val cancellationRegistration = currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                activeCalls.forEach { call -> call.cancel() }
+            }
+        }
 
         return try {
             quickJs(Dispatchers.IO) {
@@ -289,6 +297,7 @@ internal class NuvioJsRuntime {
             Log.e("LeXiaPlugin", "Scraper $scraperId failed: ${error.message}", error)
             throw error
         } finally {
+            cancellationRegistration?.dispose()
             activeCalls.forEach { it.cancel() }
             activeCalls.clear()
             documents.clear()
