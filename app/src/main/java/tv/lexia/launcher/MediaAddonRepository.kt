@@ -16,7 +16,8 @@ internal data class InstalledMediaAddon(
     val name: String,
     val version: String,
     val types: List<String>,
-    val resources: List<String>
+    val resources: List<String>,
+    val idPrefixes: List<String> = emptyList()
 )
 
 internal data class MediaEpisode(
@@ -80,7 +81,8 @@ internal class MediaAddonRepository(context: Context) {
                     name = name,
                     version = item.optString("version"),
                     types = strings(item.optJSONArray("types")),
-                    resources = strings(item.optJSONArray("resources"))
+                    resources = strings(item.optJSONArray("resources")),
+                    idPrefixes = strings(item.optJSONArray("idPrefixes"))
                 )
             }
         } catch (_: Exception) {
@@ -115,7 +117,8 @@ internal class MediaAddonRepository(context: Context) {
             name = name,
             version = version.ifBlank { "—" },
             types = types,
-            resources = resources
+            resources = resources,
+            idPrefixes = strings(json.optJSONArray("idPrefixes"))
         )
         val current = installedAddons().filterNot { it.baseUrl == addon.baseUrl }.toMutableList()
         current.add(addon)
@@ -133,33 +136,41 @@ internal class MediaAddonRepository(context: Context) {
      * Queries installed meta resources for Stremio episode IDs. Those IDs are passed through to
      * /stream/series/{videoId}.json, so an add-on can use its own canonical episode identifier.
      */
-    fun fetchEpisodes(tmdbId: Int): List<MediaEpisode> {
+    fun fetchEpisodes(tmdbId: Int, imdbId: String = ""): List<MediaEpisode> {
         require(tmdbId > 0) { "Bu içerikte TMDB kimliği bulunmuyor." }
-        val id = "tmdb:$tmdbId"
+        val lookupIds = listOfNotNull(
+            imdbId.takeIf { IMDB_ID.matches(it) },
+            "tmdb:$tmdbId"
+        ).distinct()
         val result = LinkedHashMap<String, MediaEpisode>()
+
         for (addon in installedAddons()) {
             if ("meta" !in addon.resources || !supports(addon, "series")) continue
-            try {
-                val url = endpoint(addon.baseUrl, "meta", "series", id)
-                val root = getJson(url)
-                val meta = root.optJSONObject("meta") ?: root
-                val videos = meta.optJSONArray("videos") ?: continue
-                for (i in 0 until videos.length()) {
-                    val item = videos.optJSONObject(i) ?: continue
-                    val videoId = item.optString("id").trim()
-                    if (videoId.isBlank() || videoId.length > 300) continue
-                    val season = item.optInt("season", 0)
-                    val episode = item.optInt("episode", 0)
-                    val title = item.optString("title").ifBlank {
-                        if (season > 0 && episode > 0) "$season. Sezon · $episode. Bölüm" else "Bölüm"
-                    }.take(160)
-                    result.putIfAbsent(
-                        videoId,
-                        MediaEpisode(videoId, title, season.coerceAtLeast(0), episode.coerceAtLeast(0), item.optString("released"))
-                    )
+            for (id in lookupIds) {
+                if (!supportsId(addon, id)) continue
+                val before = result.size
+                try {
+                    val root = getJson(endpoint(addon.baseUrl, "meta", "series", id))
+                    val meta = root.optJSONObject("meta") ?: root
+                    val videos = meta.optJSONArray("videos") ?: continue
+                    for (i in 0 until videos.length()) {
+                        val item = videos.optJSONObject(i) ?: continue
+                        val videoId = item.optString("id").trim()
+                        if (videoId.isBlank() || videoId.length > 300) continue
+                        val season = item.optInt("season", 0)
+                        val episode = item.optInt("episode", 0)
+                        val title = item.optString("title").ifBlank {
+                            if (season > 0 && episode > 0) "$season. Sezon · $episode. Bölüm" else "Bölüm"
+                        }.take(160)
+                        result.putIfAbsent(
+                            videoId,
+                            MediaEpisode(videoId, title, season.coerceAtLeast(0), episode.coerceAtLeast(0), item.optString("released"))
+                        )
+                    }
+                } catch (_: Exception) {
+                    // One offline or incompatible add-on must not block the other providers.
                 }
-            } catch (_: Exception) {
-                // One offline or incompatible add-on must not block the other providers.
+                if (result.size > before) break
             }
         }
         return result.values
@@ -174,7 +185,7 @@ internal class MediaAddonRepository(context: Context) {
 
         val result = ArrayList<MediaStream>()
         for (addon in installedAddons()) {
-            if ("stream" !in addon.resources || !supports(addon, type)) continue
+            if ("stream" !in addon.resources || !supports(addon, type) || !supportsId(addon, videoId)) continue
             try {
                 val root = getJson(endpoint(addon.baseUrl, "stream", type, videoId))
                 val streams = root.optJSONArray("streams") ?: continue
@@ -216,6 +227,12 @@ internal class MediaAddonRepository(context: Context) {
     private fun supports(addon: InstalledMediaAddon, type: String): Boolean =
         addon.types.isEmpty() || type in addon.types ||
             (type == "series" && "tv" in addon.types)
+
+    private fun supportsId(addon: InstalledMediaAddon, videoId: String): Boolean {
+        if (addon.idPrefixes.isEmpty()) return true
+        val baseId = videoId.substringBefore(':')
+        return addon.idPrefixes.any { prefix -> baseId.startsWith(prefix, ignoreCase = true) }
+    }
 
     private fun parseSubtitles(raw: JSONArray?): List<MediaSubtitle> {
         if (raw == null) return emptyList()
@@ -329,6 +346,7 @@ internal class MediaAddonRepository(context: Context) {
                     .put("version", addon.version)
                     .put("types", JSONArray(addon.types))
                     .put("resources", JSONArray(addon.resources))
+                    .put("idPrefixes", JSONArray(addon.idPrefixes))
             )
         }
         prefs.edit().putString(KEY_INSTALLED, array.toString()).apply()
@@ -348,6 +366,7 @@ internal class MediaAddonRepository(context: Context) {
         const val MAX_STREAMS = 80
         const val MAX_EPISODES = 200
         const val MAX_HEADERS = 20
+        val IMDB_ID = Regex("^tt[0-9]{7,10}$")
         val HEADER_NAME = Regex("^[A-Za-z0-9-]{1,64}$")
     }
 }
