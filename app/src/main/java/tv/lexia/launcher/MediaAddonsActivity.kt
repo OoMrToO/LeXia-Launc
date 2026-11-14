@@ -149,7 +149,7 @@ class MediaAddonsActivity : Activity() {
                 typeface = Typeface.DEFAULT_BOLD
             })
             card.addView(TextView(this).apply {
-                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}"
+                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}  ·  ${if (repo.enabled) "ETKİN" else "DEVRE DIŞI"}"
                 textSize = 14f
                 setTextColor(Color.rgb(125, 151, 255))
                 setPadding(0, dp(5), 0, dp(4))
@@ -223,6 +223,12 @@ class MediaAddonsActivity : Activity() {
                 card.addView(row)
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            repoActions.addView(action(if (repo.enabled) "Depoyu devre dışı bırak" else "Depoyu etkinleştir", primary = !repo.enabled).apply {
+                setOnClickListener {
+                    nuvioRepository.setRepositoryEnabled(repo.id, !repo.enabled)
+                    renderAddons()
+                }
+            })
             val allEnabled = repo.scrapers.all { it.enabled }
             repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
                 setOnClickListener {
@@ -351,37 +357,107 @@ class MediaAddonsActivity : Activity() {
     }
 
     private fun showScraperSettings(repositoryId: String, scraper: NuvioScraperInfo) {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 5
-            maxLines = 12
-            setText(nuvioRepository.scraperSettings(repositoryId, scraper.id))
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            typeface = Typeface.MONOSPACE
+        val current = runCatching {
+            org.json.JSONObject(nuvioRepository.scraperSettings(repositoryId, scraper.id))
+        }.getOrDefault(org.json.JSONObject())
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(6), dp(8), dp(6))
         }
+        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = false
+            addView(rows)
+        }
+        fun addSettingRow(key: String = "", value: String = "") {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(4), 0, dp(4))
+            }
+            val keyInput = EditText(this).apply {
+                hint = "Ayar adı"
+                setSingleLine(true)
+                setText(key)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY)
+                textSize = 15f
+            }
+            val valueInput = EditText(this).apply {
+                hint = "Değer"
+                setSingleLine(true)
+                setText(value)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY)
+                textSize = 15f
+            }
+            row.addView(keyInput, LinearLayout.LayoutParams(0, dp(52), 0.9f))
+            row.addView(valueInput, LinearLayout.LayoutParams(0, dp(52), 1.1f).apply {
+                leftMargin = dp(8)
+            })
+            row.addView(action("Sil").apply {
+                setOnClickListener { rows.removeView(row) }
+            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
+            rows.addView(row)
+        }
+        val keys = current.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = current.opt(key)
+            addSettingRow(key, when (value) {
+                null, org.json.JSONObject.NULL -> ""
+                is org.json.JSONObject, is org.json.JSONArray -> value.toString()
+                else -> value.toString()
+            })
+        }
+        container.addView(scroll, LinearLayout.LayoutParams(-1, dp(300)))
+        container.addView(action("＋  Ayar ekle").apply {
+            setOnClickListener { addSettingRow() }
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+
         val dialog = AlertDialog.Builder(this)
             .setTitle("${scraper.name} · Ayarlar")
-            .setMessage("Scraper ayarlarını JSON nesnesi olarak düzenle. Kaydedilen değerler kaynak aramasında JavaScript motoruna aktarılır.")
-            .setView(input)
+            .setMessage("Ayarları anahtar/değer olarak düzenle. Boolean ve sayısal değerler uygun JSON türünde saklanır.")
+            .setView(container)
             .setNegativeButton("Vazgeç", null)
             .setPositiveButton("Kaydet", null)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
-                    nuvioRepository.setScraperSettings(repositoryId, scraper.id, input.text.toString())
+                    val output = org.json.JSONObject()
+                    for (i in 0 until rows.childCount) {
+                        val row = rows.getChildAt(i) as? LinearLayout ?: continue
+                        val keyInput = row.getChildAt(0) as? EditText ?: continue
+                        val valueInput = row.getChildAt(1) as? EditText ?: continue
+                        val key = keyInput.text.toString().trim()
+                        if (key.isBlank()) {
+                            keyInput.error = "Ayar adı gerekli"
+                            return@setOnClickListener
+                        }
+                        val raw = valueInput.text.toString()
+                        val value: Any = when {
+                            raw.equals("true", true) -> true
+                            raw.equals("false", true) -> false
+                            raw.toLongOrNull() != null -> raw.toLong()
+                            raw.toDoubleOrNull() != null -> raw.toDouble()
+                            raw.startsWith("{") -> org.json.JSONObject(raw)
+                            raw.startsWith("[") -> org.json.JSONArray(raw)
+                            else -> raw
+                        }
+                        output.put(key, value)
+                    }
+                    nuvioRepository.setScraperSettings(repositoryId, scraper.id, output.toString())
                     dialog.dismiss()
                     status.text = "${scraper.name} ayarları kaydedildi."
                 } catch (error: Exception) {
-                    input.error = error.message ?: "Geçersiz JSON"
+                    status.text = "Ayarlar kaydedilemedi: ${error.message ?: "geçersiz değer"}"
                 }
             }
         }
         dialog.show()
-        dialog.window?.setLayout(dp(680), LinearLayout.LayoutParams.WRAP_CONTENT)
-        input.requestFocus()
+        dialog.window?.setLayout(dp(760), LinearLayout.LayoutParams.WRAP_CONTENT)
+        if (rows.childCount > 0) rows.getChildAt(0).requestFocus()
     }
 
     private fun showScraperTestDialog(repositoryId: String, scraper: NuvioScraperInfo) {

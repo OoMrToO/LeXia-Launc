@@ -54,7 +54,8 @@ internal data class NuvioRepositoryInfo(
     val version: String,
     val description: String,
     val manifestUrl: String,
-    val scrapers: List<NuvioScraperInfo>
+    val scrapers: List<NuvioScraperInfo>,
+    val enabled: Boolean = true
 )
 
 /**
@@ -75,7 +76,7 @@ internal class NuvioJsRepository(context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
-        .followSslRedirects(true)
+        .followSslRedirects(false)
         .build()
 
     fun installedRepositories(): List<NuvioRepositoryInfo> {
@@ -148,7 +149,8 @@ internal class NuvioJsRepository(context: Context) {
             version = version,
             description = manifest.optString("description"),
             manifestUrl = manifestUrl,
-            scrapers = mergedScrapers
+            scrapers = mergedScrapers,
+            enabled = previous?.enabled ?: true
         )
         val updated = installedRepositories().filterNot { it.manifestUrl == manifestUrl } + repository
         saveRepositories(updated)
@@ -183,6 +185,13 @@ internal class NuvioJsRepository(context: Context) {
         prefs.edit().putString("settings_" + repositoryId + "_" + scraperId, parsed.toString()).apply()
     }
 
+    fun setRepositoryEnabled(repositoryId: String, enabled: Boolean) {
+        val updated = installedRepositories().map { repo ->
+            if (repo.id == repositoryId) repo.copy(enabled = enabled) else repo
+        }
+        saveRepositories(updated)
+    }
+
     fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) {
         val updated = installedRepositories().map { repo ->
             if (repo.id != repositoryId) repo
@@ -215,9 +224,12 @@ internal class NuvioJsRepository(context: Context) {
         val contentId = if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId
         val nuvioMediaId = contentId.removePrefix("tmdb:")
         val scrapers = installedRepositories()
+            .filter { it.enabled }
             .flatMap { repo -> repo.scrapers.map { repo to it } }
             .filter { (_, scraper) ->
-                scraper.enabled && scraper.supportedTypes.any { normalizeType(it) == normalizedType }
+                scraper.enabled &&
+                    isSupportedOnTv(scraper) &&
+                    scraper.supportedTypes.any { normalizeType(it) == normalizedType }
             }
             .take(MAX_SCRAPERS_PER_SEARCH)
 
@@ -264,7 +276,17 @@ internal class NuvioJsRepository(context: Context) {
                                         headers = result.headers,
                                         subtitles = result.subtitles.map {
                                             MediaSubtitle(it.url, it.language, it.language.uppercase())
-                                        }
+                                        },
+                                        quality = result.quality,
+                                        language = result.language,
+                                        server = result.server,
+                                        size = result.size,
+                                        streamType = result.streamType,
+                                        seeders = result.seeders,
+                                        peers = result.peers,
+                                        infoHash = result.infoHash,
+                                        audioDelayMs = result.audioDelayMs,
+                                        audioDelayLanguage = result.audioDelayLanguage
                                     )
                                 }
                             } ?: run {
@@ -301,6 +323,9 @@ internal class NuvioJsRepository(context: Context) {
             ?: throw IllegalArgumentException("Scraper bulunamadı.")
         require(mediaId.isNotBlank()) { "Test için TMDB içerik kimliği gerekli." }
         val type = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
+        require(isSupportedOnTv(scraper)) {
+            "Bu sağlayıcı Android TV platformunu desteklemiyor."
+        }
         require(scraper.supportedTypes.any { normalizeType(it) == type }) {
             "Bu sağlayıcı $type içeriklerini desteklemiyor."
         }
@@ -320,6 +345,8 @@ internal class NuvioJsRepository(context: Context) {
                         "Çalıştırma tamamlandı ancak kaynak dönmedi. İçerik kimliğini, sağlayıcı ayarlarını ve günlük kayıtlarını kontrol et.",
                     successful = valid > 0
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 NuvioScraperTestResult(
                     scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
@@ -438,7 +465,8 @@ internal class NuvioJsRepository(context: Context) {
             version = item.optString("version"),
             description = item.optString("description"),
             manifestUrl = manifestUrl,
-            scrapers = scrapers
+            scrapers = scrapers,
+            enabled = item.optBoolean("enabled", true)
         )
     }
 
@@ -474,6 +502,7 @@ internal class NuvioJsRepository(context: Context) {
                     .put("version", repo.version)
                     .put("description", repo.description)
                     .put("manifestUrl", repo.manifestUrl)
+                    .put("enabled", repo.enabled)
                     .put("scrapers", scraperArray)
             )
         }
@@ -485,6 +514,16 @@ internal class NuvioJsRepository(context: Context) {
         else (0 until minOf(array.length(), 100))
             .map { array.optString(it).trim() }
             .filter { it.isNotEmpty() }
+
+    /**
+     * Nuvio manifests use "tv" to explicitly include or exclude TV clients.
+     * An empty supportedPlatforms list means the scraper is platform-agnostic.
+     */
+    private fun isSupportedOnTv(scraper: NuvioScraperInfo): Boolean {
+        val supported = scraper.supportedPlatforms.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        val disabled = scraper.disabledPlatforms.map { it.trim().lowercase() }
+        return (supported.isEmpty() || "tv" in supported) && "tv" !in disabled
+    }
 
     private fun normalizeType(value: String): String =
         when (value.lowercase()) {

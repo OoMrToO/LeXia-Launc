@@ -8,7 +8,10 @@ import com.dokar.quickjs.quickJs
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Call
 import okhttp3.Headers
@@ -42,7 +45,16 @@ internal data class NuvioJsStream(
     val url: String,
     val quality: String = "",
     val headers: Map<String, String> = emptyMap(),
-    val subtitles: List<NuvioJsSubtitle> = emptyList()
+    val subtitles: List<NuvioJsSubtitle> = emptyList(),
+    val language: String = "",
+    val server: String = "",
+    val size: String = "",
+    val streamType: String = "",
+    val seeders: Int? = null,
+    val peers: Int? = null,
+    val infoHash: String = "",
+    val audioDelayMs: Long? = null,
+    val audioDelayLanguage: String = ""
 )
 
 /**
@@ -90,6 +102,11 @@ internal class NuvioJsRuntime {
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
         val executionError = java.util.concurrent.atomic.AtomicReference("")
+        val cancellationRegistration = currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                activeCalls.forEach { call -> call.cancel() }
+            }
+        }
 
         return try {
             quickJs(Dispatchers.IO) {
@@ -280,6 +297,7 @@ internal class NuvioJsRuntime {
             Log.e("LeXiaPlugin", "Scraper $scraperId failed: ${error.message}", error)
             throw error
         } finally {
+            cancellationRegistration?.dispose()
             activeCalls.forEach { it.cancel() }
             activeCalls.clear()
             documents.clear()
@@ -319,8 +337,13 @@ internal class NuvioJsRuntime {
         activeCalls: MutableSet<Call>
     ): String {
         return try {
+            val fetchUrl = rawUrl.toHttpUrlOrNull()
+                ?: throw IllegalArgumentException("Fetch URL is invalid")
+            require(fetchUrl.scheme == "https") {
+                "Nuvio scraper fetch is restricted to HTTPS URLs"
+            }
             val headers = runCatching { JSONObject(rawHeaders) }.getOrDefault(JSONObject())
-            val request = Request.Builder().url(rawUrl)
+            val request = Request.Builder().url(fetchUrl)
             val keys = headers.keys()
             var hasUserAgent = false
             var contentType = ""
@@ -354,7 +377,8 @@ internal class NuvioJsRuntime {
             val client = http.newBuilder()
                 .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .followRedirects(followRedirects)
-                .followSslRedirects(followRedirects)
+                // Never allow a scraper's HTTPS request to downgrade to cleartext HTTP.
+                .followSslRedirects(false)
                 .build()
             val call = client.newCall(request.build())
             activeCalls.add(call)
@@ -362,21 +386,31 @@ internal class NuvioJsRuntime {
                 call.execute().use { response ->
                     val responseHeaders = JSONObject()
                     response.headers.names().forEach { name ->
-                        responseHeaders.put(name, response.header(name).orEmpty())
+                        responseHeaders.put(name.lowercase(), response.header(name).orEmpty())
                     }
                     val responseBody = response.body
-                    val bytesRead = responseBody?.byteStream()?.use { input ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        var total = 0
-                        while (total < MAX_RESPONSE_BYTES) {
-                            val count = input.read(buffer, 0, minOf(buffer.size, MAX_RESPONSE_BYTES - total))
-                            if (count <= 0) break
-                            output.write(buffer, 0, count)
-                            total += count
+                    val contentEncoding = response.header("Content-Encoding")?.lowercase()?.trim()
+                    val bounded = responseBody?.byteStream()?.use { raw ->
+                        val decoded = when (contentEncoding) {
+                            "gzip" -> GZIPInputStream(raw)
+                            "deflate" -> InflaterInputStream(raw)
+                            else -> raw
                         }
-                        output.toByteArray()
-                    } ?: ByteArray(0)
+                        decoded.use { input ->
+                            val output = ByteArrayOutputStream(minOf(MAX_RESPONSE_BYTES, 16 * 1024))
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (total < MAX_RESPONSE_BYTES) {
+                                val count = input.read(buffer, 0, minOf(buffer.size, MAX_RESPONSE_BYTES - total))
+                                if (count <= 0) break
+                                output.write(buffer, 0, count)
+                                total += count
+                            }
+                            val truncated = total >= MAX_RESPONSE_BYTES && input.read() != -1
+                            output.toByteArray() to truncated
+                        }
+                    } ?: (ByteArray(0) to false)
+                    val bytesRead = bounded.first
                     val charset: Charset = responseBody?.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
                     JSONObject()
                         .put("ok", response.isSuccessful)
@@ -386,6 +420,7 @@ internal class NuvioJsRuntime {
                         .put("body", String(bytesRead, charset))
                         .put("bodyBase64", Base64.encodeToString(bytesRead, Base64.NO_WRAP))
                         .put("headers", responseHeaders)
+                        .put("truncated", bounded.second)
                         .toString()
                 }
             } finally {
@@ -461,11 +496,7 @@ internal class NuvioJsRuntime {
                     Log.d("LeXiaPlugin", "Skipped result without a supported HTTPS URL")
                     return@mapNotNull null
                 }
-                val headers = (item["headers"] as? Map<*, *>)?.mapNotNull { (key, value) ->
-                    val k = key?.toString().orEmpty()
-                    val v = value?.toString().orEmpty()
-                    if (k.isBlank() || v.isBlank() || '\r' in v || '\n' in v) null else k to v
-                }?.toMap().orEmpty()
+                val headers = sanitizeHeaders(item["headers"])
                 val subtitles = (item["subtitles"] as? List<*>)?.mapNotNull { rawSubtitle ->
                     val subtitle = rawSubtitle as? Map<*, *> ?: return@mapNotNull null
                     val subtitleUrl = subtitle["url"]?.toString().orEmpty()
@@ -474,11 +505,7 @@ internal class NuvioJsRuntime {
                         url = subtitleUrl,
                         language = subtitle["language"]?.toString()
                             ?: subtitle["lang"]?.toString() ?: "Unknown",
-                        headers = (subtitle["headers"] as? Map<*, *>)?.mapNotNull { (k, v) ->
-                            val key = k?.toString().orEmpty()
-                            val value = v?.toString().orEmpty()
-                            if (key.isBlank() || value.isBlank()) null else key to value
-                        }?.toMap().orEmpty()
+                        headers = sanitizeHeaders(subtitle["headers"])
                     )
                 }.orEmpty()
                 NuvioJsStream(
@@ -488,13 +515,38 @@ internal class NuvioJsRuntime {
                     url = url,
                     quality = item["quality"]?.toString().orEmpty(),
                     headers = headers,
-                    subtitles = subtitles
+                    subtitles = subtitles,
+                    language = (item["language"] ?: item["lang"])?.toString().orEmpty(),
+                    server = (item["server"] ?: item["source"])?.toString().orEmpty(),
+                    size = item["size"]?.toString().orEmpty(),
+                    streamType = (item["type"] ?: item["streamType"])?.toString().orEmpty(),
+                    seeders = (item["seeders"] as? Number)?.toInt(),
+                    peers = (item["peers"] as? Number)?.toInt(),
+                    infoHash = item["infoHash"]?.toString().orEmpty(),
+                    audioDelayMs = (item["audioDelayMs"] as? Number)?.toLong(),
+                    audioDelayLanguage = item["audioDelayLanguage"]?.toString().orEmpty()
                 )
             }.take(MAX_STREAMS)
         } catch (error: Exception) {
             Log.w("LeXiaPlugin", "Invalid scraper result: ${error.message}")
             emptyList()
         }
+    }
+
+    private fun sanitizeHeaders(raw: Any?): Map<String, String> {
+        val source = raw as? Map<*, *> ?: return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        source.forEach { (rawName, rawValue) ->
+            if (result.size >= MAX_HEADERS) return@forEach
+            val name = rawName?.toString().orEmpty()
+            val value = rawValue?.toString().orEmpty()
+            if (!HEADER_NAME.matches(name) || value.isBlank() || value.length > 2048) return@forEach
+            if (name.equals("Host", true) || name.equals("Content-Length", true) ||
+                name.equals("Range", true) || '\r' in value || '\n' in value
+            ) return@forEach
+            if (result.keys.none { it.equals(name, true) }) result[name] = value
+        }
+        return result
     }
 
     private fun isHttps(raw: String): Boolean =
@@ -813,5 +865,7 @@ internal class NuvioJsRuntime {
         const val MAX_FETCH_TIMEOUT_MS = 120_000L
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_STREAMS = 40
+        const val MAX_HEADERS = 20
+        val HEADER_NAME = Regex("^[A-Za-z0-9-]{1,64}$")
     }
 }
