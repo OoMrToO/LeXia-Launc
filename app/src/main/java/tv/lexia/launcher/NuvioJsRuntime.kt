@@ -386,7 +386,7 @@ internal class NuvioJsRuntime {
                 call.execute().use { response ->
                     val responseHeaders = JSONObject()
                     response.headers.names().forEach { name ->
-                        responseHeaders.put(name, response.header(name).orEmpty())
+                        responseHeaders.put(name.lowercase(), response.header(name).orEmpty())
                     }
                     val responseBody = response.body
                     val contentEncoding = response.header("Content-Encoding")?.lowercase()?.trim()
