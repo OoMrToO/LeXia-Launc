@@ -46,7 +46,9 @@ class Pick(
     /** Every trailer the film has (dubbed, subtitled, original, teaser), the main one first; may be empty. */
     val trailers: List<Video> = emptyList(),
     /** Where it is free to watch in Turkey (free or with ads: tabii, puhutv...); empty if nowhere known. */
-    val free: List<String> = emptyList()
+    val free: List<String> = emptyList(),
+    /** IMDb identifier for Stremio-compatible media add-ons; absent on older feed records. */
+    val imdbId: String = ""
 ) {
     val isSeries: Boolean get() = kind == "tv"
 
@@ -74,13 +76,14 @@ class Pick(
         .put("id", id).put("cert", cert).put("years", years).put("provider", provider)
         .put("where", JSONArray(where)).put("digital", digital)
         .put("trailers", JSONArray(trailers.map { JSONObject().put("k", it.key).put("n", it.label) }))
-        .put("free", JSONArray(free))
+        .put("free", JSONArray(free)).put("imdb_id", imdbId)
 
     companion object {
         private val trailerKey = Regex("^[A-Za-z0-9_-]{6,20}$")
         private val certText = Regex("^(Genel|\\d{1,2}\\+)$")
         private val providerName = Regex("^[\\p{L}0-9 +.&'-]{2,40}$")
         private val videoLabel = Regex("^[\\p{L}0-9 ·()+.,'-]{2,40}$")
+        private val imdbIdPattern = Regex("^tt[0-9]{7,10}$")
         private val imagePath = Regex("^/[A-Za-z0-9_-]+\\.(jpg|jpeg|png)$")
 
         /** Only accept values that fit the YouTube and TMDB URLs they are pasted into. */
@@ -121,7 +124,8 @@ class Pick(
                         if (k.isEmpty() || !videoLabel.matches(n)) null else Video(k, n)
                     }.distinctBy { it.key }.take(5)
                 },
-                strings(x.optJSONArray("free")).map { it.take(40) }.filter { providerName.matches(it) }.take(3)
+                strings(x.optJSONArray("free")).map { it.take(40) }.filter { providerName.matches(it) }.take(3),
+                safe(x.optString("imdb_id"), imdbIdPattern)
             )
         }
     }
