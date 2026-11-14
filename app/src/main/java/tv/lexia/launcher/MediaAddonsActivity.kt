@@ -385,26 +385,66 @@ class MediaAddonsActivity : Activity() {
     }
 
     private fun showScraperTestDialog(repositoryId: String, scraper: NuvioScraperInfo) {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(6), dp(12), 0)
+        }
+        val typeChoices = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.HORIZONTAL }
+        val movieChoice = android.widget.RadioButton(this).apply { text = "Film"; isChecked = true; setTextColor(Color.WHITE) }
+        val tvChoice = android.widget.RadioButton(this).apply { text = "Dizi"; setTextColor(Color.WHITE) }
+        typeChoices.addView(movieChoice)
+        typeChoices.addView(tvChoice)
+        fields.addView(typeChoices)
         val input = EditText(this).apply {
-            hint = "Örn. 550"
+            hint = "TMDB içerik kimliği · Örn. 550"
             inputType = InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
+        val season = EditText(this).apply {
+            hint = "Sezon numarası"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText("1")
+            setTextColor(Color.WHITE)
+            visibility = View.GONE
+        }
+        val episode = EditText(this).apply {
+            hint = "Bölüm numarası"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText("1")
+            setTextColor(Color.WHITE)
+            visibility = View.GONE
+        }
+        typeChoices.setOnCheckedChangeListener { _, checkedId ->
+            val isTv = checkedId == tvChoice.id
+            season.visibility = if (isTv) View.VISIBLE else View.GONE
+            episode.visibility = if (isTv) View.VISIBLE else View.GONE
+        }
+        fields.addView(input)
+        fields.addView(season)
+        fields.addView(episode)
         val dialog = AlertDialog.Builder(this)
             .setTitle("${scraper.name} · Sağlayıcı testi")
-            .setMessage("Film için TMDB kimliğini gir. Test yalnızca bu scraper'ı çalıştırır; diğer sağlayıcılar etkilenmez.")
-            .setView(input)
+            .setMessage("Yalnızca seçilen scraper çalıştırılır. Film veya dizi için TMDB kimliğini gir.")
+            .setView(fields)
             .setNegativeButton("İptal", null)
             .setPositiveButton("Testi başlat", null)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val mediaId = input.text?.toString()?.trim().orEmpty()
+                val isTv = tvChoice.isChecked
+                val seasonNumber = if (isTv) season.text?.toString()?.toIntOrNull() else null
+                val episodeNumber = if (isTv) episode.text?.toString()?.toIntOrNull() else null
                 if (mediaId.isBlank()) {
                     input.error = "TMDB kimliği gerekli"
+                    return@setOnClickListener
+                }
+                if (isTv && (seasonNumber !in 1..100 || episodeNumber !in 1..500)) {
+                    season.error = if (seasonNumber !in 1..100) "Geçerli sezon gir" else null
+                    episode.error = if (episodeNumber !in 1..500) "Geçerli bölüm gir" else null
                     return@setOnClickListener
                 }
                 if (busy) return@setOnClickListener
@@ -413,7 +453,11 @@ class MediaAddonsActivity : Activity() {
                 dialog.dismiss()
                 worker.execute {
                     val result = runCatching {
-                        nuvioRepository.testScraper(repositoryId, scraper.id, mediaId)
+                        nuvioRepository.testScraper(
+                            repositoryId, scraper.id, mediaId,
+                            mediaType = if (isTv) "tv" else "movie",
+                            season = seasonNumber, episode = episodeNumber
+                        )
                     }
                     runOnUiThread {
                         busy = false
@@ -434,10 +478,9 @@ class MediaAddonsActivity : Activity() {
             }
         }
         dialog.show()
-        dialog.window?.setLayout(dp(600), LinearLayout.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setLayout(dp(620), LinearLayout.LayoutParams.WRAP_CONTENT)
         input.requestFocus()
     }
-
     private fun refreshNuvioRepository(repositoryId: String, name: String) {
         if (busy) return
         busy = true
