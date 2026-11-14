@@ -199,6 +199,11 @@ class MediaAddonsActivity : Activity() {
                     setTextColor(Color.rgb(150, 160, 180))
                 })
                 row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                if (scraper.hasSettings) {
+                    row.addView(action("Ayarlar").apply {
+                        setOnClickListener { showScraperSettings(repo.id, scraper) }
+                    })
+                }
                 val toggle = action(if (scraper.enabled) "Açık" else "Kapalı", primary = scraper.enabled).apply {
                     setOnClickListener {
                         nuvioRepository.setScraperEnabled(repo.id, scraper.id, !scraper.enabled)
@@ -208,13 +213,14 @@ class MediaAddonsActivity : Activity() {
                 row.addView(toggle)
                 card.addView(row)
             }
-            val remove = action("Nuvio deposunu kaldır").apply {
+            val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            repoActions.addView(action("Depoyu güncelle").apply {
+                setOnClickListener { refreshNuvioRepository(repo.id, repo.name) }
+            })
+            repoActions.addView(action("Depoyu kaldır").apply {
                 setOnClickListener { confirmRemoveNuvio(repo.id, repo.name) }
-            }
-            card.addView(remove, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) })
+            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+            card.addView(repoActions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
             addCardToList(card)
         }
 
@@ -326,6 +332,61 @@ class MediaAddonsActivity : Activity() {
                 renderAddons()
             }
             .show()
+    }
+
+    private fun showScraperSettings(repositoryId: String, scraper: NuvioScraperInfo) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 5
+            maxLines = 12
+            setText(nuvioRepository.scraperSettings(repositoryId, scraper.id))
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            typeface = Typeface.MONOSPACE
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("\${scraper.name} · Ayarlar")
+            .setMessage("Scraper ayarlarını JSON nesnesi olarak düzenle. Kaydedilen değerler kaynak aramasında JavaScript motoruna aktarılır.")
+            .setView(input)
+            .setNegativeButton("Vazgeç", null)
+            .setPositiveButton("Kaydet", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    nuvioRepository.setScraperSettings(repositoryId, scraper.id, input.text.toString())
+                    dialog.dismiss()
+                    status.text = "\${scraper.name} ayarları kaydedildi."
+                } catch (error: Exception) {
+                    input.error = error.message ?: "Geçersiz JSON"
+                }
+            }
+        }
+        dialog.show()
+        dialog.window?.setLayout(dp(680), LinearLayout.LayoutParams.WRAP_CONTENT)
+        input.requestFocus()
+    }
+
+    private fun refreshNuvioRepository(repositoryId: String, name: String) {
+        if (busy) return
+        busy = true
+        status.text = "\$name deposu güncelleniyor…"
+        worker.execute {
+            try {
+                val updated = nuvioRepository.refreshRepository(repositoryId)
+                runOnUiThread {
+                    busy = false
+                    status.text = "\${updated.name} güncellendi · \${updated.scrapers.size} scraper"
+                    renderAddons()
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    busy = false
+                    status.text = error.message ?: "Depo güncellenemedi."
+                }
+            }
+        }
     }
 
     private fun confirmRemoveNuvio(repositoryId: String, name: String) {
