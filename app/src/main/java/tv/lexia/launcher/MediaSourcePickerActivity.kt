@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
@@ -140,8 +141,10 @@ class MediaSourcePickerActivity : Activity() {
         runTask("Film kaynakları aranıyor…", {
             // Stremio add-ons commonly expect IMDb IDs; Nuvio's getStreams contract expects a TMDB ID.
             val stremioMediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
-            repository.fetchStreams("movie", stremioMediaId) +
-                nuvioRepository.fetchStreams(film.id.toString(), "movie")
+            fetchCombinedStreams(
+                stremio = { repository.fetchStreams("movie", stremioMediaId) },
+                nuvio = { nuvioRepository.fetchStreams(film.id.toString(), "movie") }
+            )
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
@@ -242,8 +245,10 @@ class MediaSourcePickerActivity : Activity() {
             film.id.toString()
         }
         runTask("Kaynaklar aranıyor · $title", {
-            repository.fetchStreams("series", videoId) +
-                nuvioRepository.fetchStreams(nuvioEpisodeId, "tv")
+            fetchCombinedStreams(
+                stremio = { repository.fetchStreams("series", videoId) },
+                nuvio = { nuvioRepository.fetchStreams(nuvioEpisodeId, "tv") }
+            )
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
@@ -258,6 +263,24 @@ class MediaSourcePickerActivity : Activity() {
                 showStreams(streams, "${film.title} · $title", videoId)
             }
         }
+    }
+
+    /**
+     * Keep the two plugin ecosystems independent: a malformed/offline Stremio add-on must not
+     * prevent Nuvio JS scrapers from running (and vice versa).
+     */
+    private fun fetchCombinedStreams(
+        stremio: () -> List<MediaStream>,
+        nuvio: () -> List<MediaStream>
+    ): List<MediaStream> {
+        val results = mutableListOf<MediaStream>()
+        runCatching { stremio() }
+            .onSuccess { results += it }
+            .onFailure { Log.w("LeXiaSources", "Stremio source search failed: ${it.message}", it) }
+        runCatching { nuvio() }
+            .onSuccess { results += it }
+            .onFailure { Log.w("LeXiaSources", "Nuvio JS source search failed: ${it.message}", it) }
+        return results
     }
 
     private fun showStreams(streams: List<MediaStream>, playbackTitle: String, mediaKey: String) {
