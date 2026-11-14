@@ -6,6 +6,7 @@ import com.dokar.quickjs.binding.define
 import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.quickJs
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
@@ -388,15 +389,35 @@ internal class NuvioJsRuntime {
 
     private fun parseResults(raw: String): List<NuvioJsStream> {
         return try {
-            val type = object : TypeToken<List<Map<String, Any?>>>() {}.type
-            val items: List<Map<String, Any?>> = gson.fromJson(raw, type) ?: emptyList()
-            items.mapNotNull { item ->
-                val url = when (val value = item["url"]) {
-                    is String -> value
-                    is Map<*, *> -> value["url"]?.toString().orEmpty()
-                    else -> ""
+            val root = JsonParser.parseString(raw)
+            val elements = when {
+                root.isJsonArray -> root.asJsonArray.toList()
+                root.isJsonObject -> {
+                    val obj = root.asJsonObject
+                    val nested = sequenceOf("streams", "results", "sources", "data")
+                        .mapNotNull { key -> obj.get(key)?.takeIf { it.isJsonArray } }
+                        .firstOrNull()
+                    nested?.asJsonArray?.toList().orEmpty()
                 }
-                if (!isHttps(url)) return@mapNotNull null
+                else -> emptyList()
+            }
+            elements.mapNotNull { element ->
+                if (!element.isJsonObject) return@mapNotNull null
+                val item: Map<String, Any?> = gson.fromJson(element, object : TypeToken<Map<String, Any?>>() {}.type)
+                val url = sequenceOf("url", "link", "src", "file")
+                    .mapNotNull { key ->
+                        when (val value = item[key]) {
+                            is String -> value
+                            is Map<*, *> -> value["url"]?.toString()
+                            else -> null
+                        }
+                    }
+                    .firstOrNull { it.isNotBlank() }
+                    .orEmpty()
+                if (!isHttps(url)) {
+                    Log.d("LeXiaPlugin", "Skipped result without a supported HTTPS URL")
+                    return@mapNotNull null
+                }
                 val headers = (item["headers"] as? Map<*, *>)?.mapNotNull { (key, value) ->
                     val k = key?.toString().orEmpty()
                     val v = value?.toString().orEmpty()
@@ -408,7 +429,8 @@ internal class NuvioJsRuntime {
                     if (!isHttps(subtitleUrl)) return@mapNotNull null
                     NuvioJsSubtitle(
                         url = subtitleUrl,
-                        language = subtitle["language"]?.toString() ?: subtitle["lang"]?.toString() ?: "Unknown",
+                        language = subtitle["language"]?.toString()
+                            ?: subtitle["lang"]?.toString() ?: "Unknown",
                         headers = (subtitle["headers"] as? Map<*, *>)?.mapNotNull { (k, v) ->
                             val key = k?.toString().orEmpty()
                             val value = v?.toString().orEmpty()
@@ -417,7 +439,8 @@ internal class NuvioJsRuntime {
                     )
                 }.orEmpty()
                 NuvioJsStream(
-                    title = item["title"]?.toString()?.takeIf { it.isNotBlank() } ?: item["name"]?.toString().orEmpty().ifBlank { "Kaynak" },
+                    title = item["title"]?.toString()?.takeIf { it.isNotBlank() }
+                        ?: item["name"]?.toString().orEmpty().ifBlank { "Kaynak" },
                     name = item["name"]?.toString().orEmpty(),
                     url = url,
                     quality = item["quality"]?.toString().orEmpty(),
