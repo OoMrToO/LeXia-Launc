@@ -150,7 +150,7 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun loadEpisodes() {
-        runTask("Dizi bölümleri aranıyor…", {
+        runEpisodeTask("Dizi bölümleri aranıyor…", {
             repository.fetchEpisodes(film.id)
         }) { episodes ->
             if (episodes.isEmpty()) {
@@ -340,7 +340,7 @@ class MediaSourcePickerActivity : Activity() {
         }
     }
 
-    private fun runTaskEpisodes(
+    private fun runEpisodeTask(
         message: String,
         task: () -> List<MediaEpisode>,
         onSuccess: (List<MediaEpisode>) -> Unit
@@ -364,9 +364,6 @@ class MediaSourcePickerActivity : Activity() {
             }
         }
     }
-
-    private fun runTask(message: String, task: () -> List<MediaEpisode>, onSuccess: (List<MediaEpisode>) -> Unit) =
-        runTaskEpisodes(message, task, onSuccess)
 
     private fun addSectionTitle(title: String) {
         content.addView(TextView(this).apply {
