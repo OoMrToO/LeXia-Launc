@@ -26,9 +26,12 @@ internal data class NuvioScraperInfo(
     val name: String,
     val description: String,
     val version: String,
+    val author: String,
     val filename: String,
     val supportedTypes: List<String>,
     val enabled: Boolean,
+    val hasSettings: Boolean,
+    val limited: Boolean,
     val logo: String,
     val contentLanguage: List<String>,
     val formats: List<String>
@@ -101,9 +104,12 @@ internal class NuvioJsRepository(context: Context) {
                 name = scraperName,
                 description = item.optString("description"),
                 version = item.optString("version").ifBlank { version },
+                author = item.optString("author"),
                 filename = filename,
                 supportedTypes = stringList(item.optJSONArray("supportedTypes")).ifEmpty { listOf("movie", "tv") },
                 enabled = item.optBoolean("enabled", true),
+                hasSettings = item.optBoolean("hasSettings", false),
+                limited = item.optBoolean("limited", false),
                 logo = item.optString("logo"),
                 contentLanguage = stringList(item.optJSONArray("contentLanguage")),
                 formats = stringList(item.optJSONArray("formats")).ifEmpty {
@@ -141,6 +147,15 @@ internal class NuvioJsRepository(context: Context) {
         codeDirectory.listFiles()?.forEach { file ->
             if (file.name.startsWith(repositoryId.take(16))) file.delete()
         }
+    }
+
+    fun scraperSettings(repositoryId: String, scraperId: String): String =
+        prefs.getString("settings_" + repositoryId + "_" + scraperId, "{}") ?: "{}"
+
+    fun setScraperSettings(repositoryId: String, scraperId: String, settingsJson: String) {
+        val parsed = runCatching { JSONObject(settingsJson) }.getOrNull()
+            ?: throw IllegalArgumentException("Ayarlar geçerli bir JSON nesnesi olmalı.")
+        prefs.edit().putString("settings_" + repositoryId + "_" + scraperId, parsed.toString()).apply()
     }
 
     fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) {
@@ -203,7 +218,8 @@ internal class NuvioJsRepository(context: Context) {
                                     mediaType = normalizedType,
                                     season = resolvedSeason,
                                     episode = resolvedEpisode,
-                                    scraperId = scraper.id
+                                    scraperId = scraper.id,
+                                    settingsJson = scraperSettings(repo.id, scraper.id)
                                 )
                                 Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
                                 rawStreams.mapNotNull { result ->
@@ -329,9 +345,12 @@ internal class NuvioJsRepository(context: Context) {
                 name = scraper.optString("name"),
                 description = scraper.optString("description"),
                 version = scraper.optString("version"),
+                author = scraper.optString("author"),
                 filename = scraper.optString("filename"),
                 supportedTypes = stringList(scraper.optJSONArray("supportedTypes")),
                 enabled = scraper.optBoolean("enabled", true),
+                hasSettings = scraper.optBoolean("hasSettings", false),
+                limited = scraper.optBoolean("limited", false),
                 logo = scraper.optString("logo"),
                 contentLanguage = stringList(scraper.optJSONArray("contentLanguage")),
                 formats = stringList(scraper.optJSONArray("formats"))
@@ -358,9 +377,12 @@ internal class NuvioJsRepository(context: Context) {
                         .put("name", scraper.name)
                         .put("description", scraper.description)
                         .put("version", scraper.version)
+                        .put("author", scraper.author)
                         .put("filename", scraper.filename)
                         .put("supportedTypes", JSONArray(scraper.supportedTypes))
                         .put("enabled", scraper.enabled)
+                        .put("hasSettings", scraper.hasSettings)
+                        .put("limited", scraper.limited)
                         .put("logo", scraper.logo)
                         .put("contentLanguage", JSONArray(scraper.contentLanguage))
                         .put("formats", JSONArray(scraper.formats))

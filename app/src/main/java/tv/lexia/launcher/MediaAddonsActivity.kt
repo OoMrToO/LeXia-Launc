@@ -168,6 +168,46 @@ class MediaAddonsActivity : Activity() {
                 setPadding(0, dp(7), 0, 0)
                 maxLines = 2
             })
+            val scraperHeading = TextView(this).apply {
+                text = "SAĞLAYICILAR"
+                textSize = 13f
+                setTextColor(Color.rgb(125, 151, 255))
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, dp(14), 0, dp(6))
+            }
+            card.addView(scraperHeading)
+            repo.scrapers.forEach { scraper ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(10), dp(8), dp(4), dp(8))
+                }
+                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                details.addView(TextView(this).apply {
+                    text = scraper.name
+                    textSize = 16f
+                    setTextColor(Color.WHITE)
+                    typeface = Typeface.DEFAULT_BOLD
+                })
+                details.addView(TextView(this).apply {
+                    val flags = mutableListOf<String>()
+                    if (scraper.hasSettings) flags.add("Ayarları var")
+                    if (scraper.limited) flags.add("Sınırlı")
+                    if (scraper.formats.isNotEmpty()) flags.add(scraper.formats.joinToString("/"))
+                    text = flags.joinToString(" · ").ifBlank { scraper.supportedTypes.joinToString("/") }
+                    textSize = 12f
+                    setTextColor(Color.rgb(150, 160, 180))
+                })
+                row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                val toggle = action(if (scraper.enabled) "Açık" else "Kapalı", primary = scraper.enabled).apply {
+                    setOnClickListener {
+                        nuvioRepository.setScraperEnabled(repo.id, scraper.id, !scraper.enabled)
+                        renderAddons()
+                    }
+                }
+                row.addView(toggle)
+                card.addView(row)
+            }
             val remove = action("Nuvio deposunu kaldır").apply {
                 setOnClickListener { confirmRemoveNuvio(repo.id, repo.name) }
             }

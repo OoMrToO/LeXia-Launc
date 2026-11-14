@@ -70,9 +70,10 @@ internal class NuvioJsRuntime {
         mediaType: String,
         season: Int?,
         episode: Int?,
-        scraperId: String
+        scraperId: String,
+        settingsJson: String = "{}"
     ): List<NuvioJsStream> = withTimeout(18_000L) {
-        executeInternal(code, mediaId, mediaType, season, episode, scraperId)
+        executeInternal(code, mediaId, mediaType, season, episode, scraperId, settingsJson)
     }
 
     private suspend fun executeInternal(
@@ -81,13 +82,13 @@ internal class NuvioJsRuntime {
         mediaType: String,
         season: Int?,
         episode: Int?,
-        scraperId: String
+        scraperId: String,
+        settingsJson: String
     ): List<NuvioJsStream> {
         val documents = ConcurrentHashMap<String, Document>()
         val elements = ConcurrentHashMap<String, Element>()
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
-        val settingsJson = "{}"
 
         return try {
             quickJs(Dispatchers.IO) {
