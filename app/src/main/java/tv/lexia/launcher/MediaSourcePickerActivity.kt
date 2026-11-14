@@ -175,7 +175,7 @@ class MediaSourcePickerActivity : Activity() {
                         seasonLine,
                         "Kaynakları ara",
                         primary = false
-                    ) { loadEpisodeStreams(episode.id, episode.title) }
+                    ) { loadEpisodeStreams(episode.id, episode.title, episode.season, episode.episode) }
                 }
             }
         }
@@ -224,7 +224,7 @@ class MediaSourcePickerActivity : Activity() {
                     status.text = "Geçerli bir sezon ve bölüm numarası gir."
                 } else {
                     val id = "${film.imdbId.ifBlank { "tmdb:${film.id}" }}:$s:$e"
-                    loadEpisodeStreams(id, "$s. Sezon · $e. Bölüm")
+                    loadEpisodeStreams(id, "$s. Sezon · $e. Bölüm", s, e)
                 }
             }
             .create()
@@ -233,11 +233,17 @@ class MediaSourcePickerActivity : Activity() {
         season.requestFocus()
     }
 
-    private fun loadEpisodeStreams(videoId: String, title: String) {
+    private fun loadEpisodeStreams(videoId: String, title: String, season: Int = 0, episode: Int = 0) {
         currentEpisodeTitle = title
+        // Stremio keeps its provider-specific episode ID; Nuvio receives TMDB ID + S/E separately.
+        val nuvioEpisodeId = if (film.id > 0 && season > 0 && episode > 0) {
+            "${film.id}:$season:$episode"
+        } else {
+            film.id.toString()
+        }
         runTask("Kaynaklar aranıyor · $title", {
             repository.fetchStreams("series", videoId) +
-                nuvioRepository.fetchStreams(videoId, "tv")
+                nuvioRepository.fetchStreams(nuvioEpisodeId, "tv")
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
