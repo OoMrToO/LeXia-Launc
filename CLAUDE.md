@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme yönlendirmeleri, TV platform filtreleri, akış başlık denetimi, HTTP iptali ve fetch yanıt başlıklarının küçük harfle normalize edilmesi düzeltildi).
+Son güncelleme: 14 Kasım 2026 (Nuvio medya altyapısını kaynak kodundan taşıma denetimi ve aşamalı entegrasyon planı eklendi; henüz medya kodu taşınmadı).
 
 ## 1. Çalışma biçimi
 
@@ -24,7 +24,16 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 - **Kapsam:** manifestli Stremio uyumlu eklentiler ve Nuvio JS scraper'ları; oynatıcıya yalnızca doğrudan HTTPS akışları verilir. Nuvio scraper `fetch`, Nuvio depo/JS indirmeleri ve Stremio eklenti istekleri yalnızca HTTPS kullanır; HTTPS → HTTP yönlendirmelerini izlemez. Nuvio `supportedPlatforms` / `disabledPlatforms` alanları TV uyumluluğunu belirler; boş izin listesi tüm platformlara izin verir. Nuvio akış ve altyazı başlıkları geçerli ad, uzunluk ve satır sonu denetiminden geçirilir. Torrent/debrid, CloudStream eklentileri, MPV yok. **TV'de hiçbiri denenmedi.**
 - Kullanıcı başka araçla da çalışır: iş hep güncel `main`'den dal açılarak, PR ile yapılır. Aynı işi yapan iki PR açılırsa çakışır; Claude tek dalda toplar.
 
-## 3. Cihaz ve kurulum
+## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
+
+- Kullanıcı `OoMrToO/NuvioTV` fork'unu oluşturdu; upstream `NuvioMedia/NuvioTV`, izlenen dal `dev`, lisans GPL-3.0.
+- Hedef: LeXia'nın View tabanlı ana ekranı, detay ekranları, launcher davranışı ve D-pad odağı korunacak; Nuvio'nun gerçek plugin/scraper, stream, altyazı ve medya kaynağı altyapısı taşınacak.
+- Nuvio plugin sistemi bağımsız birkaç dosya değil: `PluginManager`, `PluginRuntime`, `PluginDataStore`, `AuthManager`, `PluginSyncService`, domain modelleri ve DI ile bağlı. `StreamRepositoryImpl` ayrıca TMDB/profil/debrid/medya sunucusu katmanlarına bağlı. Doğrudan dosya kopyalama yapılmayacak; bağımlılık haritası ve LeXia adaptörleriyle kontrollü port yapılacak.
+- Nuvio'nun `full` source set'i plugin runtime'ı içeriyor. Nuvio'nun version catalog'unda Media3 1.8.0; LeXia Media3 1.11.1 kullanıyor. Media3 düşürülmeyecek; taşınan kod mevcut sürüme uyarlanacak.
+- Mevcut kapsam korunur: doğrudan HTTPS akışları; torrent/debrid, CloudStream ve MPV yok. UI, paket adı, imza ve yayın akışı korunur.
+- Ayrıntılı dosya haritası ve sıra `docs/NUVIO_MEDIA_MIGRATION.md` içinde. `chore/nuvio-media-engine-port` dalı yalnızca bu denetim planını içerir; henüz medya kodu taşınmadı.
+
+## 4. Cihaz ve kurulum
 
 - **TV:** Grundig Google TV (Android TV), Türkiye, kumanda (D-pad). Standart ayar ekranlarının bir kısmı çalışmaz; `SystemSettings.kt` TV'nin kendi ekranlarını önce dener.
 - **İlk kurulum:** Downloader ile `https://lexia-tv.pages.dev/kur.apk` (kurulum sürümü, Ana Sayfa hizmeti yok, Play Protect'e takılmaz) → açılınca tam sürüme güncellenir. Sonraki güncellemeler uygulama içinden.
@@ -37,7 +46,7 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 
 - **Erişilebilirlik ekranı (13 Kasım):** kullanıcının Grundig'inde rehberin "Ayarları aç" düğmesi yalnızca ana ayarları açtı (yol: **Cihaz Tercihleri › Erişilebilirlik**). `SystemSettings.openAccessibility` artık TV ayar uygulamasının dışa açık ekranlarından adında "accessib" geçenleri kendisi bulup önce onları dener (`found`), sonra sabit adları ve standart isteği. TV'de denenmedi; yine açmazsa TV'nin ayar uygulamasındaki ekran adlarını göstermek gerekir.
 
-## 4. Depo, derleme, yayın
+## 5. Depo, derleme, yayın
 
 - Depo `OoMrToO/LeXia-Launc` (**gizli**). Paket `tv.lexia.launcher`, kod `app/src/main/java/tv/lexia/launcher/`. minSdk 24, targetSdk 36, Kotlin 2.3.21, AGP 8.13.2. Kütüphaneler: Media3 ve OkHttp (yalnızca oynatma için); arayüz yine düz Android View.
 - **İş akışları:** `build.yml` (main'e push: imza anahtarı → dosya deposu adresi → `full` + `setup` APK → GitHub `latest` sürümü → yayın), `pr-build.yml` (PR'larda debug derleme; tek PR kontrolü), `daily-pick.yml` (her gün 02:17 UTC `scripts/pick.py` → `pick.json` → yayın), `publish.yml` (dosya deposuna yükler). Yalnızca `.md`, `pick.json`, `docs/**`, `scripts/pick.py` ve yayın/PR iş akışları değişince APK derlenmez.
@@ -49,7 +58,7 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 - **Kaldırılanlar (eski projeye göre):** tanıtım sitesi, yönetim sayfası, sayaçlar ve `ping`/hata raporu (`Remote.ping`, `Remote.sendCrash` boş), sürüm oylaması, uzaktan ayarlar (`remote.json` yok; `Remote.loadSaved/refresh` boş, duyuru/zorunlu güncelleme/bekletme/seçki/uzaktan kapatma hep varsayılan), güncelleme sonrası Yenilikler kartı (`WhatsNew.maybeShow` yalnızca "görüldü" işaretler; liste Ayarlar › Hakkında'da), GitHub yedek kopyası (#5: gizli depoda 404 veriyordu ve kullanıcı adını APK'ya yazıyordu).
 - **Liste yedeği eski projenin Cloudflare'inde:** `Backup.kt` hâlâ `https://lexialauncher.pages.dev/api/backup` (`Net.OLD_SITE`) kullanır; eski LeXia'dan alınan kod yenisinde çalışır. **Eski Cloudflare projesi `lexialauncher` silinmemeli**; silinirse yedek çalışmaz (o zaman bu depoya bir Pages Function taşınır). Eski GitHub deposunu silmek yedeği etkilemez. `TrailerActivity` de fragman sayfasının kökeni olarak aynı adresi kullanır (istek atmaz).
 
-## 5. Geliştirme akışı (Claude)
+## 6. Geliştirme akışı (Claude)
 
 1. `git fetch origin main && git checkout -B claude/<iş> origin/main` (ChatGPT de çalıştığı için hep güncel `main`'den başla).
 2. Tip kontrolü (Android SDK yok; Media3 eklendiğinden oynatma dosyaları bu yolla denetlenemez): `kotlin-compiler-embeddable` + `org.robolectric:android-all:14-robolectric-10818077` Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. Asıl doğrulama `pr-build`.
@@ -57,7 +66,7 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 4. **Ayar anahtarları:** yeni `SharedPreferences` anahtarı `scripts/prefs_keys.txt`'ye türüyle eklenir; `scripts/check_prefs.py` her derlemede eski adların başka türle kullanılmasını yakalar (eski projede #119 çökmesi).
 5. Bu ortamda `git push` sonrası "This repository moved" mesajı zararsız (depo adı büyük/küçük harf).
 
-## 6. Özellikler (eski projeden gelen, çalışan)
+## 7. Özellikler (eski projeden gelen, çalışan)
 
 - **Ana ekran:** üst çubuk (selamlama, "Güncelleme geldi", "Ne izlesem?", hava, saat, zil, arama, ağ, hızlı panel); hero (günün filmi / sinemada / platformlarda yeni karışık, Ken Burns, IMDb ve yaş rozeti, nerede izlenir rozeti, Fragman · Detaylar · Listeme ekle · Sonraki); uygulama rafı (favoriler, "Tüm uygulamalar", sıralama: benim / son kullanılan / saate göre, isteğe bağlı solda gizli panel); satırlar (Top 10 film/dizi, sinemada, yakında, platformlarda yeni, yerli, Sana göre ×3, beğendiklerine benzer, son baktıkların, Listem; taşınır/gizlenir); ekran koruyucu (sinema köşesi, sinema tarihinde bugün, platformlar, geri sayım, saat + hava); dizi takvimi şeritleri; havaya göre film; Günaydın kartı; film gecesi; hafta sonu rehberi.
 - **Sayfalar:** film/dizi detayı (oyuncular, benzer yapımlar, nerede izlenir + platform uygulamasını aç, İzledim/Beğendim/Bana önerme, Hatırlat, Bu akşam izle), Keşfet (süzgeçler, 30'ar sayfa, sıralama, fragman maratonu), takvim, Bu ay hangi platform?, film düellosu, fragman oynatıcısı (YouTube gömülü, Türkçe altyazı önceliği, bitiş kartı), sesli arama, Ana Sayfa tuşu rehberi, ilk açılış sihirbazı.
@@ -66,13 +75,13 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 - **Film verisi** (`scripts/pick.py`): TMDB (ücretsiz) + IMDb'nin açık puan dosyası; ücretli yapay zeka yok. `pick.json`: picks, top10, top10tv, cinema, soon, platforms, local, digital, genres, history, episodes; kayıtlarda fragmanlar, nerede izlenir, yaş sınırı, sonraki bölüm.
 - **Güncelleme:** `Updater.kt` 30 dk'da bir ve açılışta `version.txt`'ye bakar, `apk/app.apk`'yı tam indirir (3 deneme), PackageInstaller ile kurar (Android 12+ onaysız), sonra ana ekranı yeniden açar. Aynı imza şart.
 
-## 7. Kararlar (tekrar önerme)
+## 8. Kararlar (tekrar önerme)
 
 - Ücretli yapay zeka yok (TMDB + IMDb). 13 Kasım'da ChatGPT API entegrasyonu soruldu; ücretli olduğu ve anahtarın Cloudflare'de saklanması gerektiği anlatıldı, kullanıcı karar vermedi.
 - Kullanıcının reddettikleri: telefondan yönetim/QR, manzara videoları, kendi fotoğrafları, maç kartı, namaz vakitleri, kur/altın, resmi tatil, hatırlatıcı notlar, çocuk modu, doğum günü, hazır temalar, profiller, LeXia Özet, seriyi tamamla, hava durumu sayfası, hız testi, depolama durumu, ayar yedeği, gece güncellemesi, bitiş saati, Türkçe fragman önceliği, izlemeye devam et (Watch Next), açılış animasyonu, HDMI kısayolları, afişte hızlı menü, IMDb oy sayısı, film müziği düğmesi, ayarlarda sekmeler/renkli ikonlar/arama, iPhone tarzı anahtarlar, ücretsiz izle satırı.
 - Yönetim sayfası, sayaç, duyuru ve güncelleme sonrası kart istenmedi (12 Kasım: "sadece kendim kullanacağım").
 
-## 8. Açık işler
+## 9. Açık işler
 
 - Oynatma ve eklentiler (#28, #29) TV'de denenmedi: "Oynat" düğmesi, Ayarlar › Medya kaynakları, kumanda, altyazı.
 
@@ -81,7 +90,7 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 - GitHub Actions dakikası takip edilmeli (bölüm 4).
 - Cloudflare API anahtarının süresi kullanıcıda; dolarsa derleme "Site address" adımında kırılır.
 
-## 9. PR geçmişi (bu depo)
+## 10. PR geçmişi (bu depo)
 
 | PR | Kim | İçerik |
 |---|---|---|
