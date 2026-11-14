@@ -63,9 +63,9 @@ internal class NuvioJsRepository(context: Context) {
     private val codeDirectory = File(appContext.filesDir, "nuvio_js_scrapers")
     private val runtime = NuvioJsRuntime()
     private val http = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -447,7 +447,7 @@ internal class NuvioJsRepository(context: Context) {
         const val MAX_CODE_BYTES = 2 * 1024 * 1024
         const val MAX_SCRAPERS_PER_SEARCH = 100
         const val MAX_PARALLEL_SCRAPERS = 8
-        const val SCRAPER_TIMEOUT_MS = 65_000L
+        const val SCRAPER_TIMEOUT_MS = 120_000L
         const val MAX_STREAMS = 60
         val CODE_CACHE_TTL_MS = TimeUnit.HOURS.toMillis(6)
     }
