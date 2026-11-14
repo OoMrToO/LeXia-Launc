@@ -227,7 +227,9 @@ internal class NuvioJsRepository(context: Context) {
             .filter { it.enabled }
             .flatMap { repo -> repo.scrapers.map { repo to it } }
             .filter { (_, scraper) ->
-                scraper.enabled && scraper.supportedTypes.any { normalizeType(it) == normalizedType }
+                scraper.enabled &&
+                    isSupportedOnTv(scraper) &&
+                    scraper.supportedTypes.any { normalizeType(it) == normalizedType }
             }
             .take(MAX_SCRAPERS_PER_SEARCH)
 
@@ -321,6 +323,9 @@ internal class NuvioJsRepository(context: Context) {
             ?: throw IllegalArgumentException("Scraper bulunamadı.")
         require(mediaId.isNotBlank()) { "Test için TMDB içerik kimliği gerekli." }
         val type = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
+        require(isSupportedOnTv(scraper)) {
+            "Bu sağlayıcı Android TV platformunu desteklemiyor."
+        }
         require(scraper.supportedTypes.any { normalizeType(it) == type }) {
             "Bu sağlayıcı $type içeriklerini desteklemiyor."
         }
@@ -509,6 +514,16 @@ internal class NuvioJsRepository(context: Context) {
         else (0 until minOf(array.length(), 100))
             .map { array.optString(it).trim() }
             .filter { it.isNotEmpty() }
+
+    /**
+     * Nuvio manifests use "tv" to explicitly include or exclude TV clients.
+     * An empty supportedPlatforms list means the scraper is platform-agnostic.
+     */
+    private fun isSupportedOnTv(scraper: NuvioScraperInfo): Boolean {
+        val supported = scraper.supportedPlatforms.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        val disabled = scraper.disabledPlatforms.map { it.trim().lowercase() }
+        return (supported.isEmpty() || "tv" in supported) && "tv" !in disabled
+    }
 
     private fun normalizeType(value: String): String =
         when (value.lowercase()) {
