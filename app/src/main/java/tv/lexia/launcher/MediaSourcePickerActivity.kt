@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
@@ -39,6 +40,14 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var status: TextView
     private var busy = false
     private var currentEpisodeTitle = ""
+    private var currentStreams: List<MediaStream> = emptyList()
+    private var currentPlaybackTitle = ""
+    private var currentMediaKey = ""
+    private val sourcePrefs by lazy { getSharedPreferences("media_source_picker", MODE_PRIVATE) }
+    private var sortByQuality = true
+    private var groupByProvider = true
+    private lateinit var sortButton: TextView
+    private lateinit var groupButton: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +57,10 @@ class MediaSourcePickerActivity : Activity() {
             finish()
             return
         }
+        sortByQuality = sourcePrefs.getBoolean("sort_quality", true)
+        groupByProvider = sourcePrefs.getBoolean("group_provider", true)
         buildUi()
+        updateSourceControls()
         loadContent()
     }
 
@@ -101,6 +113,31 @@ class MediaSourcePickerActivity : Activity() {
         }
         root.addView(status)
 
+        val sourceControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(2), 0, dp(10))
+        }
+        sortButton = action("").apply {
+            setOnClickListener {
+                sortByQuality = !sortByQuality
+                sourcePrefs.edit().putBoolean("sort_quality", sortByQuality).apply()
+                updateSourceControls()
+                if (currentStreams.isNotEmpty()) renderStreams()
+            }
+        }
+        groupButton = action("").apply {
+            setOnClickListener {
+                groupByProvider = !groupByProvider
+                sourcePrefs.edit().putBoolean("group_provider", groupByProvider).apply()
+                updateSourceControls()
+                if (currentStreams.isNotEmpty()) renderStreams()
+            }
+        }
+        sourceControls.addView(sortButton)
+        sourceControls.addView(groupButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        root.addView(sourceControls)
+
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             clipToPadding = false
@@ -140,8 +177,10 @@ class MediaSourcePickerActivity : Activity() {
         runTask("Film kaynakları aranıyor…", {
             // Stremio add-ons commonly expect IMDb IDs; Nuvio's getStreams contract expects a TMDB ID.
             val stremioMediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
-            repository.fetchStreams("movie", stremioMediaId) +
-                nuvioRepository.fetchStreams(film.id.toString(), "movie")
+            fetchCombinedStreams(
+                stremio = { repository.fetchStreams("movie", stremioMediaId) },
+                nuvio = { nuvioRepository.fetchStreams(film.id.toString(), "movie") }
+            )
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
@@ -242,8 +281,10 @@ class MediaSourcePickerActivity : Activity() {
             film.id.toString()
         }
         runTask("Kaynaklar aranıyor · $title", {
-            repository.fetchStreams("series", videoId) +
-                nuvioRepository.fetchStreams(nuvioEpisodeId, "tv")
+            fetchCombinedStreams(
+                stremio = { repository.fetchStreams("series", videoId) },
+                nuvio = { nuvioRepository.fetchStreams(nuvioEpisodeId, "tv") }
+            )
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
@@ -260,19 +301,57 @@ class MediaSourcePickerActivity : Activity() {
         }
     }
 
+    /**
+     * Keep the two plugin ecosystems independent: a malformed/offline Stremio add-on must not
+     * prevent Nuvio JS scrapers from running (and vice versa).
+     */
+    private fun fetchCombinedStreams(
+        stremio: () -> List<MediaStream>,
+        nuvio: () -> List<MediaStream>
+    ): List<MediaStream> {
+        val results = mutableListOf<MediaStream>()
+        runCatching { stremio() }
+            .onSuccess { results += it }
+            .onFailure { Log.w("LeXiaSources", "Stremio source search failed: ${it.message}", it) }
+        runCatching { nuvio() }
+            .onSuccess { results += it }
+            .onFailure { Log.w("LeXiaSources", "Nuvio JS source search failed: ${it.message}", it) }
+        return results
+    }
+
     private fun showStreams(streams: List<MediaStream>, playbackTitle: String, mediaKey: String) {
-        // Keep each add-on / Nuvio scraper visually separate, like Nuvio's provider list.
-        val providers = streams.groupBy { stream ->
-            stream.addonName.trim().ifBlank { "Diğer kaynaklar" }
+        currentStreams = streams
+        currentPlaybackTitle = playbackTitle
+        currentMediaKey = mediaKey
+        renderStreams()
+    }
+
+    private fun updateSourceControls() {
+        sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
+        groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
+    }
+
+    private fun renderStreams() {
+        val streams = currentStreams
+        if (streams.isEmpty()) return
+        val providers = if (groupByProvider) {
+            streams.groupBy { it.addonName.trim().ifBlank { "Diğer kaynaklar" } }
+        } else {
+            linkedMapOf("TÜM SAĞLAYICILAR" to streams)
         }
-        status.text = "${streams.size} doğrudan oynatılabilir kaynak · ${providers.size} sağlayıcı"
+        status.text = "${streams.size} doğrudan oynatılabilir kaynak · ${providers.size} grup"
         content.removeAllViews()
         addSectionTitle("YAYIN KAYNAKLARI")
 
         var globalIndex = 0
         providers.forEach { (providerName, providerStreams) ->
-            addSectionTitle("${providerName.uppercase()}  ·  ${providerStreams.size} KAYNAK")
-            providerStreams.forEach { stream ->
+            val orderedStreams = if (sortByQuality) {
+                providerStreams.sortedByDescending { qualityRank(it.name + " " + it.description) }
+            } else {
+                providerStreams.sortedBy { it.name.lowercase() }
+            }
+            if (groupByProvider) addSectionTitle("${providerName.uppercase()}  ·  ${orderedStreams.size} KAYNAK")
+            orderedStreams.forEach { stream ->
                 val details = listOf(stream.description)
                     .filter { it.isNotBlank() && it != stream.name }
                     .distinct()
@@ -287,8 +366,8 @@ class MediaSourcePickerActivity : Activity() {
                         PlayerActivity.open(
                             this,
                             stream.url,
-                            playbackTitle,
-                            mediaKey,
+                            currentPlaybackTitle,
+                            currentMediaKey,
                             stream.headers,
                             stream.subtitles.map {
                                 SubtitleTrack(it.url, language = it.language, label = it.label)
@@ -308,6 +387,21 @@ class MediaSourcePickerActivity : Activity() {
                 setOnClickListener { loadEpisodes() }
             }
             content.addView(back, fullWidthParams(top = 12))
+        }
+    }
+
+    /** Prefer higher-quality direct streams while keeping each provider's results together. */
+    private fun qualityRank(label: String): Int {
+        val value = label.lowercase()
+        return when {
+            Regex("""\b(8k|4320p)\b""").containsMatchIn(value) -> 8
+            Regex("""\b(4k|2160p|uhd)\b""").containsMatchIn(value) -> 7
+            Regex("""\b(1440p|2k)\b""").containsMatchIn(value) -> 6
+            Regex("""\b(1080p|fhd)\b""").containsMatchIn(value) -> 5
+            Regex("""\b(720p|hd)\b""").containsMatchIn(value) -> 4
+            Regex("""\b(480p|sd)\b""").containsMatchIn(value) -> 3
+            Regex("""\b(360p|240p)\b""").containsMatchIn(value) -> 2
+            else -> 1
         }
     }
 

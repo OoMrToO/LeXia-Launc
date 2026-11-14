@@ -56,10 +56,10 @@ internal class NuvioJsRuntime {
 
     private val gson = Gson()
     private val http = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .writeTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -72,7 +72,7 @@ internal class NuvioJsRuntime {
         episode: Int?,
         scraperId: String,
         settingsJson: String = "{}"
-    ): List<NuvioJsStream> = withTimeout(18_000L) {
+    ): List<NuvioJsStream> = withTimeout(60_000L) {
         executeInternal(code, mediaId, mediaType, season, episode, scraperId, settingsJson)
     }
 
@@ -89,6 +89,7 @@ internal class NuvioJsRuntime {
         val elements = ConcurrentHashMap<String, Element>()
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
+        val executionError = java.util.concurrent.atomic.AtomicReference("")
 
         return try {
             quickJs(Dispatchers.IO) {
@@ -107,7 +108,9 @@ internal class NuvioJsRuntime {
                     val bodyKind = args.getOrNull(3)?.toString().orEmpty().ifBlank { "none" }
                     val body = args.getOrNull(4)?.toString().orEmpty()
                     val follow = args.getOrNull(5)?.toString()?.toBooleanStrictOrNull() ?: true
-                    nativeFetch(url, method, headers, bodyKind, body, follow, activeCalls)
+                    val timeoutMs = args.getOrNull(6)?.toString()?.toLongOrNull()
+                        ?.coerceIn(1L, MAX_FETCH_TIMEOUT_MS) ?: DEFAULT_FETCH_TIMEOUT_MS
+                    nativeFetch(url, method, headers, bodyKind, body, follow, timeoutMs, activeCalls)
                 }
 
                 function("__native_parse_url") { args ->
@@ -133,6 +136,10 @@ internal class NuvioJsRuntime {
                 function("__get_tmdb_api_key") { BuildConfig.TMDB_API_KEY }
                 function("__capture_result") { args ->
                     resultJson.set(args.getOrNull(0)?.toString() ?: "[]")
+                    null
+                }
+                function("__capture_error") { args ->
+                    executionError.set(args.getOrNull(0)?.toString().orEmpty())
                     null
                 }
 
@@ -222,6 +229,9 @@ internal class NuvioJsRuntime {
                 }
 
                 evaluate<Any?>(polyfillCode())
+                loadCryptoJsSource()?.let { cryptoSource ->
+                    evaluate<Any?>(cryptoSource)
+                }
                 evaluate<Any?>(
                     """
                     var module = { exports: {} };
@@ -255,23 +265,47 @@ internal class NuvioJsRuntime {
                             var result = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
                             __capture_result(JSON.stringify(result || []));
                         } catch (error) {
-                            console.error("Plugin execution failed:", error && (error.stack || error.message || error));
+                            var message = error && (error.stack || error.message || error);
+                            console.error("Plugin execution failed:", message);
+                            __capture_error(String(message || "Bilinmeyen JavaScript hatası"));
                             __capture_result("[]");
                         }
                     })();
                     """.trimIndent()
                 )
             }
+            executionError.get().takeIf { it.isNotBlank() }?.let { throw IllegalStateException(it) }
             parseResults(resultJson.get())
         } catch (error: Exception) {
             Log.e("LeXiaPlugin", "Scraper $scraperId failed: ${error.message}", error)
-            emptyList()
+            throw error
         } finally {
             activeCalls.forEach { it.cancel() }
             activeCalls.clear()
             documents.clear()
             elements.clear()
         }
+    }
+
+    private fun loadCryptoJsSource(): String? {
+        val loader = javaClass.classLoader ?: return null
+        val paths = listOf(
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.min.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.min.js"
+        )
+        for (path in paths) {
+            try {
+                loader.getResourceAsStream(path)?.use { input ->
+                    return input.readBytes().toString(Charsets.UTF_8)
+                }
+            } catch (error: Exception) {
+                Log.w("LeXiaPlugin", "CryptoJS could not be loaded from $path: ${error.message}")
+            }
+        }
+        Log.w("LeXiaPlugin", "CryptoJS asset was not found; scrapers requiring CryptoJS may fail.")
+        return null
     }
 
     private fun nativeFetch(
@@ -281,29 +315,32 @@ internal class NuvioJsRuntime {
         bodyKind: String,
         body: String,
         followRedirects: Boolean,
+        timeoutMs: Long,
         activeCalls: MutableSet<Call>
     ): String {
         return try {
             val headers = runCatching { JSONObject(rawHeaders) }.getOrDefault(JSONObject())
             val request = Request.Builder().url(rawUrl)
             val keys = headers.keys()
+            var hasUserAgent = false
+            var contentType = ""
             while (keys.hasNext()) {
                 val key = keys.next()
                 val value = headers.optString(key)
+                if (key.equals("User-Agent", true)) hasUserAgent = value.isNotBlank()
+                if (key.equals("Content-Type", true)) contentType = value
                 if (key.isNotBlank() && value.isNotBlank() && !key.equals("Accept-Encoding", true)) {
                     request.header(key, value)
                 }
             }
-            if (headers.optString("User-Agent").isBlank()) {
-                request.header("User-Agent", "Mozilla/5.0 (Android TV; LeXia)")
-            }
+            if (!hasUserAgent) request.header("User-Agent", "Mozilla/5.0 (Android TV; LeXia)")
             val bytes = when (bodyKind) {
                 "base64" -> runCatching { Base64.decode(body, Base64.DEFAULT) }.getOrDefault(ByteArray(0))
                 "text" -> body.toByteArray(Charsets.UTF_8)
                 else -> ByteArray(0)
             }
             val requestBody = bytes.toRequestBody(
-                (headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()
+                (contentType.ifBlank { "application/octet-stream" }).toMediaType()
             )
             when (method.uppercase()) {
                 "POST" -> request.post(requestBody)
@@ -311,9 +348,14 @@ internal class NuvioJsRuntime {
                 "PATCH" -> request.patch(requestBody)
                 "DELETE" -> if (bodyKind == "none" || bytes.isEmpty()) request.delete() else request.delete(requestBody)
                 "HEAD" -> request.head()
-                else -> request.get()
+                "GET" -> request.get()
+                else -> request.method(method.uppercase(), if (bodyKind == "none") null else requestBody)
             }
-            val client = if (followRedirects) http else http.newBuilder().followRedirects(false).followSslRedirects(false).build()
+            val client = http.newBuilder()
+                .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                .followRedirects(followRedirects)
+                .followSslRedirects(followRedirects)
+                .build()
             val call = client.newCall(request.build())
             activeCalls.add(call)
             try {
@@ -471,6 +513,22 @@ internal class NuvioJsRuntime {
 
         globalThis.atob = function(value) { return __native_base64("decode", String(value)); };
         globalThis.btoa = function(value) { return __native_base64("encode", String(value)); };
+        globalThis.TextEncoder = globalThis.TextEncoder || function() {};
+        TextEncoder.prototype.encode = function(value) {
+            var binary = unescape(encodeURIComponent(String(value)));
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        };
+        globalThis.TextDecoder = globalThis.TextDecoder || function(label) { this.encoding = label || "utf-8"; };
+        TextDecoder.prototype.decode = function(input) {
+            if (!input) return "";
+            var bytes = input instanceof ArrayBuffer ? new Uint8Array(input) :
+                (ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : input);
+            var binary = "";
+            for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            try { return decodeURIComponent(escape(binary)); } catch (e) { return binary; }
+        };
 
         globalThis.Buffer = globalThis.Buffer || {
             from: function(value, encoding) {
@@ -596,7 +654,10 @@ internal class NuvioJsRuntime {
             if (!headerMap["User-Agent"] && !headerMap["user-agent"]) {
                 headerMap["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
             }
-            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body.kind, body.value, String(follow)));
+            var timeoutMs = signal && typeof signal.timeoutMs === "number" ? signal.timeoutMs : 0;
+            if (init.timeout && typeof init.timeout === "number") timeoutMs = init.timeout;
+            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body.kind, body.value, String(follow), String(timeoutMs)));
+            if (!response.status) throw new Error(response.statusText || "Network request failed");
             var responseHeaders = new Headers(response.headers || {});
             var textBody = response.body || "";
             var responseBytes = __fetch_base64_to_bytes(response.bodyBase64 || "");
@@ -628,9 +689,45 @@ internal class NuvioJsRuntime {
             return result;
         };
 
+        globalThis.AbortSignal = globalThis.AbortSignal || function() {
+            this.aborted = false;
+            this.reason = undefined;
+            this.timeoutMs = 0;
+            this.onabort = null;
+            this.addEventListener = function(type, listener) {
+                if (type === "abort" && this.aborted && typeof listener === "function") listener.call(this, { type: "abort", target: this });
+            };
+            this.removeEventListener = function() {};
+            this.throwIfAborted = function() {
+                if (this.aborted) {
+                    var error = this.reason instanceof Error ? this.reason : new Error("The operation was aborted.");
+                    error.name = "AbortError";
+                    throw error;
+                }
+            };
+        };
+        globalThis.AbortSignal.timeout = function(milliseconds) {
+            var signal = new AbortSignal();
+            signal.timeoutMs = Math.max(1, Math.min(Number(milliseconds) || 1, 120000));
+            // The native HTTP call enforces this deadline while fetch is blocked.
+            signal.reason = new Error("The operation timed out.");
+            signal.reason.name = "TimeoutError";
+            return signal;
+        };
+        globalThis.AbortSignal.abort = function(reason) {
+            var signal = new AbortSignal();
+            signal.aborted = true;
+            signal.reason = reason || new Error("The operation was aborted.");
+            return signal;
+        };
         globalThis.AbortController = globalThis.AbortController || function() {
-            this.signal = { aborted: false, addEventListener: function() {}, removeEventListener: function() {} };
-            this.abort = function() { this.signal.aborted = true; };
+            var signal = new AbortSignal();
+            this.signal = signal;
+            this.abort = function(reason) {
+                signal.aborted = true;
+                signal.reason = reason || new Error("The operation was aborted.");
+                if (typeof signal.onabort === "function") signal.onabort({ type: "abort", target: signal });
+            };
         };
         globalThis.setTimeout = globalThis.setTimeout || function(fn) { Promise.resolve().then(fn); return 0; };
         globalThis.clearTimeout = globalThis.clearTimeout || function() {};
@@ -698,6 +795,10 @@ internal class NuvioJsRuntime {
 
         globalThis.require = function(name) {
             if (name === "cheerio" || name === "cheerio-without-node-native" || name === "react-native-cheerio") return cheerio;
+            if (name === "crypto-js") {
+                if (globalThis.CryptoJS) return globalThis.CryptoJS;
+                throw new Error("CryptoJS library is unavailable in this runtime");
+            }
             if (name === "fs") return { existsSync: function() { return false; }, readFileSync: function() { return null; } };
             if (name === "path") return { resolve: function() { return Array.prototype.join.call(arguments, "/"); }, join: function() { return Array.prototype.join.call(arguments, "/"); } };
             throw new Error("Module not available in LeXia plugin sandbox: " + name);
@@ -708,6 +809,8 @@ internal class NuvioJsRuntime {
     """.trimIndent()
 
     private companion object {
+        const val DEFAULT_FETCH_TIMEOUT_MS = 60_000L
+        const val MAX_FETCH_TIMEOUT_MS = 120_000L
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_STREAMS = 40
     }
