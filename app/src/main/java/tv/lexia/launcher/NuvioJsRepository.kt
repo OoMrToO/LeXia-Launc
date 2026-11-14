@@ -34,7 +34,10 @@ internal data class NuvioScraperInfo(
     val limited: Boolean,
     val logo: String,
     val contentLanguage: List<String>,
-    val formats: List<String>
+    val formats: List<String>,
+    val supportedPlatforms: List<String>,
+    val disabledPlatforms: List<String>,
+    val supportsExternalPlayer: Boolean
 )
 
 internal data class NuvioRepositoryInfo(
@@ -114,7 +117,10 @@ internal class NuvioJsRepository(context: Context) {
                 contentLanguage = stringList(item.optJSONArray("contentLanguage")),
                 formats = stringList(item.optJSONArray("formats")).ifEmpty {
                     stringList(item.optJSONArray("supportedFormats"))
-                }
+                },
+                supportedPlatforms = stringList(item.optJSONArray("supportedPlatforms")),
+                disabledPlatforms = stringList(item.optJSONArray("disabledPlatforms")),
+                supportsExternalPlayer = item.optBoolean("supportsExternalPlayer", false)
             )
         }
         require(scrapers.isNotEmpty()) { "Nuvio manifestinde geçerli bir scraper bulunamadı." }
@@ -360,7 +366,10 @@ internal class NuvioJsRepository(context: Context) {
                 limited = scraper.optBoolean("limited", false),
                 logo = scraper.optString("logo"),
                 contentLanguage = stringList(scraper.optJSONArray("contentLanguage")),
-                formats = stringList(scraper.optJSONArray("formats"))
+                formats = stringList(scraper.optJSONArray("formats")),
+                supportedPlatforms = stringList(scraper.optJSONArray("supportedPlatforms")),
+                disabledPlatforms = stringList(scraper.optJSONArray("disabledPlatforms")),
+                supportsExternalPlayer = scraper.optBoolean("supportsExternalPlayer", false)
             )
         }
         return NuvioRepositoryInfo(
@@ -393,6 +402,9 @@ internal class NuvioJsRepository(context: Context) {
                         .put("logo", scraper.logo)
                         .put("contentLanguage", JSONArray(scraper.contentLanguage))
                         .put("formats", JSONArray(scraper.formats))
+                        .put("supportedPlatforms", JSONArray(scraper.supportedPlatforms))
+                        .put("disabledPlatforms", JSONArray(scraper.disabledPlatforms))
+                        .put("supportsExternalPlayer", scraper.supportsExternalPlayer)
                 )
             }
             array.put(
