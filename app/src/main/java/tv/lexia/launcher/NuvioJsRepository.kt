@@ -185,6 +185,13 @@ internal class NuvioJsRepository(context: Context) {
         prefs.edit().putString("settings_" + repositoryId + "_" + scraperId, parsed.toString()).apply()
     }
 
+    fun setRepositoryEnabled(repositoryId: String, enabled: Boolean) {
+        val updated = installedRepositories().map { repo ->
+            if (repo.id == repositoryId) repo.copy(enabled = enabled) else repo
+        }
+        saveRepositories(updated)
+    }
+
     fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) {
         val updated = installedRepositories().map { repo ->
             if (repo.id != repositoryId) repo
