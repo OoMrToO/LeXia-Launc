@@ -339,13 +339,13 @@ class MediaSourcePickerActivity : Activity() {
     private fun qualityRank(label: String): Int {
         val value = label.lowercase()
         return when {
-            Regex("""\\b(8k|4320p)\\b""").containsMatchIn(value) -> 8
-            Regex("""\\b(4k|2160p|uhd)\\b""").containsMatchIn(value) -> 7
-            Regex("""\\b(1440p|2k)\\b""").containsMatchIn(value) -> 6
-            Regex("""\\b(1080p|fhd)\\b""").containsMatchIn(value) -> 5
-            Regex("""\\b(720p|hd)\\b""").containsMatchIn(value) -> 4
-            Regex("""\\b(480p|sd)\\b""").containsMatchIn(value) -> 3
-            Regex("""\\b(360p|240p)\\b""").containsMatchIn(value) -> 2
+            Regex("""\b(8k|4320p)\b""").containsMatchIn(value) -> 8
+            Regex("""\b(4k|2160p|uhd)\b""").containsMatchIn(value) -> 7
+            Regex("""\b(1440p|2k)\b""").containsMatchIn(value) -> 6
+            Regex("""\b(1080p|fhd)\b""").containsMatchIn(value) -> 5
+            Regex("""\b(720p|hd)\b""").containsMatchIn(value) -> 4
+            Regex("""\b(480p|sd)\b""").containsMatchIn(value) -> 3
+            Regex("""\b(360p|240p)\b""").containsMatchIn(value) -> 2
             else -> 1
         }
     }
