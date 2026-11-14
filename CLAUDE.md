@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; eklenti, depo ve scraper isteklerinde HTTPS düşürme yönlendirmeleri kapatıldı).
+Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme yönlendirmeleri engellendi ve scraper tanılama iptalleri korunuyor).
 
 ## 1. Çalışma biçimi
 
@@ -95,4 +95,4 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; eklenti, depo ve
 | #30 | Claude | #28 ve #29 tek dalda birleştirildi; çakışmalar, açılıştaki eklenti temizliği ve ayar anahtarları düzeltildi |
 | #31 | Claude | Yeni ekranlarda kumanda odağı düzeltildi (eklentiler, kaynak seçici, oynatıcı) |
 | #33–#38 | ChatGPT | Nuvio JS desteği, kaynak gruplama, TMDB kimlikleri, zaman aşımı, depo/scraper ayarları ve TV yönetimi |
-| #39 (açık) | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; scraper fetch, Nuvio depo/JS ve Stremio eklenti isteklerinde HTTPS düşürme yönlendirmeleri engellendi |
+| #39 (açık) | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; scraper fetch, Nuvio depo/JS ve Stremio eklenti isteklerinde HTTPS düşürme yönlendirmeleri engellendi; scraper tanılama zaman aşımı/iptalleri artık yutulmuyor |
