@@ -561,13 +561,13 @@ class SettingsActivity : Activity() {
 
             Header("KİŞİSELLEŞTİR"),
             sub("Görünüm", "Arka plan, kart boyutu, karşılama, saat ve hava durumu.", { lookPage() }),
+            sub("İçerik ve Keşif", "Film önerileri, türler, yayın platformları ve ana ekran keşif satırları.", { discoveryPage() }),
+            sub("Entegrasyonlar", "Stremio eklentileri, Nuvio JS depoları ve kaynak sağlayıcıları.", { integrationsPage() },
+                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" }),
+            sub("Oynatma ve Takip", "Fragman, izleme geçmişi, Listem ve izlenen içeriklerin takibi.", { playbackTrackingPage() }),
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
-            Row(
-                "Medya kaynakları",
-                "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
-                value = { "${MediaAddonRepository(this).installedAddons().size} kurulu" },
-                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
-            ),
+            sub("Medya kaynakları", "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
+                { startActivity(Intent(this, MediaAddonsActivity::class.java)) }),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
@@ -600,6 +600,51 @@ class SettingsActivity : Activity() {
         )
     }
 
+    private fun discoveryPage() = Page("İçerik ve Keşif", R.drawable.ic_film,
+        keys = listOf("picks", "rotate", "rotateSec", "cinema", "genres", "platforms", "heroSource", "rowOrder", "hiddenRows")
+    ) {
+        listOf(
+            Header("KEŞİF"),
+            sub("Film önerileri", "Günün filmleri, tür tercihleri ve fragman akışı.", { filmsPage() }),
+            sub("Yayın platformları", "Hangi platformların yeni yapımlarını ana ekranda görmek istediğini seç.", { platformsPage() }),
+            sub("Ana ekran satırları", "Keşif satırlarının sırasını değiştir veya istemediklerini gizle.", { rowsPage() }),
+            Note("Tür tercihleri ve platform seçimleri öneri sıralamasını etkiler. Hiçbir tür veya platform seçilmezse katalog daha geniş tutulur.")
+        )
+    }
+
+    private fun integrationsPage() = Page("Entegrasyonlar", R.drawable.ic_tv) {
+        listOf(
+            Header("MEDYA KAYNAKLARI"),
+            Row(
+                "Eklenti ve scraper yöneticisi",
+                "Stremio manifest'lerini ve Nuvio JavaScript depolarını ekle. Sağlayıcıları ayrı ayrı etkinleştir, test et ve ayarla.",
+                value = {
+                    val stremio = MediaAddonRepository(this).installedAddons().size
+                    val nuvio = NuvioJsRepository(this).installedRepositories().sumOf { it.scrapers.size }
+                    "$stremio Stremio · $nuvio Nuvio JS"
+                },
+                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
+            ),
+            Note("Stremio add-on'ları ve Nuvio JS scraper'ları farklı çalışma biçimlerine sahiptir. LeXia ikisini aynı kaynak seçme ekranında birleştirir.")
+        )
+    }
+
+    private fun playbackTrackingPage() = Page(
+        "Oynatma ve Takip", R.drawable.ic_play,
+        keys = listOf("trailerInApp", "watched", "watch", "recentFilms", "remind", "trailerAt")
+    ) {
+        listOf(
+            Header("OYNATMA"),
+            toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
+                { prefs.trailerInApp }, { prefs.trailerInApp = it }),
+            Note("Dahili oynatıcı ses ve altyazı parçalarını seçmeyi, kaldığın yerden devam etmeyi destekler."),
+            Header("İZLEME TAKİBİ"),
+            Row("İzlenen içerikler", "Tamamlanan film ve bölümler izlenenler listesine kaydedilir.", value = { "${prefs.watched.size} içerik" }),
+            Row("Listem", "Daha sonra izlemek üzere kaydettiğin içerikler.", value = { "${prefs.watchlist.size} içerik" }),
+            Row("Son baktıkların", "Son açtığın film ve diziler.", value = { "${prefs.recent.size} içerik" }),
+            Row("Hatırlatmalar", "Vizyon veya yayın tarihi için eklediğin hatırlatmalar.", value = { "${prefs.reminders.size} içerik" })
+        )
+    }
     private fun lookPage() = Page(
         "Görünüm", R.drawable.ic_brush,
         keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
