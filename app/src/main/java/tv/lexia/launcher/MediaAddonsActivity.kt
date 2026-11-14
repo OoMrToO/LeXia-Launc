@@ -442,9 +442,9 @@ class MediaAddonsActivity : Activity() {
                     input.error = "TMDB kimliği gerekli"
                     return@setOnClickListener
                 }
-                if (isTv && (seasonNumber !in 1..100 || episodeNumber !in 1..500)) {
-                    season.error = if (seasonNumber !in 1..100) "Geçerli sezon gir" else null
-                    episode.error = if (episodeNumber !in 1..500) "Geçerli bölüm gir" else null
+                if (isTv && (seasonNumber == null || seasonNumber !in 1..100 || episodeNumber == null || episodeNumber !in 1..500)) {
+                    season.error = if (seasonNumber == null || seasonNumber !in 1..100) "Geçerli sezon gir" else null
+                    episode.error = if (episodeNumber == null || episodeNumber !in 1..500) "Geçerli bölüm gir" else null
                     return@setOnClickListener
                 }
                 if (busy) return@setOnClickListener
