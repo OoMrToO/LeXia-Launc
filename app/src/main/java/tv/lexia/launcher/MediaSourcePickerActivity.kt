@@ -40,6 +40,14 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var status: TextView
     private var busy = false
     private var currentEpisodeTitle = ""
+    private var currentStreams: List<MediaStream> = emptyList()
+    private var currentPlaybackTitle = ""
+    private var currentMediaKey = ""
+    private val sourcePrefs by lazy { getSharedPreferences("media_source_picker", MODE_PRIVATE) }
+    private var sortByQuality = true
+    private var groupByProvider = true
+    private lateinit var sortButton: TextView
+    private lateinit var groupButton: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +57,10 @@ class MediaSourcePickerActivity : Activity() {
             finish()
             return
         }
+        sortByQuality = sourcePrefs.getBoolean("sort_quality", true)
+        groupByProvider = sourcePrefs.getBoolean("group_provider", true)
         buildUi()
+        updateSourceControls()
         loadContent()
     }
 
@@ -101,6 +112,31 @@ class MediaSourcePickerActivity : Activity() {
             setPadding(0, dp(14), 0, dp(10))
         }
         root.addView(status)
+
+        val sourceControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(2), 0, dp(10))
+        }
+        sortButton = action("").apply {
+            setOnClickListener {
+                sortByQuality = !sortByQuality
+                sourcePrefs.edit().putBoolean("sort_quality", sortByQuality).apply()
+                updateSourceControls()
+                if (currentStreams.isNotEmpty()) renderStreams()
+            }
+        }
+        groupButton = action("").apply {
+            setOnClickListener {
+                groupByProvider = !groupByProvider
+                sourcePrefs.edit().putBoolean("group_provider", groupByProvider).apply()
+                updateSourceControls()
+                if (currentStreams.isNotEmpty()) renderStreams()
+            }
+        }
+        sourceControls.addView(sortButton)
+        sourceControls.addView(groupButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        root.addView(sourceControls)
 
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -284,18 +320,37 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun showStreams(streams: List<MediaStream>, playbackTitle: String, mediaKey: String) {
-        // Keep each add-on / Nuvio scraper visually separate, like Nuvio's provider list.
-        val providers = streams.groupBy { stream ->
-            stream.addonName.trim().ifBlank { "Diğer kaynaklar" }
+        currentStreams = streams
+        currentPlaybackTitle = playbackTitle
+        currentMediaKey = mediaKey
+        renderStreams()
+    }
+
+    private fun updateSourceControls() {
+        sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
+        groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
+    }
+
+    private fun renderStreams() {
+        val streams = currentStreams
+        if (streams.isEmpty()) return
+        val providers = if (groupByProvider) {
+            streams.groupBy { it.addonName.trim().ifBlank { "Diğer kaynaklar" } }
+        } else {
+            linkedMapOf("TÜM SAĞLAYICILAR" to streams)
         }
-        status.text = "${streams.size} doğrudan oynatılabilir kaynak · ${providers.size} sağlayıcı"
+        status.text = "${streams.size} doğrudan oynatılabilir kaynak · ${providers.size} grup"
         content.removeAllViews()
         addSectionTitle("YAYIN KAYNAKLARI")
 
         var globalIndex = 0
         providers.forEach { (providerName, providerStreams) ->
-            val orderedStreams = providerStreams.sortedByDescending { qualityRank(it.name + " " + it.description) }
-            addSectionTitle("${providerName.uppercase()}  ·  ${orderedStreams.size} KAYNAK")
+            val orderedStreams = if (sortByQuality) {
+                providerStreams.sortedByDescending { qualityRank(it.name + " " + it.description) }
+            } else {
+                providerStreams.sortedBy { it.name.lowercase() }
+            }
+            if (groupByProvider) addSectionTitle("${providerName.uppercase()}  ·  ${orderedStreams.size} KAYNAK")
             orderedStreams.forEach { stream ->
                 val details = listOf(stream.description)
                     .filter { it.isNotBlank() && it != stream.name }
@@ -311,8 +366,8 @@ class MediaSourcePickerActivity : Activity() {
                         PlayerActivity.open(
                             this,
                             stream.url,
-                            playbackTitle,
-                            mediaKey,
+                            currentPlaybackTitle,
+                            currentMediaKey,
                             stream.headers,
                             stream.subtitles.map {
                                 SubtitleTrack(it.url, language = it.language, label = it.label)
