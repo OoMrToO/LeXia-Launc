@@ -13,9 +13,9 @@ android {
         targetSdk = 36
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
         versionName = "0.4"
-        buildConfigField("String", "BUILD_NO", "\"\${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
+        buildConfigField("String", "BUILD_NO", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
         // The address of the files site (film list, updates); the build workflow looks it up.
-        buildConfigField("String", "SITE", "\"\${System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"}\"")
+        buildConfigField("String", "SITE", "\"${System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"}\"")
     }
 
     // "full" is the normal app. "setup" leaves out the Home button service, which Play Protect
