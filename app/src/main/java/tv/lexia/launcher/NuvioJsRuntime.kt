@@ -56,10 +56,10 @@ internal class NuvioJsRuntime {
 
     private val gson = Gson()
     private val http = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(18, TimeUnit.SECONDS)
-        .writeTimeout(18, TimeUnit.SECONDS)
-        .callTimeout(22, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -71,7 +71,7 @@ internal class NuvioJsRuntime {
         season: Int?,
         episode: Int?,
         scraperId: String
-    ): List<NuvioJsStream> = withTimeout(55_000L) {
+    ): List<NuvioJsStream> = withTimeout(18_000L) {
         executeInternal(code, mediaId, mediaType, season, episode, scraperId)
     }
 
