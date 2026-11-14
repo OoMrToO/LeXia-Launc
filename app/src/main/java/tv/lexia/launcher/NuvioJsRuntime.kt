@@ -8,6 +8,7 @@ import com.dokar.quickjs.quickJs
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -27,7 +28,6 @@ import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.nio.charset.Charset
 import java.util.UUID
-import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
