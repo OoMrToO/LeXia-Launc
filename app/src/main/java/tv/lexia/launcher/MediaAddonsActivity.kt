@@ -346,7 +346,7 @@ class MediaAddonsActivity : Activity() {
             typeface = Typeface.MONOSPACE
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("\${scraper.name} · Ayarlar")
+            .setTitle("${scraper.name} · Ayarlar")
             .setMessage("Scraper ayarlarını JSON nesnesi olarak düzenle. Kaydedilen değerler kaynak aramasında JavaScript motoruna aktarılır.")
             .setView(input)
             .setNegativeButton("Vazgeç", null)
@@ -357,7 +357,7 @@ class MediaAddonsActivity : Activity() {
                 try {
                     nuvioRepository.setScraperSettings(repositoryId, scraper.id, input.text.toString())
                     dialog.dismiss()
-                    status.text = "\${scraper.name} ayarları kaydedildi."
+                    status.text = "${scraper.name} ayarları kaydedildi."
                 } catch (error: Exception) {
                     input.error = error.message ?: "Geçersiz JSON"
                 }
@@ -371,13 +371,13 @@ class MediaAddonsActivity : Activity() {
     private fun refreshNuvioRepository(repositoryId: String, name: String) {
         if (busy) return
         busy = true
-        status.text = "\$name deposu güncelleniyor…"
+        status.text = "$name deposu güncelleniyor…"
         worker.execute {
             try {
                 val updated = nuvioRepository.refreshRepository(repositoryId)
                 runOnUiThread {
                     busy = false
-                    status.text = "\${updated.name} güncellendi · \${updated.scrapers.size} scraper"
+                    status.text = "${updated.name} güncellendi · ${updated.scrapers.size} scraper"
                     renderAddons()
                 }
             } catch (error: Exception) {
