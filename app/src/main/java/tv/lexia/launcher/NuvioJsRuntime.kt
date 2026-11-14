@@ -622,9 +622,6 @@ internal class NuvioJsRuntime {
         if (!Array.prototype.flatMap) Array.prototype.flatMap = function(fn) { return this.map(fn).flat(); };
     """.trimIndent()
 
-    private fun isHttps(raw: String): Boolean =
-        runCatching { URI(raw).scheme.equals("https", true) }.getOrDefault(false)
-
     private companion object {
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_STREAMS = 40
