@@ -346,14 +346,26 @@ class MediaSourcePickerActivity : Activity() {
         var globalIndex = 0
         providers.forEach { (providerName, providerStreams) ->
             val orderedStreams = if (sortByQuality) {
-                providerStreams.sortedByDescending { qualityRank(it.name + " " + it.description) }
+                providerStreams.sortedByDescending { qualityRank(listOf(it.quality, it.name, it.description).joinToString(" ")) }
             } else {
                 providerStreams.sortedBy { it.name.lowercase() }
             }
             if (groupByProvider) addSectionTitle("${providerName.uppercase()}  ·  ${orderedStreams.size} KAYNAK")
             orderedStreams.forEach { stream ->
-                val details = listOf(stream.description)
-                    .filter { it.isNotBlank() && it != stream.name }
+                val details = listOf(
+                    stream.quality,
+                    stream.language,
+                    stream.server,
+                    stream.size,
+                    stream.streamType,
+                    stream.seeders?.let { "Seeders $it" },
+                    stream.peers?.let { "Peers $it" },
+                    stream.description.takeIf { it != stream.name },
+                    if (stream.audioDelayMs != null) "Ses gecikmesi ${stream.audioDelayMs} ms" else null
+                )
+                    .filterNotNull()
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
                     .distinct()
                     .joinToString("  ·  ")
                 addCard(
