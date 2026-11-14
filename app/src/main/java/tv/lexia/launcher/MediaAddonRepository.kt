@@ -290,8 +290,8 @@ internal class MediaAddonRepository(context: Context) {
         value = value.trimEnd('/')
         val url = value.toHttpUrlOrNull()
             ?: throw IllegalArgumentException("Geçerli bir HTTP(S) eklenti adresi gir.")
-        require(url.scheme == "https" || url.scheme == "http") {
-            "Yalnızca HTTP ve HTTPS eklentileri destekleniyor."
+        require(url.scheme == "https") {
+            "Güvenlik nedeniyle yalnızca HTTPS eklentileri destekleniyor."
         }
         require(url.username.isEmpty() && url.password.isEmpty()) {
             "Kullanıcı adı/şifre içeren adresler kabul edilmiyor."
@@ -302,7 +302,7 @@ internal class MediaAddonRepository(context: Context) {
     private fun isDirectHttpUrl(raw: String): Boolean {
         if (raw.isBlank() || raw.length > 4096) return false
         val url = raw.toHttpUrlOrNull() ?: return false
-        return (url.scheme == "https" || url.scheme == "http") &&
+        return url.scheme == "https" &&
             url.username.isEmpty() && url.password.isEmpty()
     }
 
