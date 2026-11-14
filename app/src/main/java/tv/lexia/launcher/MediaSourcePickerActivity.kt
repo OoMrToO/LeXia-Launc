@@ -136,22 +136,22 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun loadMovieStreams() {
         runTask("Film kaynakları aranıyor…", {
-            repository.fetchStreams("movie", "tmdb:${film.id}")
+            repository.fetchStreams("movie", film.imdbId.ifBlank { "tmdb:${film.id}" })
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
                     "Oynatılabilir kaynak bulunamadı",
-                    "Kurulu eklentiler bu film için doğrudan HTTP(S) video adresi döndürmedi. Torrent veya harici bağlantılar bu ilk oynatıcı katmanında henüz çözülmüyor."
+                    "Kurulu eklentiler bu film için doğrudan HTTPS video adresi döndürmedi. Torrent veya harici bağlantılar bu ilk oynatıcı katmanında henüz çözülmüyor."
                 )
             } else {
-                showStreams(streams, film.title, "tmdb:${film.id}")
+                showStreams(streams, film.title, film.imdbId.ifBlank { "tmdb:${film.id}" })
             }
         }
     }
 
     private fun loadEpisodes() {
         runEpisodeTask("Dizi bölümleri aranıyor…", {
-            repository.fetchEpisodes(film.id)
+            repository.fetchEpisodes(film.id, film.imdbId)
         }) { episodes ->
             if (episodes.isEmpty()) {
                 showManualEpisodeSearch()
@@ -218,7 +218,7 @@ class MediaSourcePickerActivity : Activity() {
                 if (s == null || e == null || s !in 1..100 || e !in 1..500) {
                     status.text = "Geçerli bir sezon ve bölüm numarası gir."
                 } else {
-                    val id = "tmdb:${film.id}:$s:$e"
+                    val id = "${film.imdbId.ifBlank { "tmdb:${film.id}" }}:$s:$e"
                     loadEpisodeStreams(id, "$s. Sezon · $e. Bölüm")
                 }
             }
