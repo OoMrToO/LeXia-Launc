@@ -5,17 +5,17 @@ plugins {
 
 android {
     namespace = "tv.lexia.launcher"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "tv.lexia.launcher"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
         versionName = "0.4"
-        buildConfigField("String", "BUILD_NO", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
+        buildConfigField("String", "BUILD_NO", "\"\${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
         // The address of the files site (film list, updates); the build workflow looks it up.
-        buildConfigField("String", "SITE", "\"${System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"}\"")
+        buildConfigField("String", "SITE", "\"\${System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"}\"")
     }
 
     // "full" is the normal app. "setup" leaves out the Home button service, which Play Protect
@@ -62,7 +62,6 @@ android {
         }
     }
 
-    // The app has no libraries and no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -81,3 +80,12 @@ android {
     }
 }
 
+dependencies {
+    // Native Android TV playback foundation. Keep all Media3 artifacts on one version.
+    val media3Version = "1.11.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")
+}
