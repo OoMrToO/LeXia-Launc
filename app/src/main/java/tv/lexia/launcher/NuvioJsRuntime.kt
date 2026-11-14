@@ -127,7 +127,7 @@ internal class NuvioJsRuntime {
 
                 function("__get_scraper_id") { scraperId }
                 function("__get_scraper_settings") { settingsJson }
-                function("__get_tmdb_api_key") { "" }
+                function("__get_tmdb_api_key") { BuildConfig.TMDB_API_KEY }
                 function("__capture_result") { args ->
                     resultJson.set(args.getOrNull(0)?.toString() ?: "[]")
                     null
@@ -426,6 +426,7 @@ internal class NuvioJsRuntime {
     private fun polyfillCode(): String = """
         globalThis.global = globalThis;
         globalThis.window = globalThis;
+        globalThis.self = globalThis;
         globalThis.location = globalThis.location || { href: "", origin: "", hostname: "", protocol: "https:" };
         globalThis.document = globalThis.document || { location: globalThis.location };
         globalThis.navigator = globalThis.navigator || { userAgent: "Mozilla/5.0 (Android TV; LeXia)" };
