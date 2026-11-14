@@ -487,11 +487,7 @@ internal class NuvioJsRuntime {
                     Log.d("LeXiaPlugin", "Skipped result without a supported HTTPS URL")
                     return@mapNotNull null
                 }
-                val headers = (item["headers"] as? Map<*, *>)?.mapNotNull { (key, value) ->
-                    val k = key?.toString().orEmpty()
-                    val v = value?.toString().orEmpty()
-                    if (k.isBlank() || v.isBlank() || '\r' in v || '\n' in v) null else k to v
-                }?.toMap().orEmpty()
+                val headers = sanitizeHeaders(item["headers"])
                 val subtitles = (item["subtitles"] as? List<*>)?.mapNotNull { rawSubtitle ->
                     val subtitle = rawSubtitle as? Map<*, *> ?: return@mapNotNull null
                     val subtitleUrl = subtitle["url"]?.toString().orEmpty()
@@ -500,11 +496,7 @@ internal class NuvioJsRuntime {
                         url = subtitleUrl,
                         language = subtitle["language"]?.toString()
                             ?: subtitle["lang"]?.toString() ?: "Unknown",
-                        headers = (subtitle["headers"] as? Map<*, *>)?.mapNotNull { (k, v) ->
-                            val key = k?.toString().orEmpty()
-                            val value = v?.toString().orEmpty()
-                            if (key.isBlank() || value.isBlank()) null else key to value
-                        }?.toMap().orEmpty()
+                        headers = sanitizeHeaders(subtitle["headers"])
                     )
                 }.orEmpty()
                 NuvioJsStream(
@@ -530,6 +522,22 @@ internal class NuvioJsRuntime {
             Log.w("LeXiaPlugin", "Invalid scraper result: ${error.message}")
             emptyList()
         }
+    }
+
+    private fun sanitizeHeaders(raw: Any?): Map<String, String> {
+        val source = raw as? Map<*, *> ?: return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        source.forEach { (rawName, rawValue) ->
+            if (result.size >= MAX_HEADERS) return@forEach
+            val name = rawName?.toString().orEmpty()
+            val value = rawValue?.toString().orEmpty()
+            if (!HEADER_NAME.matches(name) || value.isBlank() || value.length > 2048) return@forEach
+            if (name.equals("Host", true) || name.equals("Content-Length", true) ||
+                name.equals("Range", true) || '\r' in value || '\n' in value
+            ) return@forEach
+            if (result.keys.none { it.equals(name, true) }) result[name] = value
+        }
+        return result
     }
 
     private fun isHttps(raw: String): Boolean =
@@ -848,5 +856,7 @@ internal class NuvioJsRuntime {
         const val MAX_FETCH_TIMEOUT_MS = 120_000L
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_STREAMS = 40
+        const val MAX_HEADERS = 20
+        val HEADER_NAME = Regex("^[A-Za-z0-9-]{1,64}$")
     }
 }
