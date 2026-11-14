@@ -90,4 +90,5 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
