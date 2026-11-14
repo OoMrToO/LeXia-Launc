@@ -54,7 +54,8 @@ internal data class NuvioRepositoryInfo(
     val version: String,
     val description: String,
     val manifestUrl: String,
-    val scrapers: List<NuvioScraperInfo>
+    val scrapers: List<NuvioScraperInfo>,
+    val enabled: Boolean = true
 )
 
 /**
@@ -148,7 +149,8 @@ internal class NuvioJsRepository(context: Context) {
             version = version,
             description = manifest.optString("description"),
             manifestUrl = manifestUrl,
-            scrapers = mergedScrapers
+            scrapers = mergedScrapers,
+            enabled = previous?.enabled ?: true
         )
         val updated = installedRepositories().filterNot { it.manifestUrl == manifestUrl } + repository
         saveRepositories(updated)
@@ -215,6 +217,7 @@ internal class NuvioJsRepository(context: Context) {
         val contentId = if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId
         val nuvioMediaId = contentId.removePrefix("tmdb:")
         val scrapers = installedRepositories()
+            .filter { it.enabled }
             .flatMap { repo -> repo.scrapers.map { repo to it } }
             .filter { (_, scraper) ->
                 scraper.enabled && scraper.supportedTypes.any { normalizeType(it) == normalizedType }
@@ -448,7 +451,8 @@ internal class NuvioJsRepository(context: Context) {
             version = item.optString("version"),
             description = item.optString("description"),
             manifestUrl = manifestUrl,
-            scrapers = scrapers
+            scrapers = scrapers,
+            enabled = item.optBoolean("enabled", true)
         )
     }
 
@@ -484,6 +488,7 @@ internal class NuvioJsRepository(context: Context) {
                     .put("version", repo.version)
                     .put("description", repo.description)
                     .put("manifestUrl", repo.manifestUrl)
+                    .put("enabled", repo.enabled)
                     .put("scrapers", scraperArray)
             )
         }
