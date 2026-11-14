@@ -40,7 +40,17 @@ internal data class MediaStream(
     val description: String,
     val url: String,
     val headers: Map<String, String>,
-    val subtitles: List<MediaSubtitle>
+    val subtitles: List<MediaSubtitle>,
+    val quality: String = "",
+    val language: String = "",
+    val server: String = "",
+    val size: String = "",
+    val streamType: String = "",
+    val seeders: Int? = null,
+    val peers: Int? = null,
+    val infoHash: String = "",
+    val audioDelayMs: Long? = null,
+    val audioDelayLanguage: String = ""
 )
 
 /**
