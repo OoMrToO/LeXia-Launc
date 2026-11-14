@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 14 Kasım 2026 (Nuvio medya altyapısını kaynak kodundan taşıma denetimi ve aşamalı entegrasyon planı eklendi; henüz medya kodu taşınmadı).
+Son güncelleme: 14 Kasım 2026 (Nuvio medya altyapısı geçişi kapsamında Stremio bağımsız altyazı kaynakları eklendi).
 
 ## 1. Çalışma biçimi
 
@@ -31,7 +31,7 @@ Son güncelleme: 14 Kasım 2026 (Nuvio medya altyapısını kaynak kodundan taş
 - Nuvio plugin sistemi bağımsız birkaç dosya değil: `PluginManager`, `PluginRuntime`, `PluginDataStore`, `AuthManager`, `PluginSyncService`, domain modelleri ve DI ile bağlı. `StreamRepositoryImpl` ayrıca TMDB/profil/debrid/medya sunucusu katmanlarına bağlı. Doğrudan dosya kopyalama yapılmayacak; bağımlılık haritası ve LeXia adaptörleriyle kontrollü port yapılacak.
 - Nuvio'nun `full` source set'i plugin runtime'ı içeriyor. Nuvio'nun version catalog'unda Media3 1.8.0; LeXia Media3 1.11.1 kullanıyor. Media3 düşürülmeyecek; taşınan kod mevcut sürüme uyarlanacak.
 - Mevcut kapsam korunur: doğrudan HTTPS akışları; torrent/debrid, CloudStream ve MPV yok. UI, paket adı, imza ve yayın akışı korunur.
-- Ayrıntılı dosya haritası ve sıra `docs/NUVIO_MEDIA_MIGRATION.md` içinde. `chore/nuvio-media-engine-port` dalı yalnızca bu denetim planını içerir; henüz medya kodu taşınmadı.
+- Ayrıntılı dosya haritası ve sıra `docs/NUVIO_MEDIA_MIGRATION.md` içinde. `chore/nuvio-media-engine-port` dalında Stremio `subtitles` / `subtitle` kaynakları bağımsız sorgulanıp film/bölüm kaynaklarına eklenir; altyazı-only eklentiler de kurulabilir. Akış araması altyazı endpoint hatasından etkilenmez. Henüz Nuvio player/cache motoru taşınmadı.
 
 ## 4. Cihaz ve kurulum
 
