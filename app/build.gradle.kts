@@ -62,7 +62,7 @@ android {
         }
     }
 
-    // The app has no libraries and no translations; lint's release check would only slow the build.
+    // The app has no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -81,3 +81,12 @@ android {
     }
 }
 
+dependencies {
+    // Media3 foundation for the forthcoming media catalog, addon sources and full-screen player.
+    // Keep this compatible with the project's current AGP/compileSdk baseline for now.
+    val media3Version = "1.4.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
+}

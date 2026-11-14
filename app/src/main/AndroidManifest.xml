@@ -17,7 +17,7 @@
             <action android:name="android.settings.ACCESSIBILITY_SETTINGS" />
         </intent>
         <intent>
-            <action android:name="android.search.action.GLOBAL_SEARCH" />
+            <action android:name="android.intent.action.SEARCH" />
         </intent>
         <intent>
             <action android:name="android.intent.action.ASSIST" />
@@ -137,6 +137,12 @@
             android:name=".DetailActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".MediaPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode" />
 
         <!-- Also opens from the app's "Settings" entry in Android's App info. -->
         <activity
