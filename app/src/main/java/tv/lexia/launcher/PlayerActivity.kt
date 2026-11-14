@@ -54,6 +54,8 @@ class PlayerActivity : Activity() {
         private const val EXTRA_URI = "media.uri"
         private const val EXTRA_TITLE = "media.title"
         private const val EXTRA_KEY = "media.key"
+        private const val EXTRA_WATCH_KEY = "media.watch.key"
+        private const val EXTRA_MARK_WATCHED = "media.mark.watched"
         private const val EXTRA_HEADERS = "media.headers"
         private const val EXTRA_SUBTITLE_URIS = "media.subtitle.uris"
         private const val EXTRA_SUBTITLE_MIMES = "media.subtitle.mimes"
@@ -73,7 +75,9 @@ class PlayerActivity : Activity() {
             title: String,
             mediaKey: String = "",
             headers: Map<String, String> = emptyMap(),
-            subtitles: List<SubtitleTrack> = emptyList()
+            subtitles: List<SubtitleTrack> = emptyList(),
+            watchKey: String = mediaKey,
+            markWatchedOnCompletion: Boolean = true
         ) {
             require(isSupportedUri(Uri.parse(mediaUri))) {
                 "Only HTTP(S), content:// and file:// media URLs are supported."
@@ -83,6 +87,8 @@ class PlayerActivity : Activity() {
                 .putExtra(EXTRA_URI, mediaUri)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_KEY, mediaKey)
+                .putExtra(EXTRA_WATCH_KEY, watchKey)
+                .putExtra(EXTRA_MARK_WATCHED, markWatchedOnCompletion)
                 .putExtra(EXTRA_HEADERS, Bundle().apply {
                     headers.forEach { (name, value) -> putString(name, value) }
                 })
@@ -110,6 +116,8 @@ class PlayerActivity : Activity() {
     private lateinit var playbackStore: MediaPlaybackStore
     private var player: ExoPlayer? = null
     private var mediaKey = ""
+    private var watchKey = ""
+    private var markWatchedOnCompletion = true
     private var mediaTitle = ""
 
     private val saveProgressRunnable = object : Runnable {
@@ -128,8 +136,10 @@ class PlayerActivity : Activity() {
             if (playbackState == Player.STATE_ENDED) {
                 playbackStore.clear(mediaKey)
                 if (mediaKey.isNotBlank()) {
-                    val prefs = Prefs(this@PlayerActivity)
-                    prefs.watched = prefs.watched + mediaKey
+                    if (markWatchedOnCompletion && watchKey.isNotBlank()) {
+                        val prefs = Prefs(this@PlayerActivity)
+                        prefs.watched = prefs.watched + watchKey
+                    }
                 }
             }
         }
@@ -146,6 +156,8 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mediaKey = intent.getStringExtra(EXTRA_KEY).orEmpty()
+        watchKey = intent.getStringExtra(EXTRA_WATCH_KEY).orEmpty()
+        markWatchedOnCompletion = intent.getBooleanExtra(EXTRA_MARK_WATCHED, true)
         mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "LeXia" }
         playbackStore = MediaPlaybackStore(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
