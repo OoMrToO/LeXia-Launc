@@ -42,7 +42,16 @@ internal data class NuvioJsStream(
     val url: String,
     val quality: String = "",
     val headers: Map<String, String> = emptyMap(),
-    val subtitles: List<NuvioJsSubtitle> = emptyList()
+    val subtitles: List<NuvioJsSubtitle> = emptyList(),
+    val language: String = "",
+    val server: String = "",
+    val size: String = "",
+    val streamType: String = "",
+    val seeders: Int? = null,
+    val peers: Int? = null,
+    val infoHash: String = "",
+    val audioDelayMs: Long? = null,
+    val audioDelayLanguage: String = ""
 )
 
 /**
@@ -499,7 +508,16 @@ internal class NuvioJsRuntime {
                     url = url,
                     quality = item["quality"]?.toString().orEmpty(),
                     headers = headers,
-                    subtitles = subtitles
+                    subtitles = subtitles,
+                    language = (item["language"] ?: item["lang"])?.toString().orEmpty(),
+                    server = (item["server"] ?: item["source"])?.toString().orEmpty(),
+                    size = item["size"]?.toString().orEmpty(),
+                    streamType = (item["type"] ?: item["streamType"])?.toString().orEmpty(),
+                    seeders = (item["seeders"] as? Number)?.toInt(),
+                    peers = (item["peers"] as? Number)?.toInt(),
+                    infoHash = item["infoHash"]?.toString().orEmpty(),
+                    audioDelayMs = (item["audioDelayMs"] as? Number)?.toLong(),
+                    audioDelayLanguage = item["audioDelayLanguage"]?.toString().orEmpty()
                 )
             }.take(MAX_STREAMS)
         } catch (error: Exception) {
