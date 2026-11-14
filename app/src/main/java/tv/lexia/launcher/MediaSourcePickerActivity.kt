@@ -61,7 +61,6 @@ class MediaSourcePickerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(44), dp(28), dp(44), dp(24))
             setBackgroundColor(Color.rgb(7, 9, 15))
-            isFocusableInTouchMode = true
         }
 
         val top = LinearLayout(this).apply {
@@ -115,7 +114,8 @@ class MediaSourcePickerActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
         setContentView(root)
-        root.requestFocus()
+        // The remote starts on a button; a focused container would swallow every D-pad press.
+        manage.requestFocus()
     }
 
     private fun loadContent() {
@@ -441,6 +441,8 @@ class MediaSourcePickerActivity : Activity() {
             view.scaleY = if (focused) 1.012f else 1f
         }
         content.addView(card, fullWidthParams(bottom = 10))
+        // A fresh list: the remote lands on its first entry.
+        if (content.childCount == 1) card.post { card.requestFocus() }
     }
 
     private fun action(label: String, primary: Boolean = false): TextView = TextView(this).apply {
@@ -452,12 +454,20 @@ class MediaSourcePickerActivity : Activity() {
         isClickable = true
         setTextColor(Color.WHITE)
         setPadding(dp(18), dp(12), dp(18), dp(12))
-        background = GradientDrawable().apply {
+        val idle = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
             setColor(if (primary) Color.rgb(64, 87, 172) else Color.rgb(34, 39, 51))
             setStroke(dp(1), if (primary) Color.rgb(126, 150, 255) else Color.rgb(62, 71, 91))
         }
+        // Focused: white with dark text, so the selected button is unmistakable from the sofa.
+        val focusedLook = GradientDrawable().apply {
+            cornerRadius = dp(12).toFloat()
+            setColor(Color.WHITE)
+        }
+        background = idle
         setOnFocusChangeListener { view, focused ->
+            view.background = if (focused) focusedLook else idle
+            (view as TextView).setTextColor(if (focused) Color.rgb(7, 9, 15) else Color.WHITE)
             view.scaleX = if (focused) 1.04f else 1f
             view.scaleY = if (focused) 1.04f else 1f
         }
