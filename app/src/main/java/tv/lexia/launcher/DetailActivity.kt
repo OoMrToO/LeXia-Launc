@@ -44,6 +44,7 @@ class DetailActivity : Activity() {
     private lateinit var film: Pick
     private lateinit var listBtn: TextView
     private lateinit var trailerBtn: TextView
+    private lateinit var playBtn: TextView
     private lateinit var remindBtn: TextView
     private lateinit var nightBtn: TextView
     private lateinit var watchedBtn: TextView
@@ -203,7 +204,15 @@ class DetailActivity : Activity() {
         }
         val buttons = ui.hbox()
         buttons.clipChildren = false
-        val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
+        playBtn = ui.pill("▶   Oynat", 64, 23, primary = true)
+        playBtn.setOnClickListener {
+            if (film.id <= 0) {
+                Glass.toast(this, "Bu içerik için TMDB kimliği bulunamadı")
+            } else {
+                MediaSourcePickerActivity.open(this, film)
+            }
+        }
+        val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)
         trailer.setOnClickListener {
             if (film.trailer.isEmpty()) {
                 Glass.toast(this, "Fragman bulunamadı")
@@ -278,7 +287,7 @@ class DetailActivity : Activity() {
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
         if (!surprise) another.visibility = View.GONE
-        for (b in listOf(trailer, openApp, listBtn, nightBtn, watchedBtn, likeBtn, notBtn, remindBtn, another)) {
+        for (b in listOf(playBtn, trailer, openApp, listBtn, nightBtn, watchedBtn, likeBtn, notBtn, remindBtn, another)) {
             val own = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 own?.onFocusChange(v, f)
@@ -288,6 +297,7 @@ class DetailActivity : Activity() {
                 }
             }
         }
+        buttons.addView(playBtn)
         buttons.addView(trailer)
         buttons.addView(openApp)
         buttons.addView(listBtn)
@@ -332,8 +342,7 @@ class DetailActivity : Activity() {
         Sound.attach(this)
         Sound.event(Sound.OPEN)
         prefs.addRecent(film)
-        trailer.requestFocus()
-        if (film.trailer.isEmpty()) listBtn.requestFocus()
+        playBtn.requestFocus()
 
         col.alpha = 0f
         col.translationY = ui.uf(20)
@@ -620,7 +629,7 @@ class DetailActivity : Activity() {
         if (scroll.scrollY > 0) {
             scroll.smoothScrollTo(0, 0)
             hero.animate().alpha(1f).setDuration(D.MED).start()
-            (if (film.trailer.isNotEmpty()) trailerBtn else listBtn).requestFocus()
+            playBtn.requestFocus()
             return
         }
         Sound.event(Sound.BACK)

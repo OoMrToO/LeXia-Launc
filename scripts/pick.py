@@ -568,6 +568,7 @@ def entry(c, names, full):
     e = {
         "type": c["type"],
         "id": c["id"],
+        "imdb_id": c.get("imdb_id") or "",
         "title": c["title"],
         "meta": meta_of(c),
         "overview": c["overview"],

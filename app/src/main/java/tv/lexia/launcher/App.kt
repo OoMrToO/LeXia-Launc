@@ -18,7 +18,6 @@ class App : Application() {
         Thread {
             Remote.sendCrash(this)
             if (BuildConfig.SETUP) Remote.ping(this)
-            dropAddonData()
         }.start()
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -32,21 +31,6 @@ class App : Application() {
             }
             Guard.crashed(this)
             previous?.uncaughtException(t, e)
-        }
-    }
-
-    /**
-     * Add-ons were removed from LeXia (13 Nov 2026). What they kept on this TV (repository lists,
-     * watch progress, match cache) is deleted, so nothing of them stays behind.
-     */
-    private fun dropAddonData() {
-        try {
-            val dir = File(applicationInfo.dataDir, "shared_prefs")
-            for (f in dir.listFiles() ?: return) {
-                val name = f.name.removeSuffix(".xml")
-                if ("addon" in name.lowercase() || name == "lexia_watch_progress") deleteSharedPreferences(name)
-            }
-        } catch (e: Exception) {
         }
     }
 

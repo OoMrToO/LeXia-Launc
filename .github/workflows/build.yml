@@ -84,7 +84,7 @@ jobs:
           echo "Site: https://$HOST"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.9
+          gradle-version: 8.13
       - run: gradle assembleFullRelease assembleSetupRelease --no-daemon
       - run: |
           cp app/build/outputs/apk/full/release/app-full-release.apk app.apk
