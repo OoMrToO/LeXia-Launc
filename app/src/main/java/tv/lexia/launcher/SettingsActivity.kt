@@ -630,7 +630,7 @@ class SettingsActivity : Activity() {
     }
 
     private fun playbackTrackingPage() = Page(
-        "Oynatma ve Takip", R.drawable.ic_play,
+        "Oynatma ve Takip", R.drawable.ic_tv,
         keys = listOf("trailerInApp", "watched", "watch", "recentFilms", "remind", "trailerAt")
     ) {
         listOf(
