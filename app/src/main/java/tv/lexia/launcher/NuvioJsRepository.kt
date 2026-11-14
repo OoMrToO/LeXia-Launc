@@ -162,6 +162,16 @@ internal class NuvioJsRepository(context: Context) {
         episode: Int? = null
     ): List<MediaStream> = runBlocking {
         val normalizedType = if (mediaType == "series" || mediaType == "tv") "tv" else "movie"
+        // Stremio episode IDs commonly look like "tmdb:12345:1:2" or "tt1234567:1:2".
+        // Nuvio's getStreams contract expects the content ID and season/episode as separate args.
+        val idParts = mediaId.split(':')
+        val hasEpisodeSuffix = normalizedType == "tv" && idParts.size >= 3 &&
+            idParts[idParts.lastIndex - 1].toIntOrNull() != null &&
+            idParts.last().toIntOrNull() != null
+        val resolvedSeason = if (hasEpisodeSuffix) idParts[idParts.lastIndex - 1].toInt() else season
+        val resolvedEpisode = if (hasEpisodeSuffix) idParts.last().toInt() else episode
+        val contentId = if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId
+        val nuvioMediaId = contentId.removePrefix("tmdb:")
         val scrapers = installedRepositories()
             .flatMap { repo -> repo.scrapers.map { repo to it } }
             .filter { (_, scraper) ->
@@ -181,10 +191,10 @@ internal class NuvioJsRepository(context: Context) {
                             if (code.isBlank()) return@withPermit emptyList()
                             runtime.execute(
                                 code = code,
-                                mediaId = mediaId,
+                                mediaId = nuvioMediaId,
                                 mediaType = normalizedType,
-                                season = season,
-                                episode = episode,
+                                season = resolvedSeason,
+                                episode = resolvedEpisode,
                                 scraperId = scraper.id
                             ).mapNotNull { result ->
                                 if (!isHttps(result.url)) return@mapNotNull null
