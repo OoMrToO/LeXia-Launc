@@ -328,8 +328,13 @@ internal class NuvioJsRuntime {
         activeCalls: MutableSet<Call>
     ): String {
         return try {
+            val fetchUrl = rawUrl.toHttpUrlOrNull()
+                ?: throw IllegalArgumentException("Fetch URL is invalid")
+            require(fetchUrl.scheme == "https") {
+                "Nuvio scraper fetch is restricted to HTTPS URLs"
+            }
             val headers = runCatching { JSONObject(rawHeaders) }.getOrDefault(JSONObject())
-            val request = Request.Builder().url(rawUrl)
+            val request = Request.Builder().url(fetchUrl)
             val keys = headers.keys()
             var hasUserAgent = false
             var contentType = ""
@@ -363,7 +368,8 @@ internal class NuvioJsRuntime {
             val client = http.newBuilder()
                 .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .followRedirects(followRedirects)
-                .followSslRedirects(followRedirects)
+                // Never allow a scraper's HTTPS request to downgrade to cleartext HTTP.
+                .followSslRedirects(false)
                 .build()
             val call = client.newCall(request.build())
             activeCalls.add(call)
