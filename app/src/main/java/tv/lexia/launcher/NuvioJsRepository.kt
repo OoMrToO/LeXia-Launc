@@ -340,6 +340,8 @@ internal class NuvioJsRepository(context: Context) {
                         "Çalıştırma tamamlandı ancak kaynak dönmedi. İçerik kimliğini, sağlayıcı ayarlarını ve günlük kayıtlarını kontrol et.",
                     successful = valid > 0
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 NuvioScraperTestResult(
                     scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
