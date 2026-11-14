@@ -89,6 +89,7 @@ internal class NuvioJsRuntime {
         val elements = ConcurrentHashMap<String, Element>()
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
+        val executionError = java.util.concurrent.atomic.AtomicReference("")
 
         return try {
             quickJs(Dispatchers.IO) {
@@ -133,6 +134,10 @@ internal class NuvioJsRuntime {
                 function("__get_tmdb_api_key") { BuildConfig.TMDB_API_KEY }
                 function("__capture_result") { args ->
                     resultJson.set(args.getOrNull(0)?.toString() ?: "[]")
+                    null
+                }
+                function("__capture_error") { args ->
+                    executionError.set(args.getOrNull(0)?.toString().orEmpty())
                     null
                 }
 
@@ -258,17 +263,20 @@ internal class NuvioJsRuntime {
                             var result = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
                             __capture_result(JSON.stringify(result || []));
                         } catch (error) {
-                            console.error("Plugin execution failed:", error && (error.stack || error.message || error));
+                            var message = error && (error.stack || error.message || error);
+                            console.error("Plugin execution failed:", message);
+                            __capture_error(String(message || "Bilinmeyen JavaScript hatası"));
                             __capture_result("[]");
                         }
                     })();
                     """.trimIndent()
                 )
             }
+            executionError.get().takeIf { it.isNotBlank() }?.let { throw IllegalStateException(it) }
             parseResults(resultJson.get())
         } catch (error: Exception) {
             Log.e("LeXiaPlugin", "Scraper $scraperId failed: ${error.message}", error)
-            emptyList()
+            throw error
         } finally {
             activeCalls.forEach { it.cancel() }
             activeCalls.clear()
