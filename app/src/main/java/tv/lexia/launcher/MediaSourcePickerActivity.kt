@@ -31,6 +31,7 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private val repository by lazy { MediaAddonRepository(this) }
+    private val nuvioRepository by lazy { NuvioJsRepository(this) }
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var film: Pick
     private lateinit var root: LinearLayout
@@ -127,7 +128,8 @@ class MediaSourcePickerActivity : Activity() {
             return
         }
         val installed = repository.installedAddons()
-        if (installed.isEmpty()) {
+        val nuvioInstalled = nuvioRepository.installedRepositories()
+        if (installed.isEmpty() && nuvioInstalled.isEmpty()) {
             showNoAddons()
             return
         }
@@ -136,12 +138,14 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun loadMovieStreams() {
         runTask("Film kaynakları aranıyor…", {
-            repository.fetchStreams("movie", film.imdbId.ifBlank { "tmdb:${film.id}" })
+            val mediaId = film.imdbId.ifBlank { "tmdb:${film.id}" }
+            repository.fetchStreams("movie", mediaId) +
+                nuvioRepository.fetchStreams(mediaId, "movie")
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
                     "Oynatılabilir kaynak bulunamadı",
-                    "Kurulu eklentiler bu film için doğrudan HTTPS video adresi döndürmedi. Torrent veya harici bağlantılar bu ilk oynatıcı katmanında henüz çözülmüyor."
+                    "Kurulu Stremio ve Nuvio JS eklentileri bu film için oynatılabilir bir HTTPS kaynağı döndürmedi."
                 )
             } else {
                 showStreams(streams, film.title, film.imdbId.ifBlank { "tmdb:${film.id}" })
@@ -231,12 +235,13 @@ class MediaSourcePickerActivity : Activity() {
     private fun loadEpisodeStreams(videoId: String, title: String) {
         currentEpisodeTitle = title
         runTask("Kaynaklar aranıyor · $title", {
-            repository.fetchStreams("series", videoId)
+            repository.fetchStreams("series", videoId) +
+                nuvioRepository.fetchStreams(videoId, "tv")
         }) { streams ->
             if (streams.isEmpty()) {
                 showMessage(
                     "Bu bölüm için kaynak bulunamadı",
-                    "Başka bir eklentiyi deneyebilir veya farklı bir bölüm seçebilirsin."
+                    "Başka bir eklentiyi deneyebilir veya farklı bir bölüm seçebilirsin. Nuvio JS scraper'ları da bu aramada çalıştırıldı."
                 )
                 val back = action("Bölüm listesine dön").apply {
                     setOnClickListener { loadEpisodes() }
