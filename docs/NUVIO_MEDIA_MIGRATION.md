@@ -48,3 +48,34 @@ LeXia şu anda daha küçük, View tabanlı bir uygulamadır. Kendi Stremio iste
 - Kişisel Nuvio fork'u doğrulandı: `OoMrToO/NuvioTV`, varsayılan dal `dev`, upstream `NuvioMedia/NuvioTV`.
 - LeXia'da bu plan için `chore/nuvio-media-engine-port` dalı açıldı.
 - Bu commit yalnızca mimari denetim ve geçiş planıdır; henüz Nuvio medya kodu LeXia'ya taşınmadı.
+
+## İkinci teknik karşılaştırma
+
+14 Kasım 2026 tarihinde Nuvio `PluginRuntime`, LeXia `NuvioJsRuntime`, Nuvio `SubtitleRepositoryImpl` ve `PlayerMediaSourceFactory` yeniden karşılaştırıldı.
+
+### LeXia'da zaten bulunan Nuvio runtime davranışları
+
+- QuickJS tabanlı izole JavaScript çalıştırma.
+- `fetch`, URL ayrıştırma, Base64, Cheerio/Jsoup köprüsü ve CryptoJS WebJar yükleme.
+- Scraper ayarları, scraper kimliği ve TMDB API anahtarının JS ortamına aktarılması.
+- Paralel scraper çalıştırma, zaman aşımı ve iptal sırasında etkin HTTP çağrılarını kapatma.
+- HTTPS fetch zorunluluğu, yönlendirme denetimi, yanıt boyutu sınırı ve gzip/deflate yanıt çözme.
+- Akış başlıkları, kalite, dil, sunucu, boyut, altyazı ve ses gecikmesi alanlarını okuma.
+
+Bu nedenle Nuvio `PluginRuntime.kt` dosyasını olduğu gibi kopyalamak, mevcut LeXia runtime'ını ikinci kez oluşturur ve daha zayıf ağ/iptal denetimlerini geri getirme riski taşır. Runtime için doğru yaklaşım, eksik sözleşme davranışlarını tek tek taşımaktır.
+
+### Bulunan entegrasyon boşlukları
+
+- Nuvio Stremio altyazı deposu, `subtitles` kaynaklarını ayrıca sorgular. LeXia'nın mevcut `MediaAddonRepository` akışı ise meta/stream kaynaklarına odaklanır; bağımsız Stremio altyazı keşfi henüz aynı kapsamda değildir.
+- Nuvio'nun altyazı modeli, altyazı URL'siyle birlikte HTTP başlıklarını da taşır. LeXia'nın `MediaSubtitle` ve oynatıcı `SubtitleTrack` modelleri şu anda bu başlıkları oynatma katmanına aktarmıyor.
+- Nuvio `PlayerMediaSourceFactory` gelişmiş cache, özel extractor, adaptif akış ve performans seçenekleri içerir. Bunların tamamı doğrudan HTTPS oynatma için zorunlu değildir; Media3 1.11.1 kullanan LeXia'ya topluca taşınmamalıdır. Önce gerçek bir uyumluluk veya oynatma gereksinimi gösterilmelidir.
+
+### Güncellenen teknik sıra
+
+1. Stremio `subtitles` kaynak keşfini mevcut addon manifest/resource modeline ekle.
+2. Altyazı URL'si ve başlıklarını kaybetmeden taşıyan bir model/adaptör oluştur.
+3. Media3 1.11.1 üzerinde altyazı başlıklarını ayrı veri kaynağıyla uygulamanın güvenilir yolunu doğrula; global video başlıklarına gelişigüzel ekleme yapma.
+4. Nuvio'nun gelişmiş player davranışlarından yalnızca LeXia'da ölçülebilir biçimde eksik kalanları taşı.
+5. Her aşamayı küçük değişiklik ve CI derlemesiyle doğrula.
+
+Bu denetim bir kod portu değildir; henüz uygulama kaynak kodu değiştirilmedi.
