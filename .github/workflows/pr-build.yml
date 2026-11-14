@@ -31,3 +31,12 @@ jobs:
           gradle-version: 8.13
       - name: Assemble Android TV variants
         run: gradle assembleFullDebug assembleSetupDebug --no-daemon
+      - name: Upload Android TV test APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexia-pr-test-apks
+          path: |
+            app/build/outputs/apk/full/debug/*.apk
+            app/build/outputs/apk/setup/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
