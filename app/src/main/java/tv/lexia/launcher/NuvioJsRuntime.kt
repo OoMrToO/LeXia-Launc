@@ -222,6 +222,9 @@ internal class NuvioJsRuntime {
                 }
 
                 evaluate<Any?>(polyfillCode())
+                loadCryptoJsSource()?.let { cryptoSource ->
+                    evaluate<Any?>(cryptoSource)
+                }
                 evaluate<Any?>(
                     """
                     var module = { exports: {} };
@@ -272,6 +275,27 @@ internal class NuvioJsRuntime {
             documents.clear()
             elements.clear()
         }
+    }
+
+    private fun loadCryptoJsSource(): String? {
+        val loader = javaClass.classLoader ?: return null
+        val paths = listOf(
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js.min.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.js",
+            "META-INF/resources/webjars/crypto-js/4.2.0/crypto-js/crypto-js.min.js"
+        )
+        for (path in paths) {
+            try {
+                loader.getResourceAsStream(path)?.use { input ->
+                    return input.readBytes().toString(Charsets.UTF_8)
+                }
+            } catch (error: Exception) {
+                Log.w("LeXiaPlugin", "CryptoJS could not be loaded from $path: ${error.message}")
+            }
+        }
+        Log.w("LeXiaPlugin", "CryptoJS asset was not found; scrapers requiring CryptoJS may fail.")
+        return null
     }
 
     private fun nativeFetch(
