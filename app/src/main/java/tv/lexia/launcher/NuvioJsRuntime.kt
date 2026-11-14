@@ -59,7 +59,7 @@ internal class NuvioJsRuntime {
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .writeTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -72,7 +72,7 @@ internal class NuvioJsRuntime {
         episode: Int?,
         scraperId: String,
         settingsJson: String = "{}"
-    ): List<NuvioJsStream> = withTimeout(18_000L) {
+    ): List<NuvioJsStream> = withTimeout(60_000L) {
         executeInternal(code, mediaId, mediaType, season, episode, scraperId, settingsJson)
     }
 
