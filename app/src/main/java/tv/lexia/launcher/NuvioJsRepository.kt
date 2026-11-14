@@ -76,7 +76,7 @@ internal class NuvioJsRepository(context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
-        .followSslRedirects(true)
+        .followSslRedirects(false)
         .build()
 
     fun installedRepositories(): List<NuvioRepositoryInfo> {
