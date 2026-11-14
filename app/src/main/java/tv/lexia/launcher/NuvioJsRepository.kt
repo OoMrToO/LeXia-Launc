@@ -157,6 +157,10 @@ internal class NuvioJsRepository(context: Context) {
     fun removeRepository(repositoryId: String) {
         val remaining = installedRepositories().filterNot { it.id == repositoryId }
         saveRepositories(remaining)
+        val settingsPrefix = "settings_" + repositoryId + "_"
+        prefs.edit().apply {
+            prefs.all.keys.filter { it.startsWith(settingsPrefix) }.forEach(::remove)
+        }.apply()
         codeDirectory.listFiles()?.forEach { file ->
             if (file.name.startsWith(repositoryId.take(16))) file.delete()
         }
