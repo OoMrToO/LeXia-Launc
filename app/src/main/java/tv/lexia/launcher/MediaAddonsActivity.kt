@@ -390,8 +390,8 @@ class MediaAddonsActivity : Activity() {
             setPadding(dp(12), dp(6), dp(12), 0)
         }
         val typeChoices = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.HORIZONTAL }
-        val movieChoice = android.widget.RadioButton(this).apply { text = "Film"; isChecked = true; setTextColor(Color.WHITE) }
-        val tvChoice = android.widget.RadioButton(this).apply { text = "Dizi"; setTextColor(Color.WHITE) }
+        val movieChoice = android.widget.RadioButton(this).apply { id = View.generateViewId(); text = "Film"; isChecked = true; setTextColor(Color.WHITE) }
+        val tvChoice = android.widget.RadioButton(this).apply { id = View.generateViewId(); text = "Dizi"; setTextColor(Color.WHITE) }
         typeChoices.addView(movieChoice)
         typeChoices.addView(tvChoice)
         fields.addView(typeChoices)
