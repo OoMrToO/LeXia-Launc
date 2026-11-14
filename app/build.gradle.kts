@@ -95,4 +95,5 @@ dependencies {
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
