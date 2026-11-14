@@ -421,7 +421,7 @@ internal class NuvioJsRuntime {
                 val headers = (item["headers"] as? Map<*, *>)?.mapNotNull { (key, value) ->
                     val k = key?.toString().orEmpty()
                     val v = value?.toString().orEmpty()
-                    if (k.isBlank() || v.isBlank() || '\\r' in v || '\\n' in v) null else k to v
+                    if (k.isBlank() || v.isBlank() || '\r' in v || '\n' in v) null else k to v
                 }?.toMap().orEmpty()
                 val subtitles = (item["subtitles"] as? List<*>)?.mapNotNull { rawSubtitle ->
                     val subtitle = rawSubtitle as? Map<*, *> ?: return@mapNotNull null
