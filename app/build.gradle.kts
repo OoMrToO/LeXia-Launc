@@ -62,10 +62,6 @@ android {
         }
     }
 
-    // Media playback is isolated from the launcher UI and uses AndroidX Media3.
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-
     // The app has no translations; lint's release check would only slow the build.
     lint {
         checkReleaseBuilds = false
@@ -85,3 +81,8 @@ android {
     }
 }
 
+dependencies {
+    // Media playback is isolated from the launcher UI and uses AndroidX Media3.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+}
