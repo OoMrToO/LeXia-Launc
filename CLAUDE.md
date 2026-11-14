@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme yönlendirmeleri, TV platform filtreleri, akış başlık denetimi ve coroutine iptalinde etkin HTTP çağrılarının kapatılması düzeltildi).
+Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme yönlendirmeleri, TV platform filtreleri, akış başlık denetimi, HTTP iptali ve fetch yanıt başlıklarının küçük harfle normalize edilmesi düzeltildi).
 
 ## 1. Çalışma biçimi
 
@@ -95,4 +95,4 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 | #30 | Claude | #28 ve #29 tek dalda birleştirildi; çakışmalar, açılıştaki eklenti temizliği ve ayar anahtarları düzeltildi |
 | #31 | Claude | Yeni ekranlarda kumanda odağı düzeltildi (eklentiler, kaynak seçici, oynatıcı) |
 | #33–#38 | ChatGPT | Nuvio JS desteği, kaynak gruplama, TMDB kimlikleri, zaman aşımı, depo/scraper ayarları ve TV yönetimi |
-| #39 (açık) | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; HTTPS düşürme yönlendirmeleri engellendi; tanılama ve coroutine iptalinde etkin HTTP çağrıları kapatılıyor; TV platformu filtreleri ve akış/altyazı başlık denetimi eklendi |
+| #39 (açık) | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; HTTPS düşürme yönlendirmeleri engellendi; tanılama ve coroutine iptalinde etkin HTTP çağrıları kapatılıyor; TV platformu filtreleri, akış/altyazı başlık denetimi ve küçük harfli fetch yanıt başlıkları eklendi |
