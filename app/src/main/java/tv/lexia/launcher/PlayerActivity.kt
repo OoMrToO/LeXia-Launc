@@ -8,6 +8,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -84,7 +85,8 @@ class PlayerActivity : Activity() {
 
             val item = MediaItem.Builder()
                 .setUri(uri)
-                .apply { mimeType?.let(::setMimeType) }
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(mediaTitle).build())
+                .apply { mimeType?.let { setMimeType(it) } }
                 .build()
             exo.setMediaItem(item)
             exo.prepare()
