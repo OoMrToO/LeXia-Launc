@@ -194,7 +194,13 @@ class MediaAddonsActivity : Activity() {
                     if (scraper.hasSettings) flags.add("Ayarları var")
                     if (scraper.limited) flags.add("Sınırlı")
                     if (scraper.formats.isNotEmpty()) flags.add(scraper.formats.joinToString("/"))
-                    text = flags.joinToString(" · ").ifBlank { scraper.supportedTypes.joinToString("/") }
+                    if (scraper.contentLanguage.isNotEmpty()) flags.add(scraper.contentLanguage.joinToString("/"))
+                    if (scraper.supportedTypes.isNotEmpty()) flags.add(scraper.supportedTypes.joinToString("/"))
+                    if (scraper.supportedPlatforms.isNotEmpty()) flags.add(scraper.supportedPlatforms.joinToString("/"))
+                    if (scraper.disabledPlatforms.isNotEmpty()) flags.add("Hariç: ${scraper.disabledPlatforms.joinToString("/")}")
+                    if (scraper.supportsExternalPlayer) flags.add("Harici oynatıcı")
+                    if (scraper.author.isNotBlank()) flags.add("© ${scraper.author}")
+                    text = flags.joinToString(" · ").ifBlank { "Nuvio JS sağlayıcısı" }
                     textSize = 12f
                     setTextColor(Color.rgb(150, 160, 180))
                 })
