@@ -335,9 +335,12 @@ internal class NuvioJsRepository(context: Context) {
                 name = scraper.optString("name"),
                 description = scraper.optString("description"),
                 version = scraper.optString("version"),
+                author = scraper.optString("author"),
                 filename = scraper.optString("filename"),
                 supportedTypes = stringList(scraper.optJSONArray("supportedTypes")),
                 enabled = scraper.optBoolean("enabled", true),
+                hasSettings = scraper.optBoolean("hasSettings", false),
+                limited = scraper.optBoolean("limited", false),
                 logo = scraper.optString("logo"),
                 contentLanguage = stringList(scraper.optJSONArray("contentLanguage")),
                 formats = stringList(scraper.optJSONArray("formats"))
@@ -364,9 +367,12 @@ internal class NuvioJsRepository(context: Context) {
                         .put("name", scraper.name)
                         .put("description", scraper.description)
                         .put("version", scraper.version)
+                        .put("author", scraper.author)
                         .put("filename", scraper.filename)
                         .put("supportedTypes", JSONArray(scraper.supportedTypes))
                         .put("enabled", scraper.enabled)
+                        .put("hasSettings", scraper.hasSettings)
+                        .put("limited", scraper.limited)
                         .put("logo", scraper.logo)
                         .put("contentLanguage", JSONArray(scraper.contentLanguage))
                         .put("formats", JSONArray(scraper.formats))
