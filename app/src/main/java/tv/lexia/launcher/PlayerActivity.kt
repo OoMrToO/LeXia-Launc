@@ -44,7 +44,7 @@ class PlayerActivity : Activity() {
         mediaUri = rawUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
         mediaTitle = intent.getStringExtra(EXTRA_MEDIA_TITLE)
             ?: intent.getStringExtra(android.content.Intent.EXTRA_TITLE)
-        mimeType = intent.getStringExtra(EXTRA_MIME_TYPE)
+        mimeType = intent.getStringExtra(EXTRA_MIME_TYPE) ?: intent.type
 
         if (mediaUri == null) {
             Toast.makeText(this, "Oynatılacak medya adresi bulunamadı", Toast.LENGTH_LONG).show()
