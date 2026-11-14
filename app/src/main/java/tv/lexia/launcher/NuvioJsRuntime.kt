@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
+import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.io.ByteArrayOutputStream
@@ -437,20 +438,20 @@ internal class NuvioJsRuntime {
         globalThis.Buffer = globalThis.Buffer || {
             from: function(value, encoding) {
                 var source = String(value);
+                var binary = encoding === "base64" ? __native_base64("decode", source) : source;
                 return {
                     toString: function(outputEncoding) {
-                        var enc = outputEncoding || encoding || "utf8";
-                        if (enc === "base64") return __native_base64("encode", source);
-                        if (enc === "binary" || enc === "latin1") return __native_base64("decode", source);
+                        var enc = outputEncoding || "utf8";
+                        if (enc === "base64") return __native_base64("encode", binary);
+                        if (enc === "binary" || enc === "latin1") return binary;
                         if (enc === "hex") {
-                            var bin = __native_base64("decode", source);
                             var out = "";
-                            for (var i = 0; i < bin.length; i++) out += ("0" + bin.charCodeAt(i).toString(16)).slice(-2);
+                            for (var i = 0; i < binary.length; i++) out += ("0" + binary.charCodeAt(i).toString(16)).slice(-2);
                             return out;
                         }
-                        return source;
+                        try { return decodeURIComponent(escape(binary)); } catch (e) { return binary; }
                     },
-                    length: source.length
+                    length: binary.length
                 };
             }
         };
