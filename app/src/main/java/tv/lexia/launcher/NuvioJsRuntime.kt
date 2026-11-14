@@ -809,6 +809,8 @@ internal class NuvioJsRuntime {
     """.trimIndent()
 
     private companion object {
+        const val DEFAULT_FETCH_TIMEOUT_MS = 60_000L
+        const val MAX_FETCH_TIMEOUT_MS = 120_000L
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_STREAMS = 40
     }
