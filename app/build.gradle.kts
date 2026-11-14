@@ -97,6 +97,8 @@ dependencies {
     // Sandboxed Nuvio JS scraper runtime.
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
     implementation("org.jsoup:jsoup:1.17.2")
+    // Nuvio Beta scrapers commonly rely on the CryptoJS global.
+    implementation("org.webjars.npm:crypto-js:4.2.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
