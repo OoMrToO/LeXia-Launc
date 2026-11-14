@@ -102,9 +102,10 @@ internal class NuvioJsRuntime {
                     val url = args.getOrNull(0)?.toString().orEmpty()
                     val method = args.getOrNull(1)?.toString().orEmpty().ifBlank { "GET" }
                     val headers = args.getOrNull(2)?.toString().orEmpty().ifBlank { "{}" }
-                    val body = args.getOrNull(3)?.toString().orEmpty()
-                    val follow = args.getOrNull(4)?.toString()?.toBooleanStrictOrNull() ?: true
-                    nativeFetch(url, method, headers, body, follow, activeCalls)
+                    val bodyKind = args.getOrNull(3)?.toString().orEmpty().ifBlank { "none" }
+                    val body = args.getOrNull(4)?.toString().orEmpty()
+                    val follow = args.getOrNull(5)?.toString()?.toBooleanStrictOrNull() ?: true
+                    nativeFetch(url, method, headers, bodyKind, body, follow, activeCalls)
                 }
 
                 function("__native_parse_url") { args ->
@@ -275,6 +276,7 @@ internal class NuvioJsRuntime {
         rawUrl: String,
         method: String,
         rawHeaders: String,
+        bodyKind: String,
         body: String,
         followRedirects: Boolean,
         activeCalls: MutableSet<Call>
@@ -293,12 +295,19 @@ internal class NuvioJsRuntime {
             if (headers.optString("User-Agent").isBlank()) {
                 request.header("User-Agent", "Mozilla/5.0 (Android TV; LeXia)")
             }
-            val bytes = body.toByteArray(Charsets.UTF_8)
+            val bytes = when (bodyKind) {
+                "base64" -> runCatching { Base64.decode(body, Base64.DEFAULT) }.getOrDefault(ByteArray(0))
+                "text" -> body.toByteArray(Charsets.UTF_8)
+                else -> ByteArray(0)
+            }
+            val requestBody = bytes.toRequestBody(
+                (headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()
+            )
             when (method.uppercase()) {
-                "POST" -> request.post(bytes.toRequestBody((headers.optString("Content-Type").ifBlank { "application/x-www-form-urlencoded" }).toMediaType()))
-                "PUT" -> request.put(bytes.toRequestBody((headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()))
-                "PATCH" -> request.patch(bytes.toRequestBody((headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()))
-                "DELETE" -> if (body.isBlank()) request.delete() else request.delete(bytes.toRequestBody((headers.optString("Content-Type").ifBlank { "application/octet-stream" }).toMediaType()))
+                "POST" -> request.post(requestBody)
+                "PUT" -> request.put(requestBody)
+                "PATCH" -> request.patch(requestBody)
+                "DELETE" -> if (bodyKind == "none" || bytes.isEmpty()) request.delete() else request.delete(requestBody)
                 "HEAD" -> request.head()
                 else -> request.get()
             }
@@ -331,6 +340,7 @@ internal class NuvioJsRuntime {
                         .put("statusText", response.message)
                         .put("url", response.request.url.toString())
                         .put("body", String(bytesRead, charset))
+                        .put("bodyBase64", Base64.encodeToString(bytesRead, Base64.NO_WRAP))
                         .put("headers", responseHeaders)
                         .toString()
                 }
@@ -344,6 +354,7 @@ internal class NuvioJsRuntime {
                 .put("statusText", error.message ?: "Fetch failed")
                 .put("url", rawUrl)
                 .put("body", "")
+                .put("bodyBase64", "")
                 .put("headers", JSONObject())
                 .toString()
         }
@@ -513,18 +524,58 @@ internal class NuvioJsRuntime {
             this.searchParams = new URLSearchParams(this.search);
         };
 
-        globalThis.fetch = function(input, init) {
+        function __fetch_bytes_to_base64(bytes) {
+            var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            var out = "";
+            for (var i = 0; i < bytes.length; i += 3) {
+                var a = bytes[i], hasB = i + 1 < bytes.length, hasC = i + 2 < bytes.length;
+                var b = hasB ? bytes[i + 1] : 0, d = hasC ? bytes[i + 2] : 0;
+                out += chars.charAt(a >> 2);
+                out += chars.charAt(((a & 3) << 4) | (b >> 4));
+                out += hasB ? chars.charAt(((b & 15) << 2) | (d >> 6)) : "=";
+                out += hasC ? chars.charAt(d & 63) : "=";
+            }
+            return out;
+        }
+        function __fetch_base64_to_bytes(value) {
+            var binary = atob(value || "");
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        }
+        function __normalize_fetch_body(body) {
+            if (body === undefined || body === null) return { kind: "none", value: "" };
+            if (typeof body === "string") return { kind: "text", value: body };
+            if (typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer) {
+                return { kind: "base64", value: __fetch_bytes_to_base64(new Uint8Array(body)) };
+            }
+            if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView && ArrayBuffer.isView(body)) {
+                return { kind: "base64", value: __fetch_bytes_to_base64(new Uint8Array(body.buffer, body.byteOffset, body.byteLength)) };
+            }
+            return { kind: "text", value: String(body) };
+        }
+        globalThis.fetch = async function(input, init) {
             init = init || {};
             var url = input && typeof input === "object" && input.url ? input.url : String(input);
-            var method = init.method || "GET";
-            var headers = new Headers(init.headers || {});
+            var method = (init.method || (input && input.method) || "GET").toUpperCase();
+            var headers = new Headers(init.headers || (input && input.headers) || {});
             var headerMap = {};
             headers.forEach(function(v, k) { headerMap[k] = v; });
-            var body = init.body == null ? "" : String(init.body);
+            var body = __normalize_fetch_body(init.body);
             var follow = init.redirect !== "manual";
-            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body, String(follow)));
+            var signal = init.signal || null;
+            if (signal && signal.aborted) {
+                var abortError = new Error("The operation was aborted.");
+                abortError.name = "AbortError";
+                throw abortError;
+            }
+            if (!headerMap["User-Agent"] && !headerMap["user-agent"]) {
+                headerMap["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+            }
+            var response = JSON.parse(__native_fetch(url, method, JSON.stringify(headerMap), body.kind, body.value, String(follow)));
             var responseHeaders = new Headers(response.headers || {});
             var textBody = response.body || "";
+            var responseBytes = __fetch_base64_to_bytes(response.bodyBase64 || "");
             var result = {
                 ok: !!response.ok,
                 status: response.status || 0,
@@ -534,14 +585,23 @@ internal class NuvioJsRuntime {
                 headers: responseHeaders,
                 text: function() { return Promise.resolve(textBody); },
                 json: function() {
-                    try { return Promise.resolve(JSON.parse(textBody)); }
+                    try { return Promise.resolve(textBody ? JSON.parse(textBody) : null); }
                     catch (e) { return Promise.reject(e); }
                 },
-                arrayBuffer: function() { return Promise.resolve(textBody); },
+                arrayBuffer: function() {
+                    var copy = new Uint8Array(responseBytes.length);
+                    copy.set(responseBytes);
+                    return Promise.resolve(copy.buffer);
+                },
                 blob: function() { return Promise.resolve({ text: function() { return Promise.resolve(textBody); } }); },
                 clone: function() { return result; }
             };
-            return Promise.resolve(result);
+            if (signal && signal.aborted) {
+                var postAbortError = new Error("The operation was aborted.");
+                postAbortError.name = "AbortError";
+                throw postAbortError;
+            }
+            return result;
         };
 
         globalThis.AbortController = globalThis.AbortController || function() {
