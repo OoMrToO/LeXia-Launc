@@ -141,6 +141,13 @@ internal class NuvioJsRepository(context: Context) {
         return repository
     }
 
+    /** Re-fetches the manifest and scraper metadata while preserving each scraper toggle and saved settings. */
+    fun refreshRepository(repositoryId: String): NuvioRepositoryInfo {
+        val current = installedRepositories().firstOrNull { it.id == repositoryId }
+            ?: throw IllegalArgumentException("Nuvio deposu bulunamadı.")
+        return addRepository(current.manifestUrl)
+    }
+
     fun removeRepository(repositoryId: String) {
         val remaining = installedRepositories().filterNot { it.id == repositoryId }
         saveRepositories(remaining)
