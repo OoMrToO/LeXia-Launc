@@ -418,12 +418,17 @@ class MediaAddonsActivity : Activity() {
                     runOnUiThread {
                         busy = false
                         val report = result.getOrNull()
-                        status.text = if (report != null) {
-                            "${report.scraperName}: ${report.message} (${report.elapsedMs} ms)"
+                        val message = if (report != null) {
+                            "${report.message}\n\nSüre: ${report.elapsedMs} ms\nDönen kaynak: ${report.streamCount}"
                         } else {
                             result.exceptionOrNull()?.message ?: "Sağlayıcı testi başarısız."
                         }
-                        renderAddons()
+                        status.text = "${scraper.name}: $message"
+                        AlertDialog.Builder(this@MediaAddonsActivity)
+                            .setTitle(if (report?.successful == true) "Sağlayıcı testi başarılı" else "Sağlayıcı testi tamamlandı")
+                            .setMessage(message)
+                            .setPositiveButton("Tamam", null)
+                            .show()
                     }
                 }
             }
