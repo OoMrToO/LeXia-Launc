@@ -264,7 +264,17 @@ internal class NuvioJsRepository(context: Context) {
                                         headers = result.headers,
                                         subtitles = result.subtitles.map {
                                             MediaSubtitle(it.url, it.language, it.language.uppercase())
-                                        }
+                                        },
+                                        quality = result.quality,
+                                        language = result.language,
+                                        server = result.server,
+                                        size = result.size,
+                                        streamType = result.streamType,
+                                        seeders = result.seeders,
+                                        peers = result.peers,
+                                        infoHash = result.infoHash,
+                                        audioDelayMs = result.audioDelayMs,
+                                        audioDelayLanguage = result.audioDelayLanguage
                                     )
                                 }
                             } ?: run {
