@@ -566,8 +566,12 @@ class SettingsActivity : Activity() {
                 value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" }),
             sub("Oynatma ve Takip", "Fragman, izleme geçmişi, Listem ve izlenen içeriklerin takibi.", { playbackTrackingPage() }),
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
-            sub("Medya kaynakları", "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
-                { startActivity(Intent(this, MediaAddonsActivity::class.java)) }),
+            Row(
+                "Medya kaynakları",
+                "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
+                chevron = true,
+                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
+            ),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
