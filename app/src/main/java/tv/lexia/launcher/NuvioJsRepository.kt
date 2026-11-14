@@ -40,6 +40,14 @@ internal data class NuvioScraperInfo(
     val supportsExternalPlayer: Boolean
 )
 
+internal data class NuvioScraperTestResult(
+    val scraperName: String,
+    val elapsedMs: Long,
+    val streamCount: Int,
+    val message: String,
+    val successful: Boolean
+)
+
 internal data class NuvioRepositoryInfo(
     val id: String,
     val name: String,
@@ -277,6 +285,54 @@ internal class NuvioJsRepository(context: Context) {
         results.distinctBy { "${it.addonName.lowercase()}|${it.url}" }.take(MAX_STREAMS)
     }
 
+    /** Runs one selected provider independently for diagnostics in the repository manager. */
+    fun testScraper(
+        repositoryId: String,
+        scraperId: String,
+        mediaId: String,
+        mediaType: String = "movie",
+        season: Int? = null,
+        episode: Int? = null
+    ): NuvioScraperTestResult = runBlocking {
+        val startedAt = System.currentTimeMillis()
+        val repo = installedRepositories().firstOrNull { it.id == repositoryId }
+            ?: throw IllegalArgumentException("Nuvio deposu bulunamadı.")
+        val scraper = repo.scrapers.firstOrNull { it.id == scraperId }
+            ?: throw IllegalArgumentException("Scraper bulunamadı.")
+        require(mediaId.isNotBlank()) { "Test için TMDB içerik kimliği gerekli." }
+        val type = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
+        require(scraper.supportedTypes.any { normalizeType(it) == type }) {
+            "Bu sağlayıcı $type içeriklerini desteklemiyor."
+        }
+        val outcome = withTimeoutOrNull(SCRAPER_TIMEOUT_MS) {
+            try {
+                val code = loadScraperCode(repo, scraper)
+                val streams = runtime.execute(
+                    code = code, mediaId = mediaId.trim().removePrefix("tmdb:"),
+                    mediaType = type, season = season, episode = episode,
+                    scraperId = scraper.id, settingsJson = scraperSettings(repo.id, scraper.id)
+                )
+                val valid = streams.count { isHttps(it.url) }
+                NuvioScraperTestResult(
+                    scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
+                    streamCount = valid,
+                    message = if (valid > 0) "$valid oynatılabilir HTTPS kaynak döndü." else
+                        "Çalıştırma tamamlandı ancak kaynak dönmedi. İçerik kimliğini, sağlayıcı ayarlarını ve günlük kayıtlarını kontrol et.",
+                    successful = valid > 0
+                )
+            } catch (error: Exception) {
+                NuvioScraperTestResult(
+                    scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
+                    streamCount = 0, message = error.message ?: "Scraper çalıştırılamadı.", successful = false
+                )
+            }
+        }
+        outcome ?: NuvioScraperTestResult(
+            scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
+            streamCount = 0, message = "Sağlayıcı ${SCRAPER_TIMEOUT_MS / 1000} saniyede zaman aşımına uğradı.",
+            successful = false
+        )
+    }
     private fun loadScraperCode(repo: NuvioRepositoryInfo, scraper: NuvioScraperInfo): String {
         val cacheKey = sha256("${repo.id}:${scraper.id}:${scraper.version}").take(40)
         val cached = File(codeDirectory, "${repo.id.take(16)}_$cacheKey.js")
