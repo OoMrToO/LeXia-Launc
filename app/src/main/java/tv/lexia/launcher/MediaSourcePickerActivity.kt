@@ -272,7 +272,9 @@ class MediaSourcePickerActivity : Activity() {
                         stream.headers,
                         stream.subtitles.map {
                             SubtitleTrack(it.url, language = it.language, label = it.label)
-                        }
+                        },
+                        watchKey = film.key,
+                        markWatchedOnCompletion = !film.isSeries
                     )
                 } catch (e: Exception) {
                     status.text = e.message ?: "Oynatıcı açılamadı."
