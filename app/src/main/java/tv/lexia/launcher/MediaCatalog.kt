@@ -1,75 +1,74 @@
 package tv.lexia.launcher
 
-import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URL
 
-class AddonStore(private val context: Context) {
-    private val prefs = context.getSharedPreferences("lexia_addons", Context.MODE_PRIVATE)
+/** Catalog item parsing includes standard Stremio-style `metas` responses as well as simple lists. */
+data class MediaCatalogItem(
+    val id: String,
+    val title: String,
+    val type: AddonType,
+    val poster: String = "",
+    val backdrop: String = "",
+    val overview: String = "",
+    val year: String = "",
+    val metadata: Map<String, String> = emptyMap(),
+    val streamUrl: String? = null,
+    val trailerUrl: String? = null
+) {
+    val isSeries: Boolean get() = type == AddonType.SERIES
 
-    fun installed(): List<AddonManifest> {
-        val raw = prefs.getString("manifests", "") ?: return emptyList()
-        if (raw.isBlank()) return emptyList()
-        return try {
-            val arr = JSONArray(raw)
-            val result = ArrayList<AddonManifest>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                result += AddonManifest.fromJson(obj)
+    companion object {
+        fun fromJson(obj: JSONObject, fallbackType: AddonType = AddonType.MOVIE): MediaCatalogItem {
+            val parsedType = obj.optString("type", "").toAddonType()
+            val itemType = parsedType.takeIf { it != AddonType.UNKNOWN } ?: fallbackType
+            val idValue = obj.optString("id", obj.optString("slug", obj.optString("key", "${System.currentTimeMillis()}")))
+            val titleValue = obj.optString("title", obj.optString("name", "Untitled"))
+            val metadata = LinkedHashMap<String, String>()
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = obj.opt(key)
+                if (value is String && value.isNotBlank()) metadata[key] = value
             }
-            result
-        } catch (e: Exception) {
-            emptyList()
+            return MediaCatalogItem(
+                id = idValue,
+                title = titleValue,
+                type = itemType,
+                poster = obj.optString("poster", obj.optString("image", "")),
+                backdrop = obj.optString("background", obj.optString("backdrop", "")),
+                overview = obj.optString("overview", obj.optString("description", "")),
+                year = obj.optString("year", obj.optString("release", "")),
+                metadata = metadata,
+                streamUrl = obj.optString("streamUrl", obj.optString("stream_url", "")).takeIf { it.isNotBlank() },
+                trailerUrl = obj.optString("trailerUrl", obj.optString("trailer_url", "")).takeIf { it.isNotBlank() }
+            )
         }
-    }
 
-    fun addFromUrl(manifestUrl: String): AddonManifest {
-        val body = URL(manifestUrl).readText(Charsets.UTF_8)
-        val manifest = AddonManifest.fromManifestUrl(manifestUrl, body)
-        save(manifest)
-        return manifest
-    }
-
-    fun save(manifest: AddonManifest) {
-        val current = installed().filterNot { it.normalizedId == manifest.normalizedId }
-        val next = (current + manifest).sortedBy { it.name.lowercase() }
-        val arr = JSONArray()
-        next.forEach { arr.put(it.toJson()) }
-        prefs.edit().putString("manifests", arr.toString()).apply()
-    }
-
-    fun remove(id: String) {
-        val filtered = installed().filterNot { it.normalizedId == id }
-        val arr = JSONArray()
-        filtered.forEach { arr.put(it.toJson()) }
-        prefs.edit().putString("manifests", arr.toString()).apply()
-    }
-
-    fun setEnabled(id: String, enabled: Boolean) {
-        val updated = installed().map {
-            if (it.normalizedId == id) it.copy(enabled = enabled) else it
+        fun parseList(raw: String, fallbackType: AddonType = AddonType.MOVIE): List<MediaCatalogItem> {
+            if (raw.isBlank()) return emptyList()
+            val obj = JSONObject(raw)
+            val arr = obj.optJSONArray("metas") ?: obj.optJSONArray("items") ?: obj.optJSONArray("results")
+                ?: obj.optJSONArray("movies") ?: obj.optJSONArray("series") ?: JSONArray()
+            val result = ArrayList<MediaCatalogItem>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                result += fromJson(item, fallbackType)
+            }
+            return result
         }
-        val arr = JSONArray()
-        updated.forEach { arr.put(it.toJson()) }
-        prefs.edit().putString("manifests", arr.toString()).apply()
-    }
-
-    fun enabledAddons(): List<AddonManifest> = installed().filter { it.enabled }
-
-    fun findById(id: String): AddonManifest? = installed().firstOrNull { it.normalizedId == id }
-
-    fun catalogFor(manifestId: String, catalogId: String): AddonCatalog? {
-        return findById(manifestId)?.catalogs?.firstOrNull { it.id == catalogId }
-    }
-
-    fun isValidManifestUrl(url: String): Boolean {
-        return url.trim().let { it.startsWith("http://", true) || it.startsWith("https://", true) }
     }
 }
 
-fun AddonManifest.catalogsFor(type: AddonType): List<AddonCatalog> = catalogs.filter { it.type == type }
-
-fun AddonManifest.catalogsForHome(): List<AddonCatalog> = catalogs.filter { it.isHomeVisible }
-
-fun AddonManifest.searchCatalogs(): List<AddonCatalog> = catalogs.filter { it.type == AddonType.SEARCH || it.isSearchOnly }
+fun MediaCatalogItem.toPick(): Pick = Pick(
+    title = title,
+    overview = overview,
+    backdrop = backdrop,
+    poster = poster,
+    kind = if (isSeries) "tv" else "movie",
+    id = id.hashCode(),
+    provider = "addon",
+    where = listOf("Addon"),
+    trailer = trailerUrl.orEmpty(),
+    year = year
+)
