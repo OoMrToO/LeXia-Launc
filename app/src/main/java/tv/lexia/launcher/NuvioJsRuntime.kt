@@ -722,6 +722,10 @@ internal class NuvioJsRuntime {
 
         globalThis.require = function(name) {
             if (name === "cheerio" || name === "cheerio-without-node-native" || name === "react-native-cheerio") return cheerio;
+            if (name === "crypto-js") {
+                if (globalThis.CryptoJS) return globalThis.CryptoJS;
+                throw new Error("CryptoJS library is unavailable in this runtime");
+            }
             if (name === "fs") return { existsSync: function() { return false; }, readFileSync: function() { return null; } };
             if (name === "path") return { resolve: function() { return Array.prototype.join.call(arguments, "/"); }, join: function() { return Array.prototype.join.call(arguments, "/"); } };
             throw new Error("Module not available in LeXia plugin sandbox: " + name);
