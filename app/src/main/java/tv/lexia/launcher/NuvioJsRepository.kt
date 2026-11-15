@@ -268,8 +268,10 @@ internal class NuvioJsRepository(context: Context) {
                                     }
                                     MediaStream(
                                         addonName = scraper.name,
-                                        name = result.title.ifBlank { scraper.name },
-                                        description = listOf(result.quality, scraper.description)
+                                        // Scrapers put the provider and quality in "name" ("Vidsrc - 1080p")
+                                        // and the film or file in "title"; both are shown.
+                                        name = result.name.ifBlank { result.title }.ifBlank { scraper.name }.take(120),
+                                        description = listOf(result.title.takeIf { it != result.name }.orEmpty(), result.quality)
                                             .filter { it.isNotBlank() }
                                             .distinct()
                                             .joinToString(" · ")

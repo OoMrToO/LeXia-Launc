@@ -8,7 +8,10 @@ import com.dokar.quickjs.quickJs
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import com.dokar.quickjs.binding.asyncFunction
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -102,6 +105,9 @@ internal class NuvioJsRuntime {
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val resultJson = java.util.concurrent.atomic.AtomicReference("[]")
         val executionError = java.util.concurrent.atomic.AtomicReference("")
+        // Completed when getStreams has answered: timers still waiting (a scraper's own
+        // "give up after 10 s" guard, say) are let go at once instead of holding the answer back.
+        val finished = CompletableDeferred<Unit>()
         val cancellationRegistration = currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
             if (cause is CancellationException) {
                 activeCalls.forEach { call -> call.cancel() }
@@ -125,8 +131,11 @@ internal class NuvioJsRuntime {
                     val bodyKind = args.getOrNull(3)?.toString().orEmpty().ifBlank { "none" }
                     val body = args.getOrNull(4)?.toString().orEmpty()
                     val follow = args.getOrNull(5)?.toString()?.toBooleanStrictOrNull() ?: true
+                    // fetch() sends 0 when the scraper set no timeout of its own: that means the
+                    // default, not "give up after a millisecond".
                     val timeoutMs = args.getOrNull(6)?.toString()?.toLongOrNull()
-                        ?.coerceIn(1L, MAX_FETCH_TIMEOUT_MS) ?: DEFAULT_FETCH_TIMEOUT_MS
+                        ?.takeIf { it > 0L }
+                        ?.coerceAtMost(MAX_FETCH_TIMEOUT_MS) ?: DEFAULT_FETCH_TIMEOUT_MS
                     nativeFetch(url, method, headers, bodyKind, body, follow, timeoutMs, activeCalls)
                 }
 
@@ -153,6 +162,14 @@ internal class NuvioJsRuntime {
                 function("__get_tmdb_api_key") { BuildConfig.TMDB_API_KEY }
                 function("__capture_result") { args ->
                     resultJson.set(args.getOrNull(0)?.toString() ?: "[]")
+                    finished.complete(Unit)
+                    null
+                }
+                // setTimeout: waits without blocking the scraper's other work.
+                asyncFunction("__native_delay") { args ->
+                    val ms = (args.getOrNull(0) as? Number)?.toLong()
+                        ?: args.getOrNull(0)?.toString()?.toDoubleOrNull()?.toLong() ?: 0L
+                    if (ms > 0L) withTimeoutOrNull(ms.coerceAtMost(MAX_TIMER_MS)) { finished.await() }
                     null
                 }
                 function("__capture_error") { args ->
@@ -282,7 +299,8 @@ internal class NuvioJsRuntime {
                             var result = await getStreams(args.tmdbId, args.mediaType, args.season, args.episode);
                             __capture_result(JSON.stringify(result || []));
                         } catch (error) {
-                            var message = error && (error.stack || error.message || error);
+                            // QuickJS keeps the message out of the stack; both are wanted.
+                            var message = error && error.message ? String(error.message) + (error.stack ? "\n" + error.stack : "") : error;
                             console.error("Plugin execution failed:", message);
                             __capture_error(String(message || "Bilinmeyen JavaScript hatası"));
                             __capture_result("[]");
@@ -362,8 +380,10 @@ internal class NuvioJsRuntime {
                 "text" -> body.toByteArray(Charsets.UTF_8)
                 else -> ByteArray(0)
             }
+            // What a browser or Nuvio sends when the scraper names no type: a form for POST, JSON otherwise.
+            val defaultType = if (method.equals("POST", true)) "application/x-www-form-urlencoded" else "application/json"
             val requestBody = bytes.toRequestBody(
-                (contentType.ifBlank { "application/octet-stream" }).toMediaType()
+                (runCatching { contentType.ifBlank { defaultType }.toMediaType() }.getOrNull() ?: defaultType.toMediaType())
             )
             when (method.uppercase()) {
                 "POST" -> request.post(requestBody)
@@ -510,7 +530,7 @@ internal class NuvioJsRuntime {
                 }.orEmpty()
                 NuvioJsStream(
                     title = item["title"]?.toString()?.takeIf { it.isNotBlank() }
-                        ?: item["name"]?.toString().orEmpty().ifBlank { "Kaynak" },
+                        ?: item["name"]?.toString().orEmpty(),
                     name = item["name"]?.toString().orEmpty(),
                     url = url,
                     quality = item["quality"]?.toString().orEmpty(),
@@ -781,10 +801,21 @@ internal class NuvioJsRuntime {
                 if (typeof signal.onabort === "function") signal.onabort({ type: "abort", target: signal });
             };
         };
-        globalThis.setTimeout = globalThis.setTimeout || function(fn) { Promise.resolve().then(fn); return 0; };
-        globalThis.clearTimeout = globalThis.clearTimeout || function() {};
-        globalThis.setInterval = globalThis.setInterval || function(fn) { Promise.resolve().then(fn); return 0; };
-        globalThis.clearInterval = globalThis.clearInterval || function() {};
+        var __timers = {}, __timerId = 0;
+        globalThis.setTimeout = function(fn, ms) {
+            var id = ++__timerId, args = Array.prototype.slice.call(arguments, 2);
+            __timers[id] = true;
+            __native_delay(Number(ms) || 0).then(function() {
+                if (!__timers[id]) return;
+                delete __timers[id];
+                if (typeof fn === "function") fn.apply(null, args);
+            });
+            return id;
+        };
+        globalThis.clearTimeout = function(id) { delete __timers[id]; };
+        // An interval fires once: a scraper runs for one answer, not for ever.
+        globalThis.setInterval = globalThis.setTimeout;
+        globalThis.clearInterval = globalThis.clearTimeout;
 
         var cheerio = {
             load: function(html) {
@@ -864,6 +895,7 @@ internal class NuvioJsRuntime {
         const val DEFAULT_FETCH_TIMEOUT_MS = 60_000L
         const val MAX_FETCH_TIMEOUT_MS = 120_000L
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        const val MAX_TIMER_MS = 30_000L
         const val MAX_STREAMS = 40
         const val MAX_HEADERS = 20
         val HEADER_NAME = Regex("^[A-Za-z0-9-]{1,64}$")

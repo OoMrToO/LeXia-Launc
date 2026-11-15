@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 15 Kasım 2026 (PR #42: oynatıcı ve kaynak listesi yeniden yazıldı; #40 ve #41 aynı dalda toplandı).
+Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman aşımına düşüyordu, düzeltildi; Medya kaynakları ekranında odak korunuyor).
 
 ## 1. Çalışma biçimi
 
@@ -31,6 +31,13 @@ Son güncelleme: 15 Kasım 2026 (PR #42: oynatıcı ve kaynak listesi yeniden ya
   - **Kaynak listesi (`MediaSourcePickerActivity`, `StreamTags.kt`):** rozetler (4K, HDR, Dublaj, WEB-DL, HEVC, ses, boyut) kaynak adından okunur; eklentiler aynı anda sorulur ve liste sonuç geldikçe dolar; `playAutoSource` (varsayılan açık) en uygun kaynağı kendiliğinden açar (ilk sonuçtan 6 sn sonra ya da arama bitince; bir tuşa basılırsa vazgeçer); ekran çözünürlüğüne/HDR'ye ve dublaj tercihine göre puanlar, sinema çekimini (CAM) sona atar; başlık başına son seçilen kaynak ve son bölüm hatırlanır (`media_source_picker` › `choices`, `episodes`). Diziler sezon düğmeleriyle; bölüm sınırı 2000.
   - **Fragman:** Nuvio'nun yöntemi (YouTube'un kendi uygulamalarını taklit eden akış çıkarıcı) **alınmadı**: sık bozulur ve YouTube kurallarına aykırı; mevcut gömülü oynatıcı kaldı. Kullanıcıya söylendi.
   - Torrent/debrid ve MPV yine yok. **Hiçbiri TV'de denenmedi.**
+
+- **#43 (Claude, 15 Kasım; kullanıcı "medya kaynakları çalıştırıcısını gözden geçir" dedi):**
+  - **Asıl hata (`NuvioJsRuntime`):** scraper kendi süresini vermeyince `fetch` 0 gönderiyor, Kotlin tarafı bunu `coerceIn(1, …)` ile **1 ms** yapıyordu; #39'dan beri her Nuvio scraper isteği "timeout" ile düşüyordu (sürüm 41 ve 42'de hiçbir Nuvio scraper kaynak bulamazdı). Artık 0 = varsayılan 60 sn.
+  - `setTimeout` gerçekten bekliyor (`__native_delay`, `asyncFunction`; en çok 30 sn; `getStreams` cevap verince bekleyen zamanlayıcılar bırakılır, `clearTimeout` çalışır). Hata iletisinde artık asıl ileti var (QuickJS `stack` iletiyi içermez). Tür verilmeyen POST form olarak, diğerleri JSON olarak gider (Nuvio gibi).
+  - Kaynak adı: scraper'ın `name` alanı (sağlayıcı + kalite) kart başlığı, `title` açıklama; önceden `name` hiç gösterilmiyordu ve rozetlere girmiyordu.
+  - `MediaAddonsActivity`: liste yeniden çizilince kumanda aynı düğmede kalır (düğmelerde `tag`); ekleme başarısızsa Stremio ve Nuvio nedenleri birlikte gösterilir.
+  - **Bu ortamda scraper çalıştırıcısı gerçekten çalıştırılabiliyor:** Maven'den `io.github.dokar3:quickjs-kt-jvm:1.0.5` (Linux kitaplığı içinde) + `android.util.Log`/`Base64` için iki küçük taklit sınıf + `org.json`; `NuvioJsRuntime.kt` olduğu gibi derlenip örnek scraper'larla denenir (fetch, cheerio, CryptoJS, zamanlayıcılar). Üst düzey `await` (#40) bu yolla doğrulandı.
 
 ## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
 
@@ -92,7 +99,7 @@ Son güncelleme: 15 Kasım 2026 (PR #42: oynatıcı ve kaynak listesi yeniden ya
 ## 9. Açık işler
 
 - Oynatma ve eklentiler (#28, #29, #42) TV'de denenmedi: "Oynat" düğmesi, otomatik kaynak, yeni oynatıcının kumandası, ses/altyazı listeleri, altyazı düzeltmesi, sonraki bölüm.
-- `MediaAddonsActivity` ve `NuvioJsRuntime` #42'de gözden geçirilmedi.
+- Gerçek bir Nuvio deposuyla (kullanıcının eklediği scraper'larla) TV'de kaynak bulunup bulunmadığı denenmedi; cheerio taklidi eksik olabilir (`hasClass`, `closest`, `siblings` yok).
 
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
@@ -116,3 +123,4 @@ Son güncelleme: 15 Kasım 2026 (PR #42: oynatıcı ve kaynak listesi yeniden ya
 | #39 | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; HTTPS düşürme yönlendirmeleri engellendi; tanılama ve coroutine iptalinde etkin HTTP çağrıları kapatılıyor; TV platformu filtreleri, akış/altyazı başlık denetimi ve küçük harfli fetch yanıt başlıkları eklendi |
 | #40, #41 | ChatGPT | Nuvio scraper sonucunun beklenmesi (`await`); Stremio altyazı eklentileri (OpenSubtitles gibi) ayrıca sorulur. İkisi de #42'nin dalına alındı |
 | #42 | Claude | Oynatıcı ve kaynak listesi yeniden yazıldı: Türkçe altyazı düzeltmesi, dil tercihi, altyazı boyutu/zamanlaması, rozetler, otomatik en iyi kaynak, sonraki bölüm (bölüm 2) |
+| #43 | Claude | Nuvio scraper isteklerinin 1 ms zaman aşımı düzeltildi; gerçek `setTimeout`; kaynak adları; Medya kaynakları ekranında odak |
