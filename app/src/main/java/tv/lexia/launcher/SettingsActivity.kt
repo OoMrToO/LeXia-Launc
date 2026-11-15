@@ -635,7 +635,7 @@ class SettingsActivity : Activity() {
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp")
+        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -673,6 +673,13 @@ class SettingsActivity : Activity() {
             Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
                 { prefs.trailerInApp }, { prefs.trailerInApp = it }),
+            toggle(
+                "Fragmanlar YouTube çerçevesi olmadan oynasın",
+                "Fragman doğrudan LeXia'nın oynatıcısında, YouTube'un yazıları ve önerileri olmadan oynar. " +
+                    "YouTube bir şey değiştirirse bu yol çalışmayabilir; o zaman fragman kendiliğinden YouTube'un gömülü oynatıcısında açılır. " +
+                    "Fragmanlarda sorun görürsen kapat.",
+                { prefs.trailerNative }, { prefs.trailerNative = it }
+            ),
             Header("İZLEME TAKİBİ"),
             Row("İzlenen içerikler", "Tamamlanan film ve bölümler izlenenler listesine kaydedilir.", value = { "${prefs.watched.size} içerik" }),
             Row("Listem", "Daha sonra izlemek üzere kaydettiğin içerikler.", value = { "${prefs.watchlist.size} içerik" }),

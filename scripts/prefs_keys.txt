@@ -116,3 +116,4 @@ playSubSize int
 playAutoSource bool
 choices text
 episodes text
+trailerNative bool
