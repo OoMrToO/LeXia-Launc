@@ -564,7 +564,7 @@ class SettingsActivity : Activity() {
             sub("İçerik ve Keşif", "Film önerileri, türler, yayın platformları ve ana ekran keşif satırları.", { discoveryPage() }),
             sub("Entegrasyonlar", "Stremio eklentileri, Nuvio JS depoları ve kaynak sağlayıcıları.", { integrationsPage() },
                 value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" }),
-            sub("Oynatma ve Takip", "Fragman, izleme geçmişi, Listem ve izlenen içeriklerin takibi.", { playbackTrackingPage() }),
+            sub("Oynatma ve Takip", "Kaynak seçimi, ses ve altyazı dili, fragmanlar ve izleme takibi.", { playbackTrackingPage() }),
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             Row(
                 "Medya kaynakları",
@@ -633,12 +633,46 @@ class SettingsActivity : Activity() {
         )
     }
 
-    private fun playbackTrackingPage() = Page("Oynatma ve Takip", R.drawable.ic_tv) {
+    private fun playbackTrackingPage() = Page(
+        "Oynatma ve Takip", R.drawable.ic_tv,
+        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp")
+    ) {
         listOf(
-            Header("OYNATMA"),
+            Header("KAYNAK"),
+            toggle(
+                "En iyi kaynağı kendiliğinden aç",
+                "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +
+                    "Başka bir kaynak seçmek için oynatıcıdan Geri ile çık: kaynak listesi açılır. Kapalıyken kaynağı her seferinde listeden seçersin.",
+                { prefs.playAutoSource }, { prefs.playAutoSource = it }
+            ),
+            Header("SES VE ALTYAZI"),
+            choice(
+                "Ses dili",
+                "Film birden çok dilde ses taşıyorsa hangisiyle başlasın. Orijinal: dosyanın ilk sesi. Oynatıcıdaki Ses düğmesiyle film sırasında değiştirebilirsin.",
+                listOf("", "tr", "en", "orig"), listOf("TV'nin dili", "Türkçe", "İngilizce", "Orijinal"),
+                { prefs.playAudioLang }, { prefs.playAudioLang = it }
+            ),
+            choice(
+                "Altyazı dili",
+                "Film bu dilde altyazı taşıyorsa kendiliğinden açılır. Oynatıcıdaki Altyazı düğmesiyle film sırasında değiştirebilirsin.",
+                listOf("", "tr", "en", "off"), listOf("TV'nin dili", "Türkçe", "İngilizce", "Kapalı"),
+                { prefs.playSubLang }, { prefs.playSubLang = it }
+            ),
+            toggle(
+                "Ses aynı dildeyse altyazı açılmasın",
+                "Örneğin Türkçe dublajlı bir filmde Türkçe altyazı kendiliğinden açılmaz. Kapalıyken altyazı her zaman açılır.",
+                { prefs.playSubSmart }, { prefs.playSubSmart = it }
+            ),
+            choice(
+                "Altyazı boyutu",
+                "Oynatıcıdaki Altyazı ayarı düğmesinden de değişir; orada altyazının zamanlaması da düzeltilebilir.",
+                listOf(0, 1, 2, 3), listOf("Küçük", "Normal", "Büyük", "Çok büyük"),
+                { prefs.playSubSize }, { prefs.playSubSize = it }
+            ),
+            Note("Harfleri bozuk gelen Türkçe altyazılar (ş, ğ, ı yerine başka işaretler) oynatılırken kendiliğinden düzeltilir."),
+            Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
                 { prefs.trailerInApp }, { prefs.trailerInApp = it }),
-            Note("Dahili oynatıcı ses ve altyazı parçalarını seçmeyi, kaldığın yerden devam etmeyi destekler."),
             Header("İZLEME TAKİBİ"),
             Row("İzlenen içerikler", "Tamamlanan film ve bölümler izlenenler listesine kaydedilir.", value = { "${prefs.watched.size} içerik" }),
             Row("Listem", "Daha sonra izlemek üzere kaydettiğin içerikler.", value = { "${prefs.watchlist.size} içerik" }),

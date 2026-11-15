@@ -210,7 +210,9 @@ internal class NuvioJsRepository(context: Context) {
         mediaId: String,
         mediaType: String,
         season: Int? = null,
-        episode: Int? = null
+        episode: Int? = null,
+        /** Called (on a background thread) with each scraper's streams as soon as that scraper is done. */
+        onPartial: ((List<MediaStream>) -> Unit)? = null
     ): List<MediaStream> = runBlocking {
         val normalizedType = if (mediaType == "series" || mediaType == "tv") "tv" else "movie"
         // Stremio episode IDs commonly look like "tmdb:12345:1:2" or "tt1234567:1:2".
@@ -299,7 +301,7 @@ internal class NuvioJsRepository(context: Context) {
                             Log.w(TAG, "Nuvio scraper ${scraper.name} failed: ${error.message}")
                             emptyList()
                         }
-                    }
+                    }.also { part -> if (part.isNotEmpty()) onPartial?.invoke(part) }
                 }
             }.flatMap { it.await() }
         }

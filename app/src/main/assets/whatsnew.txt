@@ -1,5 +1,6 @@
 # Each line is one item on the "Yenilikler" card shown after an update. Keep it short.
-Oynat: film sayfasında yeni “Oynat” düğmesi; kaynakları Ayarlar › Medya kaynakları’ndan ekle. Oynatıcıda ses ve altyazı seçimi, kaldığın yerden devam.
+Oynat: en uygun kaynak kendiliğinden başlar, Geri ile kaynak listesine dönülür. Listede 4K, HDR, dublaj gibi rozetler; dizilerde bölüm bitince sıradaki bölüm.
+Yeni oynatıcı: OK durdurur, sağ/sol 10 sn sarar. Bozuk harfli Türkçe altyazılar düzelir; altyazı boyutu ve zamanlaması oynatıcıda, dil tercihleri Ayarlar › Oynatma ve Takip'te.
 Bu ay hangi platform? Listendeki filmlerin çoğu neredeyse bu ay ona abone ol. Zilde ve Listem'de.
 Listemi yedekle: Ayarlar › Bakım'da bir kod al; yeni TV'de kodu gir, listelerin geri gelsin.
 Film düellosu: “Ne izlesem?”de iki film yan yana, 5 turda bu akşamın filmi. Hafta içi gece kısa filmler önde.

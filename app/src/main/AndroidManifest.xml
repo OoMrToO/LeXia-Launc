@@ -60,7 +60,8 @@
         android:label="LeXia Launcher"
         android:icon="@drawable/ic_launcher"
         android:banner="@drawable/banner"
-        android:theme="@style/Launcher">
+        android:theme="@style/Launcher"
+        android:enableOnBackInvokedCallback="false">
 
         <activity
             android:name=".MainActivity"
