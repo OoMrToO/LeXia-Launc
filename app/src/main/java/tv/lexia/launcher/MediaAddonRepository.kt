@@ -8,6 +8,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 internal data class InstalledMediaAddon(
@@ -50,8 +52,17 @@ internal data class MediaStream(
     val peers: Int? = null,
     val infoHash: String = "",
     val audioDelayMs: Long? = null,
-    val audioDelayLanguage: String = ""
-)
+    val audioDelayLanguage: String = "",
+    /** The video's file name, when the add-on gives it ("Film.2024.1080p.WEB-DL.mkv"). */
+    val fileName: String = "",
+    /** The video's size in bytes; 0 when unknown. */
+    val sizeBytes: Long = 0L
+) {
+    /** Resolution, HDR, sound and the rest, read from everything the source says about itself. */
+    val tags: StreamTags by lazy {
+        StreamTags.of(quality, name, description, fileName, language, size, sizeBytes = sizeBytes)
+    }
+}
 
 /**
  * Minimal Stremio-compatible add-on client, intentionally isolated from launcher preferences.
@@ -114,8 +125,10 @@ internal class MediaAddonRepository(context: Context) {
 
         val types = strings(json.optJSONArray("types"))
         val resources = parseResourceNames(json.optJSONArray("resources"))
-        require("stream" in resources) {
-            "Bu eklenti video kaynağı sunmuyor (stream kaynağı yok)."
+        require("stream" in resources || resources.any {
+            it.equals("subtitles", true) || it.equals("subtitle", true)
+        }) {
+            "Bu eklenti video veya altyazı kaynağı sunmuyor."
         }
         require(types.isEmpty() || types.any { it == "movie" || it == "series" || it == "tv" }) {
             "Eklenti film veya dizi desteği bildirmiyor."
@@ -184,52 +197,116 @@ internal class MediaAddonRepository(context: Context) {
             }
         }
         return result.values
+            // Two add-ons name the same episode differently ("tt…:1:2", "tmdb:…:1:2"); one entry is enough.
+            .distinctBy { if (it.season > 0 && it.episode > 0) "${it.season}:${it.episode}" else it.id }
             .sortedWith(compareBy<MediaEpisode> { it.season }.thenBy { it.episode }.thenBy { it.title })
             .take(MAX_EPISODES)
     }
 
-    /** Returns direct HTTP(S) stream choices from every enabled installed add-on. */
-    fun fetchStreams(type: String, videoId: String): List<MediaStream> {
+    /** Queries Stremio subtitle resources independently of stream resources. */
+    fun fetchSubtitles(type: String, videoId: String): List<MediaSubtitle> {
         require(type == "movie" || type == "series") { "Desteklenmeyen içerik türü." }
         require(videoId.isNotBlank() && videoId.length <= 300) { "Geçersiz içerik kimliği." }
 
-        val result = ArrayList<MediaStream>()
+        val result = LinkedHashMap<String, MediaSubtitle>()
         for (addon in installedAddons()) {
-            if ("stream" !in addon.resources || !supports(addon, type) || !supportsId(addon, videoId)) continue
+            val resource = addon.resources.firstOrNull {
+                it.equals("subtitles", true) || it.equals("subtitle", true)
+            } ?: continue
+            if (!supports(addon, type) || !supportsId(addon, videoId)) continue
             try {
-                val root = getJson(endpoint(addon.baseUrl, "stream", type, videoId))
-                val streams = root.optJSONArray("streams") ?: continue
-                for (i in 0 until streams.length()) {
-                    val item = streams.optJSONObject(i) ?: continue
+                val root = getJson(endpoint(addon.baseUrl, resource, type, videoId))
+                val subtitles = root.optJSONArray("subtitles") ?: continue
+                for (i in 0 until minOf(subtitles.length(), MAX_SUBTITLES)) {
+                    val item = subtitles.optJSONObject(i) ?: continue
                     val url = item.optString("url")
                     if (!isDirectHttpUrl(url)) continue
-
-                    val behavior = item.optJSONObject("behaviorHints")
-                    val proxyHeaders = behavior?.optJSONObject("proxyHeaders")
-                    val headers = sanitizeHeaders(proxyHeaders?.optJSONObject("request"))
-                    val subtitles = parseSubtitles(item.optJSONArray("subtitles"))
-                    val label = item.optString("name").ifBlank {
-                        item.optString("title").ifBlank { addon.name }
-                    }.take(120)
-                    val description = item.optString("description").ifBlank {
-                        item.optString("title")
-                    }.take(300)
-
-                    result.add(
-                        MediaStream(
-                            addonName = addon.name,
-                            name = label,
-                            description = description,
-                            url = url,
-                            headers = headers,
-                            subtitles = subtitles
-                        )
-                    )
-                    if (result.size >= MAX_STREAMS) return result
+                    val language = item.optString("lang")
+                        .ifBlank { item.optString("language") }
+                        .ifBlank { "und" }.take(16)
+                    val label = item.optString("label")
+                        .ifBlank { item.optString("name") }
+                        .ifBlank { language.uppercase() }.take(80)
+                    result.putIfAbsent("$url|$language", MediaSubtitle(url, language, label))
+                    if (result.size >= MAX_SUBTITLES) return result.values.toList()
                 }
             } catch (_: Exception) {
-                // Keep the remaining providers available if one add-on fails.
+                // A broken subtitle endpoint must not hide streams or other subtitle providers.
             }
+        }
+        return result.values.toList()
+    }
+
+    /**
+     * Direct HTTP(S) stream choices from every installed add-on. The add-ons are asked at the
+     * same time, so one slow add-on does not hold up the others; the answers keep the add-ons'
+     * installed order.
+     */
+    fun fetchStreams(
+        type: String,
+        videoId: String,
+        /** Called (on a background thread) with each add-on's streams as soon as that add-on answers. */
+        onPartial: ((List<MediaStream>) -> Unit)? = null
+    ): List<MediaStream> {
+        require(type == "movie" || type == "series") { "Desteklenmeyen içerik türü." }
+        require(videoId.isNotBlank() && videoId.length <= 300) { "Geçersiz içerik kimliği." }
+
+        val addons = installedAddons().filter {
+            "stream" in it.resources && supports(it, type) && supportsId(it, videoId)
+        }
+        if (addons.isEmpty()) return emptyList()
+        val pool = Executors.newFixedThreadPool(minOf(addons.size, MAX_PARALLEL_ADDONS))
+        try {
+            val answers = addons.map { addon ->
+                pool.submit(Callable {
+                    // Keep the remaining providers available if one add-on fails.
+                    try {
+                        streamsOf(addon, type, videoId).also { part -> if (part.isNotEmpty()) onPartial?.invoke(part) }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                })
+            }
+            return answers.flatMap { it.get() }.take(MAX_STREAMS)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    private fun streamsOf(addon: InstalledMediaAddon, type: String, videoId: String): List<MediaStream> {
+        val root = getJson(endpoint(addon.baseUrl, "stream", type, videoId))
+        val streams = root.optJSONArray("streams") ?: return emptyList()
+        val result = ArrayList<MediaStream>()
+        for (i in 0 until streams.length()) {
+            val item = streams.optJSONObject(i) ?: continue
+            val url = item.optString("url")
+            if (!isDirectHttpUrl(url)) continue
+
+            val behavior = item.optJSONObject("behaviorHints")
+            val proxyHeaders = behavior?.optJSONObject("proxyHeaders")
+            val headers = sanitizeHeaders(proxyHeaders?.optJSONObject("request"))
+            val subtitles = parseSubtitles(item.optJSONArray("subtitles"))
+            val label = item.optString("name").ifBlank {
+                item.optString("title").ifBlank { addon.name }
+            }.take(120)
+            val description = item.optString("description").ifBlank {
+                item.optString("title")
+            }.take(300)
+
+            result.add(
+                MediaStream(
+                    addonName = addon.name,
+                    name = label,
+                    description = description,
+                    url = url,
+                    headers = headers,
+                    subtitles = subtitles,
+                    // A JSON null reads as the text "null".
+                    fileName = behavior?.optString("filename").orEmpty().takeIf { it != "null" }.orEmpty().take(300),
+                    sizeBytes = behavior?.optLong("videoSize", 0L)?.coerceAtLeast(0L) ?: 0L
+                )
+            )
+            if (result.size >= MAX_STREAMS) break
         }
         return result
     }
@@ -374,7 +451,9 @@ internal class MediaAddonRepository(context: Context) {
         const val KEY_INSTALLED = "installed_v1"
         const val MAX_RESPONSE_BYTES = 5 * 1024 * 1024
         const val MAX_STREAMS = 80
-        const val MAX_EPISODES = 200
+        const val MAX_PARALLEL_ADDONS = 4
+        const val MAX_SUBTITLES = 40
+        const val MAX_EPISODES = 2000
         const val MAX_HEADERS = 20
         val IMDB_ID = Regex("^tt[0-9]{7,10}$")
         val HEADER_NAME = Regex("^[A-Za-z0-9-]{1,64}$")

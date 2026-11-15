@@ -108,3 +108,11 @@ settings_ text
 ${key}_duration long
 ${key}_position long
 ${key}_updated long
+${key}_subdelay long
+playAudioLang text
+playSubLang text
+playSubSmart bool
+playSubSize int
+playAutoSource bool
+choices text
+episodes text

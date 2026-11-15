@@ -27,15 +27,21 @@ internal class MediaPlaybackStore(context: Context) {
         return preferences.getLong("${key}_position", 0L).coerceAtLeast(0L)
     }
 
-    fun save(mediaKey: String, positionMs: Long, durationMs: Long) {
-        if (mediaKey.isBlank()) return
+    /**
+     * Remembers where the viewer is. Answers true when that is the end of the film (the closing
+     * credits count as the end): nothing is kept then, so the next start is from the beginning.
+     */
+    fun save(mediaKey: String, positionMs: Long, durationMs: Long): Boolean {
+        if (mediaKey.isBlank()) return false
         val position = positionMs.coerceAtLeast(0L)
         val duration = durationMs.coerceAtLeast(0L)
-        if (position < MIN_RESUME_MS ||
-            (duration > 0L && position >= duration - COMPLETION_MARGIN_MS)
-        ) {
+        if (duration > 0L && position >= duration - maxOf(COMPLETION_MARGIN_MS, duration * CREDITS_PERCENT / 100)) {
             clear(mediaKey)
-            return
+            return true
+        }
+        if (position < MIN_RESUME_MS) {
+            clear(mediaKey)
+            return false
         }
 
         val key = prefix(mediaKey)
@@ -44,6 +50,21 @@ internal class MediaPlaybackStore(context: Context) {
             .putLong("${key}_duration", duration)
             .putLong("${key}_updated", System.currentTimeMillis())
             .apply()
+        return false
+    }
+
+    /** How much later (or earlier, when negative) the viewer set this film's subtitles. */
+    fun subtitleDelayMs(mediaKey: String): Long {
+        if (mediaKey.isBlank()) return 0L
+        val key = prefix(mediaKey)
+        return preferences.getLong("${key}_subdelay", 0L)
+    }
+
+    fun saveSubtitleDelay(mediaKey: String, delayMs: Long) {
+        if (mediaKey.isBlank()) return
+        val key = prefix(mediaKey)
+        if (delayMs == 0L) preferences.edit().remove("${key}_subdelay").apply()
+        else preferences.edit().putLong("${key}_subdelay", delayMs).apply()
     }
 
     fun clear(mediaKey: String) {
@@ -66,6 +87,8 @@ internal class MediaPlaybackStore(context: Context) {
         const val FILE_NAME = "media_playback"
         const val MIN_RESUME_MS = 5_000L
         const val COMPLETION_MARGIN_MS = 15_000L
+        /** The last part of a film is its credits; leaving there is having watched it. */
+        const val CREDITS_PERCENT = 6L
         val MAX_AGE_MS = TimeUnit.DAYS.toMillis(30)
     }
 }

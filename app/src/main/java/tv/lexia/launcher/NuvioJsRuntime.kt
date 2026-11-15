@@ -270,7 +270,7 @@ internal class NuvioJsRuntime {
                 }
                 evaluate<Any?>(
                     """
-                    (async function() {
+                    await (async function() {
                         try {
                             var getStreams = (module && module.exports && module.exports.getStreams) || globalThis.getStreams;
                             if (typeof getStreams !== "function") {

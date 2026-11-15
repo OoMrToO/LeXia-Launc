@@ -193,6 +193,16 @@ class Prefs(ctx: Context) {
     var tester: Boolean get() = bool("tester", false); set(v) = putBool("tester", v)
     /** Trailers play inside LeXia (YouTube's embedded player) instead of the YouTube app. */
     var trailerInApp: Boolean get() = bool("trailerInApp", true); set(v) = putBool("trailerInApp", v)
+    /** Sound to start a film with: "" the TV's language, "orig" whatever the file puts first, or a language code. */
+    var playAudioLang: String get() = str("playAudioLang"); set(v) = putStr("playAudioLang", v)
+    /** Subtitles to start a film with: "" the TV's language, "off" none, or a language code. */
+    var playSubLang: String get() = str("playSubLang"); set(v) = putStr("playSubLang", v)
+    /** No subtitles when the sound is already in the subtitle language. */
+    var playSubSmart: Boolean get() = bool("playSubSmart", true); set(v) = putBool("playSubSmart", v)
+    /** "Oynat" starts the most fitting source by itself; the source list is one Back away. */
+    var playAutoSource: Boolean get() = bool("playAutoSource", true); set(v) = putBool("playAutoSource", v)
+    /** Subtitle size in the player: 0 small, 1 normal, 2 large, 3 very large. */
+    var playSubSize: Int get() = int("playSubSize", 1); set(v) = putInt("playSubSize", v)
     /** Counts starts, so each start shows a different film first. */
     var heroTurn: Int get() = int("heroTurn", 0); set(v) = putInt("heroTurn", v)
     /** App cards: "card" rounded banner, "sharp" square-cornered banner, "circle" / "square" the app's icon. */
