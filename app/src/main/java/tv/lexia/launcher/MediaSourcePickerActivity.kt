@@ -86,6 +86,8 @@ class MediaSourcePickerActivity : Activity() {
     private var typedEpisode = 0
 
     private var streams: List<MediaStream> = emptyList()
+    /** Subtitles from subtitle add-ons (OpenSubtitles and the like); they go with whichever source is played. */
+    private var addonSubtitles: List<MediaSubtitle> = emptyList()
     private var playbackTitle = ""
     private var mediaKey = ""
     private val failed = HashSet<String>()
@@ -259,7 +261,8 @@ class MediaSourcePickerActivity : Activity() {
             key = stremioId,
             auto = if (prefs.playAutoSource) Auto.BEST else Auto.NO,
             stremio = { partial -> repository.fetchStreams("movie", stremioId, partial) },
-            nuvio = { partial -> nuvioRepository.fetchStreams(film.id.toString(), "movie", onPartial = partial) }
+            nuvio = { partial -> nuvioRepository.fetchStreams(film.id.toString(), "movie", onPartial = partial) },
+            subtitles = { repository.fetchSubtitles("movie", stremioId) }
         )
     }
 
@@ -421,7 +424,8 @@ class MediaSourcePickerActivity : Activity() {
             key = videoId,
             auto = auto,
             stremio = { partial -> repository.fetchStreams("series", videoId, partial) },
-            nuvio = { partial -> nuvioRepository.fetchStreams(nuvioId, "tv", onPartial = partial) }
+            nuvio = { partial -> nuvioRepository.fetchStreams(nuvioId, "tv", onPartial = partial) },
+            subtitles = { repository.fetchSubtitles("series", videoId) }
         )
     }
 
@@ -471,11 +475,13 @@ class MediaSourcePickerActivity : Activity() {
         key: String,
         auto: Auto,
         stremio: ((List<MediaStream>) -> Unit) -> List<MediaStream>,
-        nuvio: ((List<MediaStream>) -> Unit) -> List<MediaStream>
+        nuvio: ((List<MediaStream>) -> Unit) -> List<MediaStream>,
+        subtitles: () -> List<MediaSubtitle>
     ) {
         cancelSearch()
         val mine = ++generation
         streams = emptyList()
+        addonSubtitles = emptyList()
         failed.clear()
         focusedUrl = ""
         listShown = false
@@ -486,7 +492,7 @@ class MediaSourcePickerActivity : Activity() {
         status.text = message
         clearContent()
 
-        var open = 2
+        var open = 3
         fun partial(part: List<MediaStream>) = runOnUiThread {
             if (mine == generation && !isFinishing) addStreams(part)
         }
@@ -497,6 +503,17 @@ class MediaSourcePickerActivity : Activity() {
         }
         // Keep the two plugin ecosystems independent: a malformed or offline Stremio add-on must
         // not prevent Nuvio JS scrapers from running (and vice versa).
+        // A broken subtitle add-on must not hide the sources.
+        running.add(worker.submit {
+            try {
+                val found = subtitles()
+                runOnUiThread { if (mine == generation && !isFinishing) addonSubtitles = found }
+            } catch (e: Exception) {
+                Log.w("LeXiaSources", "Subtitle search failed: ${e.message}")
+            } finally {
+                finished()
+            }
+        })
         listOf("Stremio" to stremio, "Nuvio JS" to nuvio).forEach { (name, task) ->
             running.add(worker.submit {
                 try {
@@ -590,6 +607,16 @@ class MediaSourcePickerActivity : Activity() {
         if (choice != null && !isFinishing) play(choice)
     }
 
+    /** The source's own subtitles, then the subtitle add-ons': the wanted language first, 24 at most. */
+    private fun subtitlesFor(stream: MediaStream): List<SubtitleTrack> {
+        val wanted = prefs.playSubLang.takeIf { it != "off" }.orEmpty().ifBlank { Lang.device() }
+        fun rank(s: MediaSubtitle) = if (Lang.code(s.language).ifBlank { Lang.code(s.label) } == wanted) 0 else 1
+        return (stream.subtitles + addonSubtitles.sortedBy { rank(it) })
+            .distinctBy { it.url }
+            .take(24)
+            .map { SubtitleTrack(it.url, language = it.language, label = it.label) }
+    }
+
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
@@ -600,7 +627,7 @@ class MediaSourcePickerActivity : Activity() {
                 playbackTitle,
                 mediaKey,
                 stream.headers,
-                stream.subtitles.map { SubtitleTrack(it.url, language = it.language, label = it.label) },
+                subtitlesFor(stream),
                 watchKey = film.key,
                 markWatchedOnCompletion = !film.isSeries,
                 nextTitle = nextEpisode()?.first.orEmpty(),
