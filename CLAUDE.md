@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme yönlendirmeleri, TV platform filtreleri, akış başlık denetimi, HTTP iptali ve fetch yanıt başlıklarının küçük harfle normalize edilmesi düzeltildi).
+Son güncelleme: 14 Kasım 2026 (PR #39 birleştirildi; Nuvio JS getStreams asenkron çağrısının tamamlanması beklenerek boş sonuç hatası düzeltildi).
 
 ## 1. Çalışma biçimi
 
@@ -21,7 +21,7 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 - **#29 (ChatGPT):** #28 ile aynı oynatıcıyı daha basit hâliyle ekliyordu; çakıştı. Ondan yalnızca **dışarıdan video açma** kaldı: `PlayerActivity` dışa açık, `video/*`, `audio/*` ve HLS için VIEW isteği alır (adres `intent.data`'dan okunur). Oynatıcı ve Media3 sürümü #28'inki.
 - **Claude'un birleştirirken düzelttikleri:** `App.dropAddonData()` kaldırıldı (her açılışta adı "addon" içeren ayarları siliyordu; `media_addons` her açılışta silinecekti); `MediaPlaybackStore` anahtarları `scripts/prefs_keys.txt`'ye eklendi (yoksa `build.yml` kırılıyordu); manifestte tek `PlayerActivity` kaydı.
 - **Kumanda düzeltmesi (14 Kasım, sürüm 32'de kullanıcı fotoğrafı):** "Medya kaynakları" ekranında hiçbir şey seçilemiyordu. Neden: ChatGPT üç yeni ekranda kök kutuyu odaklanabilir yapıp odağı ona vermişti; odaklı kök kutudan D-pad hiçbir yere gidemez. Üçünde de kaldırıldı: eklenti ekranı "Eklenti ekle"de, kaynak seçici ilk kaynakta, oynatıcı kendi denetimlerinde başlar (oynatıcı kumandayı önce `PlayerView`'e verir). Seçili düğme artık beyaz zemin + koyu yazı. **Yeni ekran yazılırken kök kutu odaklanabilir yapılmaz.**
-- **Kapsam:** manifestli Stremio uyumlu eklentiler ve Nuvio JS scraper'ları; oynatıcıya yalnızca doğrudan HTTPS akışları verilir. Nuvio scraper `fetch`, Nuvio depo/JS indirmeleri ve Stremio eklenti istekleri yalnızca HTTPS kullanır; HTTPS → HTTP yönlendirmelerini izlemez. Nuvio `supportedPlatforms` / `disabledPlatforms` alanları TV uyumluluğunu belirler; boş izin listesi tüm platformlara izin verir. Nuvio akış ve altyazı başlıkları geçerli ad, uzunluk ve satır sonu denetiminden geçirilir. Torrent/debrid, CloudStream eklentileri, MPV yok. **TV'de hiçbiri denenmedi.**
+- **Kapsam:** manifestli Stremio uyumlu eklentiler ve Nuvio JS scraper'ları; oynatıcıya yalnızca doğrudan HTTPS akışları verilir. Nuvio scraper `fetch`, Nuvio depo/JS indirmeleri ve Stremio eklenti istekleri yalnızca HTTPS kullanır; HTTPS → HTTP yönlendirmelerini izlemez. Nuvio `supportedPlatforms` / `disabledPlatforms` alanları TV uyumluluğunu belirler; boş izin listesi tüm platformlara izin verir. Nuvio akış ve altyazı başlıkları geçerli ad, uzunluk ve satır sonu denetiminden geçirilir. QuickJS giriş noktası `getStreams()` sonucunu okumadan önce asenkron çağrıyı `await` eder. Torrent/debrid, CloudStream eklentileri, MPV yok. **TV'de hiçbiri denenmedi.**
 - Kullanıcı başka araçla da çalışır: iş hep güncel `main`'den dal açılarak, PR ile yapılır. Aynı işi yapan iki PR açılırsa çakışır; Claude tek dalda toplar.
 
 ## 3. Cihaz ve kurulum
@@ -95,4 +95,5 @@ Son güncelleme: 14 Kasım 2026 (PR #39 Nuvio Beta uyumluluğu; HTTPS düşürme
 | #30 | Claude | #28 ve #29 tek dalda birleştirildi; çakışmalar, açılıştaki eklenti temizliği ve ayar anahtarları düzeltildi |
 | #31 | Claude | Yeni ekranlarda kumanda odağı düzeltildi (eklentiler, kaynak seçici, oynatıcı) |
 | #33–#38 | ChatGPT | Nuvio JS desteği, kaynak gruplama, TMDB kimlikleri, zaman aşımı, depo/scraper ayarları ve TV yönetimi |
-| #39 (açık) | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı ve depo anahtarı; HTTPS düşürme yönlendirmeleri engellendi; tanılama ve coroutine iptalinde etkin HTTP çağrıları kapatılıyor; TV platformu filtreleri, akış/altyazı başlık denetimi ve küçük harfli fetch yanıt başlıkları eklendi |
+| #39 | ChatGPT | Nuvio Beta parity faz 2: fetch sıkıştırma/yanıt sınırı, akış metadata'sı; HTTPS düşürme yönlendirmeleri, TV platformu filtreleri, başlık denetimi ve iptal davranışı düzeltildi |
+| sonraki PR | ChatGPT | Nuvio `getStreams()` asenkron çağrısının sonucu beklenerek kaynak aramasında erken boş liste dönmesi düzeltildi |
