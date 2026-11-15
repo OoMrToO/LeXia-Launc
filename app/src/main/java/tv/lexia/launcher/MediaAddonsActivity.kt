@@ -24,6 +24,7 @@ class MediaAddonsActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
+    private lateinit var addButton: TextView
     private var busy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,7 +64,7 @@ class MediaAddonsActivity : Activity() {
         root.addView(title)
 
         val intro = TextView(this).apply {
-            text = "Uyumlu bir Stremio kaynak eklentisinin manifest adresini ekle. LeXia, manifesti doğrular ve film/dizi kaynaklarını buradan arar."
+            text = "Stremio uyumlu bir eklentinin ya da bir Nuvio JS deposunun manifest adresini ekle. LeXia adresi doğrular; film ve dizi kaynakları bu eklentilerde aranır."
             textSize = 17f
             setTextColor(Color.rgb(174, 182, 197))
             setLineSpacing(0f, 1.2f)
@@ -75,7 +76,7 @@ class MediaAddonsActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(18), 0, dp(12))
         }
-        val add = action("＋  Eklenti ekle", primary = true).apply {
+        val add = action("+  Eklenti ekle", primary = true).apply {
             setOnClickListener { showAddDialog() }
         }
         controls.addView(add)
@@ -116,11 +117,17 @@ class MediaAddonsActivity : Activity() {
             )
         )
         setContentView(root)
+        addButton = add
         // The remote starts on the first button; a focused container would swallow every D-pad press.
         add.requestFocus()
     }
 
+    /**
+     * Rebuilds the list. The remote stays on the button it was on (each button carries a name),
+     * so switching ten scrapers on or off does not send it back to the top ten times.
+     */
     private fun renderAddons() {
+        val focusedKey = currentFocus?.tag as? String
         list.removeAllViews()
         val addons = repository.installedAddons()
         val nuvioRepos = nuvioRepository.installedRepositories()
@@ -206,14 +213,17 @@ class MediaAddonsActivity : Activity() {
                 })
                 row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 row.addView(action("Test et").apply {
+                    tag = "test:${repo.id}:${scraper.id}"
                     setOnClickListener { showScraperTestDialog(repo.id, scraper) }
                 })
                 if (scraper.hasSettings) {
                     row.addView(action("Ayarlar").apply {
+                        tag = "settings:${repo.id}:${scraper.id}"
                         setOnClickListener { showScraperSettings(repo.id, scraper) }
                     })
                 }
                 val toggle = action(if (scraper.enabled) "Açık" else "Kapalı", primary = scraper.enabled).apply {
+                    tag = "toggle:${repo.id}:${scraper.id}"
                     setOnClickListener {
                         nuvioRepository.setScraperEnabled(repo.id, scraper.id, !scraper.enabled)
                         renderAddons()
@@ -224,6 +234,7 @@ class MediaAddonsActivity : Activity() {
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             repoActions.addView(action(if (repo.enabled) "Depoyu devre dışı bırak" else "Depoyu etkinleştir", primary = !repo.enabled).apply {
+                tag = "repo:${repo.id}"
                 setOnClickListener {
                     nuvioRepository.setRepositoryEnabled(repo.id, !repo.enabled)
                     renderAddons()
@@ -231,12 +242,14 @@ class MediaAddonsActivity : Activity() {
             })
             val allEnabled = repo.scrapers.all { it.enabled }
             repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
+                tag = "all:${repo.id}"
                 setOnClickListener {
                     repo.scrapers.forEach { nuvioRepository.setScraperEnabled(repo.id, it.id, !allEnabled) }
                     renderAddons()
                 }
             })
             repoActions.addView(action("Depoyu güncelle").apply {
+                tag = "update:${repo.id}"
                 setOnClickListener { refreshNuvioRepository(repo.id, repo.name) }
             })
             repoActions.addView(action("Depoyu kaldır").apply {
@@ -283,6 +296,13 @@ class MediaAddonsActivity : Activity() {
             card.addView(remove, p)
             addCardToList(card)
         }
+
+        val target = focusedKey?.let { list.findViewWithTag<View>(it) }
+        list.post {
+            if (isFinishing) return@post
+            if (target != null) target.requestFocus()
+            else if (root.findFocus() == null) addButton.requestFocus()
+        }
     }
 
     private fun showAddDialog() {
@@ -316,8 +336,18 @@ class MediaAddonsActivity : Activity() {
                     try {
                         val addon = try {
                             repository.addAddon(address)
-                        } catch (_: Exception) {
-                            val nuvio = nuvioRepository.addRepository(address)
+                        } catch (stremioError: Exception) {
+                            // Not a Stremio add-on: perhaps a Nuvio JS repository. If it is neither,
+                            // both reasons are shown; either may be the one that matters.
+                            val nuvio = try {
+                                nuvioRepository.addRepository(address)
+                            } catch (nuvioError: Exception) {
+                                val reasons = listOf(stremioError.message, nuvioError.message)
+                                    .filterNotNull().filter { it.isNotBlank() }.distinct()
+                                throw IllegalStateException(
+                                    "Eklenti eklenemedi. " + reasons.joinToString("  ·  ").ifBlank { "Adres tanınmadı." }
+                                )
+                            }
                             runOnUiThread {
                                 busy = false
                                 status.text = "${nuvio.name} eklendi · ${nuvio.scrapers.size} Nuvio JS scraper"
@@ -411,7 +441,7 @@ class MediaAddonsActivity : Activity() {
             })
         }
         container.addView(scroll, LinearLayout.LayoutParams(-1, dp(300)))
-        container.addView(action("＋  Ayar ekle").apply {
+        container.addView(action("+  Ayar ekle").apply {
             setOnClickListener { addSettingRow() }
         }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
 
