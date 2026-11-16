@@ -185,7 +185,11 @@ class MediaAddonsActivity : Activity() {
                 })
                 val kinds = scraper.supportedTypes.map { if (it.equals("movie", true)) "Film" else "Dizi" }.distinct().joinToString(", ")
                 val langs = scraper.contentLanguage.joinToString(", ") { Lang.name(Lang.code(it)).ifBlank { it.uppercase() } }
-                val line = listOf(kinds, langs, scraper.description).filter { it.isNotBlank() }.joinToString("  ·  ")
+                // Many repositories describe a scraper only as "Film • Dizi", which repeats the kinds.
+                val onlyKinds = scraper.description.split(Regex("[^\\p{L}]+")).filter { it.isNotBlank() }
+                    .all { it.lowercase() in setOf("film", "dizi", "movie", "movies", "tv", "series", "show", "shows", "and", "ve") }
+                val about = if (onlyKinds) "" else scraper.description
+                val line = listOf(kinds, langs, about).filter { it.isNotBlank() }.joinToString("  ·  ")
                 if (line.isNotBlank()) details.addView(TextView(this).apply {
                     text = line
                     textSize = 12f
