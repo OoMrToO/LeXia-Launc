@@ -71,6 +71,8 @@ internal class NuvioJsRepository(context: Context) {
         val answered = AtomicInteger()
         /** Results that were not a video address (a magnet or torrent link, say). */
         val unplayable = AtomicInteger()
+        /** Why scrapers failed, as Nuvio's own code logged it (read back from this app's log). */
+        @Volatile var errors: List<String> = emptyList()
     }
 
     @Volatile var notes = SearchNotes()
@@ -162,7 +164,27 @@ internal class NuvioJsRepository(context: Context) {
             all += part
             if (part.isNotEmpty()) onPartial?.invoke(part)
         }
+        if (found.answered.get() == 0) found.errors = nuvioErrors()
         all.distinctBy { it.url }
+    }
+
+    /**
+     * The last errors Nuvio's copied plugin code wrote to the log (it logs them and goes on, so
+     * they are not passed back). An app may read its own log lines.
+     */
+    private fun nuvioErrors(): List<String> = try {
+        val process = ProcessBuilder(
+            "logcat", "-d", "-t", "600", "--pid=${android.os.Process.myPid()}",
+            "-s", "PluginRuntime:W", "PluginManager:W"
+        ).redirectErrorStream(true).start()
+        val lines = process.inputStream.bufferedReader().readLines()
+        process.destroy()
+        lines.mapNotNull { line ->
+            val at = line.indexOf(": ").takeIf { it >= 0 } ?: return@mapNotNull null
+            line.substring(at + 2).trim().takeIf { it.isNotEmpty() && !it.startsWith("at ") }
+        }.map { it.take(160) }.distinct().takeLast(4)
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private fun info(s: ScraperInfo) = NuvioScraperInfo(

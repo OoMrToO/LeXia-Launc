@@ -287,6 +287,7 @@ class MediaSourcePickerActivity : Activity() {
                 else "Nuvio sağlayıcılarından ${js.answered.get()} tanesi sonuç verdi" +
                     (if (js.unplayable.get() > 0) ", ama ${js.unplayable.get()} sonuç video adresi değildi (torrent ya da başka bir bağlantı)." else ".")
             )
+            if (js.answered.get() == 0 && js.errors.isNotEmpty()) reasons.add("Nuvio'nun bildirdiği hata: " + js.errors.joinToString("  •  "))
         } else if (scrapers > 0) {
             reasons.add("Kurulu Nuvio sağlayıcılarından hiçbiri bu tür içeriği (film/dizi) desteklemiyor ya da hepsi kapalı.")
         }
