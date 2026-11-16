@@ -11,7 +11,8 @@ android {
         applicationId = "tv.lexia.launcher"
         minSdk = 24
         targetSdk = 36
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
+        // 2000 above the build number: installs over the LeXia + Nuvio trial (code 1000+) of 16 November.
+        versionCode = 2000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
         versionName = "0.4"
         buildConfigField("String", "BUILD_NO", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}\"")
         // The address of the files site (film list, updates); the build workflow looks it up.

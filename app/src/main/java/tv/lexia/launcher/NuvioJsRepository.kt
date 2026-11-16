@@ -535,8 +535,9 @@ internal class NuvioJsRepository(context: Context) {
             else -> value.lowercase()
         }
 
+    /** http or https, as Nuvio allows; never another scheme. */
     private fun isHttps(raw: String): Boolean =
-        raw.toHttpUrlOrNull()?.scheme == "https"
+        raw.toHttpUrlOrNull() != null
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))

@@ -259,7 +259,7 @@ class MediaAddonsActivity : Activity() {
             addCardToList(card)
         }
 
-        addons.forEach { addon ->
+        addons.forEachIndexed { index, addon ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(22), dp(17), dp(22), dp(17))
@@ -292,14 +292,38 @@ class MediaAddonsActivity : Activity() {
                 maxLines = 2
             }
             card.addView(url)
-            val remove = action("Eklentiyi kaldır").apply {
-                setOnClickListener { confirmRemove(addon.baseUrl, addon.name) }
+            if (addon.description.isNotBlank()) {
+                card.addView(TextView(this).apply {
+                    text = addon.description
+                    textSize = 14f
+                    setTextColor(Color.rgb(170, 180, 198))
+                    maxLines = 2
+                    setPadding(0, dp(6), 0, 0)
+                })
             }
-            val p = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) }
-            card.addView(remove, p)
+            // As in Nuvio: switch on or off, order, the add-on's own settings, remove.
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            fun button(label: String, key: String, primary: Boolean = false, click: () -> Unit) =
+                row.addView(action(label, primary).apply {
+                    tag = "$key:${addon.baseUrl}"
+                    setOnClickListener { click() }
+                }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
+            button(if (addon.enabled) "Açık" else "Kapalı", "on", primary = addon.enabled) {
+                repository.setEnabled(addon.baseUrl, !addon.enabled)
+                renderAddons()
+            }
+            if (index > 0) button("Yukarı", "up") {
+                repository.move(addon.baseUrl, -1)
+                renderAddons()
+            }
+            if (index < addons.lastIndex) button("Aşağı", "down") {
+                repository.move(addon.baseUrl, 1)
+                renderAddons()
+            }
+            if (addon.configurable) button("Ayarlarını değiştir", "conf") { showConfigure(addon) }
+            button("Kaldır", "rm") { confirmRemove(addon.baseUrl, addon.name) }
+            card.addView(row, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
+            card.alpha = if (addon.enabled) 1f else 0.6f
             addCardToList(card)
         }
 
@@ -378,6 +402,21 @@ class MediaAddonsActivity : Activity() {
         dialog.show()
         dialog.window?.setLayout(dp(620), LinearLayout.LayoutParams.WRAP_CONTENT)
         input.requestFocus()
+    }
+
+    /**
+     * The add-on's settings live on its own web page. It is opened on the phone; the address it
+     * gives at the end is entered here with "Eklenti ekle", and replaces this one in its place.
+     */
+    private fun showConfigure(addon: InstalledMediaAddon) {
+        AlertDialog.Builder(this)
+            .setTitle("${addon.name} · Ayarlar")
+            .setMessage(
+                "Bu adresi telefonunda aç ve ayarları yap:\n\n${addon.configureUrl}\n\n" +
+                    "Sayfanın verdiği yeni eklenti adresini \"Eklenti ekle\" ile buraya gir; eklenti listede aynı yerinde güncellenir."
+            )
+            .setPositiveButton("Tamam", null)
+            .show()
     }
 
     private fun confirmRemove(url: String, name: String) {

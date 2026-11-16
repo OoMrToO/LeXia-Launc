@@ -1,4 +1,5 @@
 # Each line is one item on the "Yenilikler" card shown after an update. Keep it short.
+Medya kaynakları Nuvio'daki gibi: eklentileri aç/kapat, sırala, ayarlarını değiştir. http veren eklentilerin kaynakları da artık oynuyor.
 Fragmanlar artık YouTube çerçevesi olmadan, LeXia'nın kendi oynatıcısında oynar; olmazsa eskisi gibi açılır. Ayarlar › Oynatma ve Takip'ten kapatılabilir.
 Oynat: en uygun kaynak kendiliğinden başlar, Geri ile kaynak listesine dönülür. Listede 4K, HDR, dublaj gibi rozetler; dizilerde bölüm bitince sıradaki bölüm.
 Yeni oynatıcı: OK durdurur, sağ/sol 10 sn sarar. Bozuk harfli Türkçe altyazılar düzelir; altyazı boyutu ve zamanlaması oynatıcıda, dil tercihleri Ayarlar › Oynatma ve Takip'te.
