@@ -32,7 +32,9 @@ android {
         }
         create("setup") {
             dimension = "kind"
-            versionCode = 1
+            // One below the full build of the same run, but above the LeXia + Nuvio trial (1000+):
+            // kur.apk installs over that trial too, then updates itself to the full build.
+            versionCode = 1999 + (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
             buildConfigField("boolean", "SETUP", "true")
             buildConfigField("String", "BUILD_NO", "\"0\"")
         }
