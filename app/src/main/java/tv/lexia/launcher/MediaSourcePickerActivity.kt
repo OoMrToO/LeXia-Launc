@@ -278,7 +278,7 @@ class MediaSourcePickerActivity : Activity() {
         if (notes.torrents.get() > 0) {
             reasons.add("Eklentiler ${notes.torrents.get()} kaynak verdi, ama hepsi torrent. LeXia torrent oynatmıyor; doğrudan bağlantı veren bir eklenti gerekir (örneğin debrid ayarlı bir eklenti).")
         }
-        if (notes.unplayable.get() > 0) reasons.add("${notes.unplayable.get()} kaynak güvenli (https) bir video adresi değildi.")
+        if (notes.unplayable.get() > 0) reasons.add("${notes.unplayable.get()} kaynak oynatılabilir bir video adresi vermedi (bir web sayfası ya da YouTube bağlantısıydı).")
         if (notes.failed.get() > 0) reasons.add("${notes.failed.get()} eklenti cevap vermedi.")
         if (imdb.isEmpty()) reasons.add("Bu yapımın IMDb kimliği bulunamadı; çoğu eklenti onsuz arama yapamaz.")
         if (stremio > 0 && notes.asked.get() == 0) reasons.add("Kurulu Stremio eklentileri bu tür içeriği desteklemiyor.")

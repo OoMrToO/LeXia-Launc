@@ -20,8 +20,20 @@ internal data class InstalledMediaAddon(
     val version: String,
     val types: List<String>,
     val resources: List<String>,
-    val idPrefixes: List<String> = emptyList()
-)
+    val idPrefixes: List<String> = emptyList(),
+    /** Switched off in Ayarlar › Medya kaynakları: kept, but not asked (as in Nuvio). */
+    val enabled: Boolean = true,
+    val description: String = "",
+    /** The add-on has a settings page of its own (behaviorHints.configurable). */
+    val configurable: Boolean = false
+) {
+    /** The add-on's own settings page, opened in a browser. */
+    val configureUrl: String
+        get() {
+            val q = baseUrl.indexOf('?')
+            return if (q < 0) "$baseUrl/configure" else baseUrl.substring(0, q) + "/configure" + baseUrl.substring(q)
+        }
+}
 
 internal data class MediaEpisode(
     val id: String,
@@ -104,7 +116,10 @@ internal class MediaAddonRepository(context: Context) {
                     version = item.optString("version"),
                     types = strings(item.optJSONArray("types")),
                     resources = strings(item.optJSONArray("resources")),
-                    idPrefixes = strings(item.optJSONArray("idPrefixes"))
+                    idPrefixes = strings(item.optJSONArray("idPrefixes")),
+                    enabled = item.optBoolean("enabled", true),
+                    description = item.optString("description"),
+                    configurable = item.optBoolean("configurable", false)
                 )
             }
         } catch (_: Exception) {
@@ -114,9 +129,8 @@ internal class MediaAddonRepository(context: Context) {
 
     /** Downloads and validates the manifest before persisting the add-on. */
     fun addAddon(address: String): InstalledMediaAddon {
-        val base = normalizeBaseUrl(address)
-        val manifestUrl = base.newBuilder().addPathSegment("manifest.json").build()
-        val json = getJson(manifestUrl)
+        val base = canonicalBase(address)
+        val json = getJson(endpoint(base, "manifest.json"))
         val id = json.optString("id").trim()
         val name = json.optString("name").trim()
         val version = json.optString("version").trim()
@@ -130,25 +144,47 @@ internal class MediaAddonRepository(context: Context) {
         val resources = parseResourceNames(json.optJSONArray("resources"))
 
         val addon = InstalledMediaAddon(
-            baseUrl = base.toString().trimEnd('/'),
+            baseUrl = base,
             id = id,
             name = name,
             version = version.ifBlank { "—" },
             types = types,
             resources = resources,
-            idPrefixes = strings(json.optJSONArray("idPrefixes"))
+            idPrefixes = strings(json.optJSONArray("idPrefixes")),
+            description = json.optString("description").take(300),
+            configurable = json.optJSONObject("behaviorHints")?.optBoolean("configurable", false) == true
         )
-        val current = installedAddons().filterNot { it.baseUrl == addon.baseUrl }.toMutableList()
-        current.add(addon)
+        // Added again (a new configuration): it keeps its place in the list.
+        val current = installedAddons().toMutableList()
+        val at = current.indexOfFirst { same(it.baseUrl, base) || it.id == addon.id && it.baseUrl.substringBefore('?') == base.substringBefore('?') }
+        if (at >= 0) current[at] = addon.copy(enabled = current[at].enabled) else current.add(addon)
         saveInstalled(current)
         return addon
     }
 
     fun removeAddon(baseUrl: String) {
-        val normalized = runCatching { normalizeBaseUrl(baseUrl).toString().trimEnd('/') }
-            .getOrDefault(baseUrl.trim().trimEnd('/'))
-        saveInstalled(installedAddons().filterNot { it.baseUrl == normalized })
+        saveInstalled(installedAddons().filterNot { same(it.baseUrl, baseUrl) })
     }
+
+    fun setEnabled(baseUrl: String, enabled: Boolean) {
+        saveInstalled(installedAddons().map { if (same(it.baseUrl, baseUrl)) it.copy(enabled = enabled) else it })
+    }
+
+    /** Moves an add-on up (-1) or down (+1): sources are listed in this order, as in Nuvio. */
+    fun move(baseUrl: String, step: Int) {
+        val list = installedAddons().toMutableList()
+        val from = list.indexOfFirst { same(it.baseUrl, baseUrl) }
+        val to = from + step
+        if (from < 0 || to !in list.indices) return
+        list.add(to, list.removeAt(from))
+        saveInstalled(list)
+    }
+
+    /** The add-ons that are switched on, in the viewer's order. */
+    private fun activeAddons() = installedAddons().filter { it.enabled }
+
+    private fun same(a: String, b: String) =
+        runCatching { canonicalBase(a) }.getOrDefault(a).equals(runCatching { canonicalBase(b) }.getOrDefault(b), ignoreCase = true)
 
     /**
      * Queries installed meta resources for Stremio episode IDs. Those IDs are passed through to
@@ -162,7 +198,7 @@ internal class MediaAddonRepository(context: Context) {
         ).distinct()
         val result = LinkedHashMap<String, MediaEpisode>()
 
-        for (addon in installedAddons()) {
+        for (addon in activeAddons()) {
             if ("meta" !in addon.resources || !supports(addon, "series")) continue
             for (id in lookupIds) {
                 if (!supportsId(addon, id)) continue
@@ -279,7 +315,7 @@ internal class MediaAddonRepository(context: Context) {
         require(videoId.isNotBlank() && videoId.length <= 300) { "Geçersiz içerik kimliği." }
 
         val result = LinkedHashMap<String, MediaSubtitle>()
-        for (addon in installedAddons()) {
+        for (addon in activeAddons()) {
             val resource = addon.resources.firstOrNull {
                 it.equals("subtitles", true) || it.equals("subtitle", true)
             } ?: continue
@@ -321,7 +357,7 @@ internal class MediaAddonRepository(context: Context) {
         require(type == "movie" || type == "series") { "Desteklenmeyen içerik türü." }
         require(videoId.isNotBlank() && videoId.length <= 300) { "Geçersiz içerik kimliği." }
 
-        val addons = installedAddons().filter {
+        val addons = activeAddons().filter {
             "stream" in it.resources && supports(it, type) && supportsId(it, videoId)
         }
         val found = SearchNotes()
@@ -451,45 +487,46 @@ internal class MediaAddonRepository(context: Context) {
         }
     }
 
-    private fun endpoint(baseUrl: String, resource: String, type: String, id: String): HttpUrl {
-        val base = normalizeBaseUrl(baseUrl)
-        return base.newBuilder()
-            .addPathSegment(resource)
-            .addPathSegment(type)
-            .addPathSegment("$id.json")
-            .build()
+    /**
+     * "<base>/<parts>.json", as Nuvio asks it: a configured add-on keeps its settings in the
+     * address, either in the path or after a "?", and the "?" part goes at the very end.
+     */
+    private fun endpoint(base: String, vararg parts: String): HttpUrl {
+        val q = base.indexOf('?')
+        val path = if (q < 0) base else base.substring(0, q)
+        val query = if (q < 0) null else base.substring(q + 1).takeIf { it.isNotEmpty() }
+        val builder = path.toHttpUrlOrNull()?.newBuilder()
+            ?: throw IllegalArgumentException("Geçerli bir eklenti adresi gir.")
+        parts.forEachIndexed { i, part -> builder.addPathSegment(if (i == parts.lastIndex && !part.endsWith(".json")) "$part.json" else part) }
+        if (query != null) builder.encodedQuery(query)
+        return builder.build()
     }
 
-    private fun normalizeBaseUrl(raw: String): HttpUrl {
+    /** The add-on's address without "/manifest.json", kept with its "?…" settings (Nuvio's canonical form). */
+    private fun canonicalBase(raw: String): String {
         var value = raw.trim()
         require(value.isNotEmpty()) { "Eklenti adresi boş olamaz." }
         // "stremio://…/manifest.json" is how add-on pages write their install link.
         if (value.startsWith("stremio://", ignoreCase = true)) value = "https://" + value.substring("stremio://".length)
         if (!value.contains("://")) value = "https://$value"
         value = value.substringBefore('#')
-        require('?' !in value) {
-            "Adresinde soru işareti olan eklentiler desteklenmiyor."
-        }
-        if (value.endsWith("/manifest.json", ignoreCase = true)) {
-            value = value.dropLast("/manifest.json".length)
-        }
-        value = value.trimEnd('/')
-        val url = value.toHttpUrlOrNull()
-            ?: throw IllegalArgumentException("Geçerli bir HTTP(S) eklenti adresi gir.")
-        require(url.scheme == "https") {
-            "Güvenlik nedeniyle yalnızca HTTPS eklentileri destekleniyor."
-        }
+        val q = value.indexOf('?')
+        var path = (if (q < 0) value else value.substring(0, q)).trimEnd('/')
+        val query = if (q < 0) "" else value.substring(q)
+        if (path.endsWith("/manifest.json", ignoreCase = true)) path = path.dropLast("/manifest.json".length).trimEnd('/')
+        val url = path.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("Geçerli bir eklenti adresi gir.")
         require(url.username.isEmpty() && url.password.isEmpty()) {
             "Kullanıcı adı/şifre içeren adresler kabul edilmiyor."
         }
-        return url.newBuilder().encodedPath(url.encodedPath.trimEnd('/') + "/").build()
+        return path + query
     }
 
+    /** A video or subtitle address the player can open: http or https, as Nuvio allows. */
     private fun isDirectHttpUrl(raw: String): Boolean {
         if (raw.isBlank() || raw.length > 4096) return false
         val url = raw.toHttpUrlOrNull() ?: return false
-        return url.scheme == "https" &&
-            url.username.isEmpty() && url.password.isEmpty()
+        return url.username.isEmpty() && url.password.isEmpty()
     }
 
     private fun parseResourceNames(raw: JSONArray?): List<String> {
@@ -516,6 +553,9 @@ internal class MediaAddonRepository(context: Context) {
                     .put("types", JSONArray(addon.types))
                     .put("resources", JSONArray(addon.resources))
                     .put("idPrefixes", JSONArray(addon.idPrefixes))
+                    .put("enabled", addon.enabled)
+                    .put("description", addon.description)
+                    .put("configurable", addon.configurable)
             )
         }
         prefs.edit().putString(KEY_INSTALLED, array.toString()).apply()

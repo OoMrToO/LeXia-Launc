@@ -3,10 +3,10 @@
   LeXia's site (Cloudflare, lexialauncher.pages.dev) uses Let's Encrypt's newer chain, which ends in
   ISRG Root X2. Android only knows that root from version 14, so on most TVs (Android 7-13) the app
   could not reach its own site. The two ISRG roots are added here next to the TV's own list; nothing
-  else changes (still HTTPS only).
+  else changes. Plain http is allowed too: many add-ons serve their videos over http, and Nuvio plays them.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="@raw/isrg_root_x2" />

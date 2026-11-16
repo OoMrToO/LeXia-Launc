@@ -357,8 +357,8 @@ internal class NuvioJsRuntime {
         return try {
             val fetchUrl = rawUrl.toHttpUrlOrNull()
                 ?: throw IllegalArgumentException("Fetch URL is invalid")
-            require(fetchUrl.scheme == "https") {
-                "Nuvio scraper fetch is restricted to HTTPS URLs"
+            require(fetchUrl.scheme == "https" || fetchUrl.scheme == "http") {
+                "Nuvio scraper fetch is restricted to HTTP(S) URLs"
             }
             val headers = runCatching { JSONObject(rawHeaders) }.getOrDefault(JSONObject())
             val request = Request.Builder().url(fetchUrl)
@@ -569,8 +569,9 @@ internal class NuvioJsRuntime {
         return result
     }
 
+    /** http or https, as Nuvio allows; never another scheme. */
     private fun isHttps(raw: String): Boolean =
-        raw.toHttpUrlOrNull()?.scheme == "https"
+        raw.toHttpUrlOrNull() != null
 
     private fun polyfillCode(): String = """
         globalThis.global = globalThis;
