@@ -38,4 +38,6 @@
 -dontwarn javax.script.**
 -dontwarn okhttp3.internal.sse.**
 -dontwarn org.jsoup.helper.Re2jRegex
+# jsoup marks its packages with JSpecify annotations that are only needed while compiling.
+-dontwarn org.jspecify.annotations.**
 -keepattributes *Annotation*
