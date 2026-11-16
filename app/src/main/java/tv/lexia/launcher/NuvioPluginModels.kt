@@ -68,28 +68,3 @@ internal fun jsPluginMediaType(
     mediaType.equals("tv", ignoreCase = true) && season != null && episode != null &&
     supportedTypes.any { it.equals("series", ignoreCase = true) }
 ) "series" else mediaType
-
-/** A scraper result as the source list reads it. */
-internal data class NuvioJsSubtitle(
-    val url: String,
-    val language: String = "Unknown",
-    val headers: Map<String, String> = emptyMap()
-)
-
-internal data class NuvioJsStream(
-    val title: String,
-    val name: String,
-    val url: String,
-    val quality: String = "",
-    val headers: Map<String, String> = emptyMap(),
-    val subtitles: List<NuvioJsSubtitle> = emptyList(),
-    val language: String = "",
-    val server: String = "",
-    val size: String = "",
-    val streamType: String = "",
-    val seeders: Int? = null,
-    val peers: Int? = null,
-    val infoHash: String = "",
-    val audioDelayMs: Long? = null,
-    val audioDelayLanguage: String = ""
-)
