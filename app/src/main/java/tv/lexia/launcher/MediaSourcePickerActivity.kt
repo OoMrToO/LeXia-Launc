@@ -280,6 +280,16 @@ class MediaSourcePickerActivity : Activity() {
         }
         if (notes.unplayable.get() > 0) reasons.add("${notes.unplayable.get()} kaynak oynatılabilir bir video adresi vermedi (bir web sayfası ya da YouTube bağlantısıydı).")
         if (notes.failed.get() > 0) reasons.add("${notes.failed.get()} eklenti cevap vermedi.")
+        val js = nuvioRepository.notes
+        if (js.asked.get() > 0) {
+            reasons.add(
+                if (js.answered.get() == 0) "Nuvio deposundaki ${js.asked.get()} sağlayıcının hiçbiri bu yapım için sonuç vermedi."
+                else "Nuvio sağlayıcılarından ${js.answered.get()} tanesi sonuç verdi" +
+                    (if (js.unplayable.get() > 0) ", ama ${js.unplayable.get()} sonuç video adresi değildi (torrent ya da başka bir bağlantı)." else ".")
+            )
+        } else if (scrapers > 0) {
+            reasons.add("Kurulu Nuvio sağlayıcılarından hiçbiri bu tür içeriği (film/dizi) desteklemiyor ya da hepsi kapalı.")
+        }
         if (imdb.isEmpty()) reasons.add("Bu yapımın IMDb kimliği bulunamadı; çoğu eklenti onsuz arama yapamaz.")
         if (stremio > 0 && notes.asked.get() == 0) reasons.add("Kurulu Stremio eklentileri bu tür içeriği desteklemiyor.")
         if (scrapers > 0 && BuildConfig.TMDB_API_KEY.isBlank()) reasons.add("Bu sürümde TMDB anahtarı yok; Nuvio scraper'ları yapımı tanıyamıyor.")

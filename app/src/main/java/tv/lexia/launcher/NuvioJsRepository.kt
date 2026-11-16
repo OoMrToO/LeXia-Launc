@@ -63,14 +63,61 @@ internal data class NuvioRepositoryInfo(
  *
  * Nuvio repositories are not Stremio add-ons: their manifest has a top-level "scrapers" array
  * and each scraper points to a JavaScript file exporting getStreams(). Code is downloaded lazily
- * and executed in NuvioJsRuntime's isolated QuickJS context.
+ * and executed in Nuvio's own runtime (NuvioPluginRuntime).
  */
 internal class NuvioJsRepository(context: Context) {
 
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val codeDirectory = File(appContext.filesDir, "nuvio_js_scrapers")
-    private val runtime = NuvioJsRuntime()
+    /** Nuvio's own scraper runtime, copied unchanged (NuvioPluginRuntime.kt). */
+    private val runtime = NuvioPluginRuntime()
+    private val gson = com.google.gson.Gson()
+
+    /** Runs one scraper the way Nuvio's PluginManager does, and reads its answer for the source list. */
+    private suspend fun runScraper(
+        code: String,
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?,
+        scraper: NuvioScraperInfo,
+        settingsJson: String
+    ): List<NuvioJsStream> {
+        val settings: Map<String, Any> = try {
+            @Suppress("UNCHECKED_CAST")
+            (gson.fromJson(settingsJson, Map::class.java) as? Map<String, Any>).orEmpty()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        return runtime.executePlugin(
+            code = code,
+            tmdbId = tmdbId,
+            mediaType = jsPluginMediaType(mediaType, scraper.supportedTypes, season, episode),
+            season = season,
+            episode = episode,
+            scraperId = scraper.id,
+            scraperSettings = settings
+        ).map { r ->
+            NuvioJsStream(
+                title = r.title,
+                name = r.name.orEmpty(),
+                url = r.url,
+                quality = r.quality.orEmpty(),
+                headers = r.headers.orEmpty(),
+                subtitles = r.subtitles.map { NuvioJsSubtitle(it.url, it.lang, it.headers.orEmpty()) },
+                language = r.language.orEmpty(),
+                server = r.provider.orEmpty(),
+                size = r.size.orEmpty(),
+                streamType = r.type.orEmpty(),
+                seeders = r.seeders,
+                peers = r.peers,
+                infoHash = r.infoHash.orEmpty(),
+                audioDelayMs = r.audioDelayMs?.toLong(),
+                audioDelayLanguage = r.audioDelayLanguage.orEmpty()
+            )
+        }
+    }
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -90,6 +137,19 @@ internal class NuvioJsRepository(context: Context) {
             emptyList()
         }
     }
+
+    /** What the last source search ran into, for telling the viewer why nothing came. */
+    class SearchNotes {
+        /** Scrapers that were run. */
+        val asked = java.util.concurrent.atomic.AtomicInteger()
+        /** Scrapers that gave at least one result. */
+        val answered = java.util.concurrent.atomic.AtomicInteger()
+        /** Results that were not a video address (a magnet or torrent link, say). */
+        val unplayable = java.util.concurrent.atomic.AtomicInteger()
+    }
+
+    @Volatile var notes = SearchNotes()
+        private set
 
     fun installedScraperCount(): Int = installedRepositories().sumOf { it.scrapers.size }
 
@@ -235,6 +295,9 @@ internal class NuvioJsRepository(context: Context) {
             }
             .take(MAX_SCRAPERS_PER_SEARCH)
 
+        val found = SearchNotes()
+        notes = found
+        found.asked.set(scrapers.size)
         if (scrapers.isEmpty()) return@runBlocking emptyList()
         if (BuildConfig.TMDB_API_KEY.isBlank()) {
             Log.w(TAG, "TMDB_API_KEY is empty; Nuvio scrapers that resolve title metadata through TMDB may return no streams.")
@@ -251,18 +314,20 @@ internal class NuvioJsRepository(context: Context) {
                                 val code = loadScraperCode(repo, scraper)
                                 if (code.isBlank()) return@withTimeoutOrNull emptyList()
                                 Log.d(TAG, "Executing Nuvio scraper ${scraper.name} (${scraper.id})")
-                                val rawStreams = runtime.execute(
+                                val rawStreams = runScraper(
                                     code = code,
-                                    mediaId = nuvioMediaId,
+                                    tmdbId = nuvioMediaId,
                                     mediaType = normalizedType,
                                     season = resolvedSeason,
                                     episode = resolvedEpisode,
-                                    scraperId = scraper.id,
+                                    scraper = scraper,
                                     settingsJson = scraperSettings(repo.id, scraper.id)
                                 )
                                 Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
+                                if (rawStreams.isNotEmpty()) found.answered.incrementAndGet()
                                 rawStreams.mapNotNull { result ->
                                     if (!isHttps(result.url)) {
+                                        found.unplayable.incrementAndGet()
                                         Log.w(TAG, "Rejected non-HTTPS stream from ${scraper.name}")
                                         return@mapNotNull null
                                     }
@@ -336,10 +401,10 @@ internal class NuvioJsRepository(context: Context) {
         val outcome = withTimeoutOrNull(SCRAPER_TIMEOUT_MS) {
             try {
                 val code = loadScraperCode(repo, scraper)
-                val streams = runtime.execute(
-                    code = code, mediaId = mediaId.trim().removePrefix("tmdb:"),
+                val streams = runScraper(
+                    code = code, tmdbId = mediaId.trim().removePrefix("tmdb:"),
                     mediaType = type, season = season, episode = episode,
-                    scraperId = scraper.id, settingsJson = scraperSettings(repo.id, scraper.id)
+                    scraper = scraper, settingsJson = scraperSettings(repo.id, scraper.id)
                 )
                 val valid = streams.count { isHttps(it.url) }
                 NuvioScraperTestResult(
