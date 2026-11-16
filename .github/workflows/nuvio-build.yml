@@ -29,6 +29,10 @@ jobs:
     env:
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_KEY }}
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      DIST_TOKEN: ${{ secrets.DIST_TOKEN }}
+      DIST_REPO: exxsss/Lxialnch
+      # Where the trial APKs go for the TV's Downloader; apart from the branch LeXia updates from.
+      TRIAL_BRANCH: dnm4h7q2xw9k
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -41,6 +45,12 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Version numbers
+        run: |
+          # Above every LeXia build so far, so the trial installs over the LeXia on the TV; and a
+          # build number LeXia's own updater will not try to "update" back to the plain LeXia.
+          echo "LEXIA_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "LEXIA_BUILD_NO=$((9000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Put LeXia inside Nuvio
         run: python3 scripts/merge_nuvio.py nuvio
       - name: Signing key
@@ -68,3 +78,20 @@ jobs:
             nuvio/app/build/outputs/apk/full/debug/*arm64-v8a*.apk
           if-no-files-found: error
           retention-days: 7
+      # The same APKs where the TV's Downloader can fetch them (the Actions artifact needs a login).
+      - name: Trial copy for the TV
+        if: env.DIST_TOKEN != ''
+        run: |
+          set -e
+          TOKEN=$(printf '%s' "$DIST_TOKEN" | tr -d '[:space:]')
+          M=$(mktemp -d)
+          cp nuvio/app/build/outputs/apk/full/debug/*armeabi-v7a*.apk $M/lexia-nuvio.apk
+          cp nuvio/app/build/outputs/apk/full/debug/*arm64-v8a*.apk $M/lexia-nuvio-64.apk
+          ls -la $M
+          cd $M
+          git init -q -b "$TRIAL_BRANCH"
+          git add -A
+          git -c user.name="LeXia" -c user.email="lexia@users.noreply.github.com" commit -q -m "deneme $LEXIA_BUILD_NO"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${DIST_REPO}.git" "$TRIAL_BRANCH"
+          sleep 5
+          curl -sS -o /dev/null -w "deneme apk %{http_code} %{size_download}\n" "https://raw.githubusercontent.com/${DIST_REPO}/${TRIAL_BRANCH}/lexia-nuvio.apk" || true

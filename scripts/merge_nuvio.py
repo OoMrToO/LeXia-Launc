@@ -139,7 +139,7 @@ android {
 
     defaultConfig {
         minSdk = 24
-        buildConfigField("String", "BUILD_NO", quoted(System.getenv("GITHUB_RUN_NUMBER") ?: "0"))
+        buildConfigField("String", "BUILD_NO", quoted(System.getenv("LEXIA_BUILD_NO") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "0"))
         buildConfigField("boolean", "SETUP", "false")
         buildConfigField("String", "SITE", quoted(System.getenv("LEXIA_SITE") ?: "https://lexia.invalid"))
         buildConfigField("String", "TMDB_API_KEY", quoted(System.getenv("TMDB_API_KEY") ?: ""))
@@ -178,7 +178,7 @@ def patch_nuvio():
     build = NUVIO / "app/build.gradle.kts"
     replace_once(build, 'applicationId = "com.nuvio.tv"', 'applicationId = "tv.lexia.launcher"')
     text = build.read_text(encoding="utf-8")
-    text, n = re.subn(r"versionCode = \d+", 'versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()', text, count=1)
+    text, n = re.subn(r"versionCode = \d+", 'versionCode = (System.getenv("LEXIA_VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()', text, count=1)
     if n != 1:
         fail("app/build.gradle.kts: versionCode not found")
     build.write_text(text, encoding="utf-8")
