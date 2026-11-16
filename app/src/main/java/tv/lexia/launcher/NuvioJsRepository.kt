@@ -2,24 +2,26 @@ package tv.lexia.launcher
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.core.plugin.PluginManager
+import com.nuvio.tv.core.plugin.PluginRuntime
+import com.nuvio.tv.core.plugin.cloudstream.ExternalExtensionLoader
+import com.nuvio.tv.core.plugin.cloudstream.ExternalExtensionRunner
+import com.nuvio.tv.core.plugin.cloudstream.ExternalRepoParser
+import com.nuvio.tv.core.profile.ProfileManager
+import com.nuvio.tv.core.sync.PluginSyncService
+import com.nuvio.tv.data.local.PluginDataStore
+import com.nuvio.tv.data.local.ProfileDataStoreFactory
+import com.nuvio.tv.domain.model.LocalScraperResult
+import com.nuvio.tv.domain.model.ScraperInfo
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.IOException
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 internal data class NuvioScraperInfo(
     val id: String,
@@ -40,14 +42,6 @@ internal data class NuvioScraperInfo(
     val supportsExternalPlayer: Boolean
 )
 
-internal data class NuvioScraperTestResult(
-    val scraperName: String,
-    val elapsedMs: Long,
-    val streamCount: Int,
-    val message: String,
-    val successful: Boolean
-)
-
 internal data class NuvioRepositoryInfo(
     val id: String,
     val name: String,
@@ -59,500 +53,251 @@ internal data class NuvioRepositoryInfo(
 )
 
 /**
- * Installer and executor for Nuvio's JavaScript scraper-manifest format.
- *
- * Nuvio repositories are not Stremio add-ons: their manifest has a top-level "scrapers" array
- * and each scraper points to a JavaScript file exporting getStreams(). Code is downloaded lazily
- * and executed in NuvioJsRuntime's isolated QuickJS context.
+ * LeXia's door to Nuvio's own plugin system. Everything here is done by NuvioTV's files, copied
+ * byte for byte under app/src/main/java/com/nuvio/tv (PluginManager, PluginRuntime,
+ * PluginDataStore, the plugin models): adding, refreshing and removing repositories, turning
+ * scrapers on and off, their settings, running them. This class only builds those objects once
+ * and turns their answers into what LeXia's screens and player read.
  */
 internal class NuvioJsRepository(context: Context) {
 
     private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val codeDirectory = File(appContext.filesDir, "nuvio_js_scrapers")
-    private val runtime = NuvioJsRuntime()
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(false)
-        .build()
 
-    fun installedRepositories(): List<NuvioRepositoryInfo> {
-        val raw = prefs.getString(KEY_REPOSITORIES, "[]") ?: "[]"
-        return try {
-            val array = JSONArray(raw)
-            (0 until array.length()).mapNotNull { index ->
-                array.optJSONObject(index)?.let(::parseStoredRepository)
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
+    /** What the last source search ran into, for telling the viewer why nothing came. */
+    class SearchNotes {
+        /** Scrapers that were run. */
+        val asked = AtomicInteger()
+        /** Scrapers that gave at least one result. */
+        val answered = AtomicInteger()
+        /** Results that were not a video address (a magnet or torrent link, say). */
+        val unplayable = AtomicInteger()
     }
 
-    fun installedScraperCount(): Int = installedRepositories().sumOf { it.scrapers.size }
+    @Volatile var notes = SearchNotes()
+        private set
 
-    /** Validates the Nuvio manifest and registers all scraper metadata. JS code is fetched on demand. */
-    fun addRepository(address: String): NuvioRepositoryInfo {
-        val manifestUrl = normalizeManifestUrl(address)
-        val manifest = getJson(manifestUrl)
-        val name = manifest.optString("name").trim()
-        val version = manifest.optString("version").trim()
-        val rawScrapers = manifest.optJSONArray("scrapers")
-            ?: throw IllegalArgumentException("Bu bir Nuvio eklenti deposu değil: manifest içinde 'scrapers' listesi bulunamadı.")
-        require(name.isNotBlank() && rawScrapers.length() > 0) {
-            "Nuvio deposunda ad veya scraper listesi bulunamadı."
-        }
+    private val manager: PluginManager get() = nuvio(appContext)
 
-        val scrapers = (0 until rawScrapers.length()).mapNotNull { index ->
-            val item = rawScrapers.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optString("id").trim()
-            val scraperName = item.optString("name").trim()
-            val filename = item.optString("filename").trim()
-            if (id.isBlank() || scraperName.isBlank() || filename.isBlank()) return@mapNotNull null
-            NuvioScraperInfo(
-                id = id,
-                name = scraperName,
-                description = item.optString("description"),
-                version = item.optString("version").ifBlank { version },
-                author = item.optString("author"),
-                filename = filename,
-                supportedTypes = stringList(item.optJSONArray("supportedTypes")).ifEmpty { listOf("movie", "tv") },
-                enabled = item.optBoolean("enabled", true),
-                hasSettings = item.optBoolean("hasSettings", false),
-                limited = item.optBoolean("limited", false),
-                logo = item.optString("logo"),
-                contentLanguage = stringList(item.optJSONArray("contentLanguage")),
-                formats = stringList(item.optJSONArray("formats")).ifEmpty {
-                    stringList(item.optJSONArray("supportedFormats"))
-                },
-                supportedPlatforms = stringList(item.optJSONArray("supportedPlatforms")),
-                disabledPlatforms = stringList(item.optJSONArray("disabledPlatforms")),
-                supportsExternalPlayer = item.optBoolean("supportsExternalPlayer", false)
+    fun installedRepositories(): List<NuvioRepositoryInfo> = runBlocking {
+        startMigration(appContext)
+        // While repositories saved by older LeXia builds are being added to Nuvio's store, they
+        // are shown as they were saved.
+        if (migration?.isAlive == true) return@runBlocking oldRepositories(appContext)
+        val repositories = manager.repositories.first()
+        val scrapers = manager.scrapers.first()
+        repositories.map { repo ->
+            NuvioRepositoryInfo(
+                id = repo.id,
+                name = repo.name,
+                version = "",
+                description = repo.description.orEmpty(),
+                manifestUrl = repo.url,
+                scrapers = scrapers.filter { it.repositoryId == repo.id }.map(::info),
+                enabled = repo.enabled
             )
         }
-        require(scrapers.isNotEmpty()) { "Nuvio manifestinde geçerli bir scraper bulunamadı." }
-
-        // Only accept relative paths or HTTPS absolute URLs. Never allow file:// or local paths.
-        scrapers.forEach { resolveCodeUrl(manifestUrl, it.filename) }
-
-        val repositoryId = sha256(manifestUrl)
-        val previous = installedRepositories().firstOrNull { it.manifestUrl == manifestUrl }
-        val oldEnabled = previous?.scrapers?.associate { it.id to it.enabled }.orEmpty()
-        val mergedScrapers = scrapers.map { scraper ->
-            scraper.copy(enabled = oldEnabled[scraper.id] ?: scraper.enabled)
-        }
-        val repository = NuvioRepositoryInfo(
-            id = repositoryId,
-            name = name,
-            version = version,
-            description = manifest.optString("description"),
-            manifestUrl = manifestUrl,
-            scrapers = mergedScrapers,
-            enabled = previous?.enabled ?: true
-        )
-        val updated = installedRepositories().filterNot { it.manifestUrl == manifestUrl } + repository
-        saveRepositories(updated)
-        return repository
     }
 
-    /** Re-fetches the manifest and scraper metadata while preserving each scraper toggle and saved settings. */
+    fun installedScraperCount(): Int = runBlocking { manager.scrapers.first().size }
+
+    fun addRepository(address: String): NuvioRepositoryInfo {
+        val repo = runBlocking { manager.addRepository(address) }.getOrThrow()
+        return installedRepositories().firstOrNull { it.id == repo.id }
+            ?: throw IllegalStateException("Depo eklenemedi.")
+    }
+
     fun refreshRepository(repositoryId: String): NuvioRepositoryInfo {
-        val current = installedRepositories().firstOrNull { it.id == repositoryId }
-            ?: throw IllegalArgumentException("Nuvio deposu bulunamadı.")
-        return addRepository(current.manifestUrl)
+        runBlocking { manager.refreshRepository(repositoryId) }.getOrThrow()
+        return installedRepositories().firstOrNull { it.id == repositoryId }
+            ?: throw IllegalStateException("Depo bulunamadı.")
     }
 
-    fun removeRepository(repositoryId: String) {
-        val remaining = installedRepositories().filterNot { it.id == repositoryId }
-        saveRepositories(remaining)
-        val settingsPrefix = "settings_" + repositoryId + "_"
-        prefs.edit().apply {
-            prefs.all.keys.filter { it.startsWith(settingsPrefix) }.forEach(::remove)
-        }.apply()
-        codeDirectory.listFiles()?.forEach { file ->
-            if (file.name.startsWith(repositoryId.take(16))) file.delete()
-        }
-    }
+    fun removeRepository(repositoryId: String) = runBlocking { manager.removeRepository(repositoryId) }
+
+    /** Scraper ids are Nuvio's own ("<repository id>:<scraper id>"). */
+    fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) =
+        runBlocking { manager.toggleScraper(scraperId, enabled) }
+
+    fun setAllScrapersEnabled(repositoryId: String, enabled: Boolean) =
+        runBlocking { manager.toggleAllScrapersForRepo(repositoryId, enabled) }
 
     fun scraperSettings(repositoryId: String, scraperId: String): String =
-        prefs.getString("settings_" + repositoryId + "_" + scraperId, "{}") ?: "{}"
+        JSONObject(runBlocking { store(appContext).getScraperSettings(scraperId) }).toString()
 
     fun setScraperSettings(repositoryId: String, scraperId: String, settingsJson: String) {
-        val parsed = runCatching { JSONObject(settingsJson) }.getOrNull()
+        val json = runCatching { JSONObject(settingsJson) }.getOrNull()
             ?: throw IllegalArgumentException("Ayarlar geçerli bir JSON nesnesi olmalı.")
-        prefs.edit().putString("settings_" + repositoryId + "_" + scraperId, parsed.toString()).apply()
-    }
-
-    fun setRepositoryEnabled(repositoryId: String, enabled: Boolean) {
-        val updated = installedRepositories().map { repo ->
-            if (repo.id == repositoryId) repo.copy(enabled = enabled) else repo
-        }
-        saveRepositories(updated)
-    }
-
-    fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) {
-        val updated = installedRepositories().map { repo ->
-            if (repo.id != repositoryId) repo
-            else repo.copy(scrapers = repo.scrapers.map { scraper ->
-                if (scraper.id == scraperId) scraper.copy(enabled = enabled) else scraper
-            })
-        }
-        saveRepositories(updated)
+        val map = json.keys().asSequence().associateWith { key -> json.get(key) }
+        runBlocking { store(appContext).setScraperSettings(scraperId, map) }
     }
 
     /**
-     * Runs enabled Nuvio JS scrapers for the selected movie/episode.
-     * Network and JavaScript work happens on background dispatchers, never on the UI thread.
+     * Runs Nuvio's enabled scrapers for a title (PluginManager.executeScrapersStreaming).
+     * [mediaId] is a TMDB id, or "<tmdb id>:<season>:<episode>" for an episode. [onPartial]
+     * gets each scraper's sources as soon as that scraper is done (on a background thread).
      */
     fun fetchStreams(
         mediaId: String,
         mediaType: String,
         season: Int? = null,
         episode: Int? = null,
-        /** Called (on a background thread) with each scraper's streams as soon as that scraper is done. */
         onPartial: ((List<MediaStream>) -> Unit)? = null
     ): List<MediaStream> = runBlocking {
-        val normalizedType = if (mediaType == "series" || mediaType == "tv") "tv" else "movie"
-        // Stremio episode IDs commonly look like "tmdb:12345:1:2" or "tt1234567:1:2".
-        // Nuvio's getStreams contract expects the content ID and season/episode as separate args.
+        startMigration(appContext)
+        migration?.join()
         val idParts = mediaId.split(':')
-        val hasEpisodeSuffix = normalizedType == "tv" && idParts.size >= 3 &&
-            idParts[idParts.lastIndex - 1].toIntOrNull() != null &&
-            idParts.last().toIntOrNull() != null
+        val hasEpisodeSuffix = idParts.size >= 3 &&
+            idParts[idParts.lastIndex - 1].toIntOrNull() != null && idParts.last().toIntOrNull() != null
         val resolvedSeason = if (hasEpisodeSuffix) idParts[idParts.lastIndex - 1].toInt() else season
         val resolvedEpisode = if (hasEpisodeSuffix) idParts.last().toInt() else episode
-        val contentId = if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId
-        val nuvioMediaId = contentId.removePrefix("tmdb:")
-        val scrapers = installedRepositories()
-            .filter { it.enabled }
-            .flatMap { repo -> repo.scrapers.map { repo to it } }
-            .filter { (_, scraper) ->
-                scraper.enabled &&
-                    isSupportedOnTv(scraper) &&
-                    scraper.supportedTypes.any { normalizeType(it) == normalizedType }
-            }
-            .take(MAX_SCRAPERS_PER_SEARCH)
+        val tmdbId = (if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId).removePrefix("tmdb:")
 
-        if (scrapers.isEmpty()) return@runBlocking emptyList()
-        if (BuildConfig.TMDB_API_KEY.isBlank()) {
-            Log.w(TAG, "TMDB_API_KEY is empty; Nuvio scrapers that resolve title metadata through TMDB may return no streams.")
+        val found = SearchNotes()
+        notes = found
+        found.asked.set(manager.enabledScrapers.first().count { it.supportsType(mediaType) })
+        val all = ArrayList<MediaStream>()
+        manager.executeScrapersStreaming(tmdbId, mediaType, resolvedSeason, resolvedEpisode).collect { (scraper, results) ->
+            if (results.isNotEmpty()) found.answered.incrementAndGet()
+            val part = results.mapNotNull { r -> toMediaStream(scraper, r) ?: run { found.unplayable.incrementAndGet(); null } }
+            all += part
+            if (part.isNotEmpty()) onPartial?.invoke(part)
         }
-        Log.i(TAG, "Starting ${scrapers.size} Nuvio scrapers for type=${normalizedType}, id=${nuvioMediaId}, season=${resolvedSeason}, episode=${resolvedEpisode}")
+        all.distinctBy { it.url }
+    }
 
-        val semaphore = Semaphore(MAX_PARALLEL_SCRAPERS)
-        val results = coroutineScope {
-            scrapers.map { (repo, scraper) ->
-                async(Dispatchers.IO) {
-                    semaphore.withPermit {
-                        try {
-                            withTimeoutOrNull(SCRAPER_TIMEOUT_MS) {
-                                val code = loadScraperCode(repo, scraper)
-                                if (code.isBlank()) return@withTimeoutOrNull emptyList()
-                                Log.d(TAG, "Executing Nuvio scraper ${scraper.name} (${scraper.id})")
-                                val rawStreams = runtime.execute(
-                                    code = code,
-                                    mediaId = nuvioMediaId,
-                                    mediaType = normalizedType,
-                                    season = resolvedSeason,
-                                    episode = resolvedEpisode,
-                                    scraperId = scraper.id,
-                                    settingsJson = scraperSettings(repo.id, scraper.id)
-                                )
-                                Log.i(TAG, "Nuvio scraper ${scraper.name} returned ${rawStreams.size} raw streams")
-                                rawStreams.mapNotNull { result ->
-                                    if (!isHttps(result.url)) {
-                                        Log.w(TAG, "Rejected non-HTTPS stream from ${scraper.name}")
-                                        return@mapNotNull null
-                                    }
-                                    MediaStream(
-                                        addonName = scraper.name,
-                                        // Scrapers put the provider and quality in "name" ("Vidsrc - 1080p")
-                                        // and the film or file in "title"; both are shown.
-                                        name = result.name.ifBlank { result.title }.ifBlank { scraper.name }.take(120),
-                                        description = listOf(result.title.takeIf { it != result.name }.orEmpty(), result.quality)
-                                            .filter { it.isNotBlank() }
-                                            .distinct()
-                                            .joinToString(" · ")
-                                            .take(300),
-                                        url = result.url,
-                                        headers = result.headers,
-                                        subtitles = result.subtitles.map {
-                                            MediaSubtitle(it.url, it.language, it.language.uppercase())
-                                        },
-                                        quality = result.quality,
-                                        language = result.language,
-                                        server = result.server,
-                                        size = result.size,
-                                        streamType = result.streamType,
-                                        seeders = result.seeders,
-                                        peers = result.peers,
-                                        infoHash = result.infoHash,
-                                        audioDelayMs = result.audioDelayMs,
-                                        audioDelayLanguage = result.audioDelayLanguage
-                                    )
-                                }
-                            } ?: run {
-                                Log.w(TAG, "Nuvio scraper ${scraper.name} timed out after ${SCRAPER_TIMEOUT_MS}ms")
-                                emptyList()
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            Log.w(TAG, "Nuvio scraper ${scraper.name} failed: ${error.message}")
-                            emptyList()
-                        }
-                    }.also { part -> if (part.isNotEmpty()) onPartial?.invoke(part) }
+    private fun info(s: ScraperInfo) = NuvioScraperInfo(
+        id = s.id,
+        name = s.name,
+        description = s.description,
+        version = s.version,
+        author = "",
+        filename = s.filename,
+        supportedTypes = s.supportedTypes,
+        enabled = s.enabled,
+        hasSettings = false,
+        limited = false,
+        logo = s.logo.orEmpty(),
+        contentLanguage = s.contentLanguage,
+        formats = s.formats.orEmpty(),
+        supportedPlatforms = emptyList(),
+        disabledPlatforms = emptyList(),
+        supportsExternalPlayer = false
+    )
+
+    /** A scraper result as LeXia's source list and player take it; null when it is no video address. */
+    private fun toMediaStream(scraper: ScraperInfo, r: LocalScraperResult): MediaStream? {
+        if (r.url.toHttpUrlOrNull() == null) return null
+        val name = r.name.orEmpty()
+        return MediaStream(
+            addonName = scraper.name,
+            // Scrapers put the provider and quality in "name" ("Vidsrc - 1080p") and the film or
+            // file in "title"; both are shown.
+            name = name.ifBlank { r.title }.ifBlank { scraper.name }.take(120),
+            description = listOf(r.title.takeIf { it != name }.orEmpty(), r.quality.orEmpty())
+                .filter { it.isNotBlank() }.distinct().joinToString(" · ").take(300),
+            url = r.url,
+            headers = r.headers.orEmpty(),
+            subtitles = r.subtitles.mapNotNull { sub ->
+                if (sub.url.toHttpUrlOrNull() == null) null else MediaSubtitle(sub.url, sub.lang, sub.lang.uppercase())
+            },
+            quality = r.quality.orEmpty(),
+            language = r.language.orEmpty(),
+            server = r.provider.orEmpty(),
+            size = r.size.orEmpty(),
+            streamType = r.type.orEmpty(),
+            seeders = r.seeders,
+            peers = r.peers,
+            infoHash = r.infoHash.orEmpty(),
+            audioDelayMs = r.audioDelayMs?.toLong(),
+            audioDelayLanguage = r.audioDelayLanguage.orEmpty()
+        )
+    }
+
+    companion object {
+        private const val TAG = "NuvioJsRepository"
+        private const val OLD_PREFS = "nuvio_js_repositories"
+        private const val OLD_KEY = "repositories_v1"
+
+        @Volatile private var dataStore: PluginDataStore? = null
+        @Volatile private var migration: Thread? = null
+
+        /**
+         * Repositories added before LeXia used Nuvio's own system are added again through it, once,
+         * off the main thread (Nuvio downloads every scraper's code when a repository is added).
+         */
+        private fun startMigration(context: Context) = synchronized(this) {
+            if (migration != null) return@synchronized
+            val old = context.applicationContext.getSharedPreferences(OLD_PREFS, Context.MODE_PRIVATE)
+            val urls = oldRepositories(context).map { it.manifestUrl }
+            if (urls.isEmpty()) {
+                migration = Thread {}
+                return@synchronized
+            }
+            migration = Thread {
+                runBlocking {
+                    urls.forEach { url ->
+                        nuvio(context).addRepository(url).onFailure { Log.w(TAG, "Old repository not added again: ${it.message}") }
+                    }
                 }
-            }.flatMap { it.await() }
+                old.edit().remove(OLD_KEY).apply()
+            }.also { it.start() }
         }
-        // Keep identical URLs from different scrapers: provider attribution is part of Nuvio's UI.
-        results.distinctBy { "${it.addonName.lowercase()}|${it.url}" }.take(MAX_STREAMS)
-    }
 
-    /** Runs one selected provider independently for diagnostics in the repository manager. */
-    fun testScraper(
-        repositoryId: String,
-        scraperId: String,
-        mediaId: String,
-        mediaType: String = "movie",
-        season: Int? = null,
-        episode: Int? = null
-    ): NuvioScraperTestResult = runBlocking {
-        val startedAt = System.currentTimeMillis()
-        val repo = installedRepositories().firstOrNull { it.id == repositoryId }
-            ?: throw IllegalArgumentException("Nuvio deposu bulunamadı.")
-        val scraper = repo.scrapers.firstOrNull { it.id == scraperId }
-            ?: throw IllegalArgumentException("Scraper bulunamadı.")
-        require(mediaId.isNotBlank()) { "Test için TMDB içerik kimliği gerekli." }
-        val type = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
-        require(isSupportedOnTv(scraper)) {
-            "Bu sağlayıcı Android TV platformunu desteklemiyor."
-        }
-        require(scraper.supportedTypes.any { normalizeType(it) == type }) {
-            "Bu sağlayıcı $type içeriklerini desteklemiyor."
-        }
-        val outcome = withTimeoutOrNull(SCRAPER_TIMEOUT_MS) {
-            try {
-                val code = loadScraperCode(repo, scraper)
-                val streams = runtime.execute(
-                    code = code, mediaId = mediaId.trim().removePrefix("tmdb:"),
-                    mediaType = type, season = season, episode = episode,
-                    scraperId = scraper.id, settingsJson = scraperSettings(repo.id, scraper.id)
-                )
-                val valid = streams.count { isHttps(it.url) }
-                NuvioScraperTestResult(
-                    scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
-                    streamCount = valid,
-                    message = if (valid > 0) "$valid oynatılabilir HTTPS kaynak döndü." else
-                        "Çalıştırma tamamlandı ancak kaynak dönmedi. İçerik kimliğini, sağlayıcı ayarlarını ve günlük kayıtlarını kontrol et.",
-                    successful = valid > 0
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                NuvioScraperTestResult(
-                    scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
-                    streamCount = 0, message = error.message ?: "Scraper çalıştırılamadı.", successful = false
-                )
+        /** What older LeXia builds saved, read only to show it while it is being moved. */
+        private fun oldRepositories(context: Context): List<NuvioRepositoryInfo> {
+            val raw = context.applicationContext.getSharedPreferences(OLD_PREFS, Context.MODE_PRIVATE).getString(OLD_KEY, null)
+                ?: return emptyList()
+            return try {
+                val array = JSONArray(raw)
+                (0 until array.length()).mapNotNull { i ->
+                    val repo = array.optJSONObject(i) ?: return@mapNotNull null
+                    val url = repo.optString("manifestUrl").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val list = repo.optJSONArray("scrapers") ?: JSONArray()
+                    NuvioRepositoryInfo(
+                        id = repo.optString("id"),
+                        name = repo.optString("name") + " (güncelleniyor…)",
+                        version = "",
+                        description = "",
+                        manifestUrl = url,
+                        scrapers = (0 until list.length()).mapNotNull { j ->
+                            val sc = list.optJSONObject(j) ?: return@mapNotNull null
+                            NuvioScraperInfo(
+                                id = sc.optString("id"), name = sc.optString("name"), description = sc.optString("description"),
+                                version = "", author = "", filename = "", supportedTypes = emptyList(),
+                                enabled = sc.optBoolean("enabled", true), hasSettings = false, limited = false, logo = "",
+                                contentLanguage = emptyList(), formats = emptyList(), supportedPlatforms = emptyList(),
+                                disabledPlatforms = emptyList(), supportsExternalPlayer = false
+                            )
+                        }
+                    )
+                }
+            } catch (_: Exception) {
+                emptyList()
             }
         }
-        outcome ?: NuvioScraperTestResult(
-            scraperName = scraper.name, elapsedMs = System.currentTimeMillis() - startedAt,
-            streamCount = 0, message = "Sağlayıcı ${SCRAPER_TIMEOUT_MS / 1000} saniyede zaman aşımına uğradı.",
-            successful = false
-        )
-    }
-    private fun loadScraperCode(repo: NuvioRepositoryInfo, scraper: NuvioScraperInfo): String {
-        val cacheKey = sha256("${repo.id}:${scraper.id}:${scraper.version}").take(40)
-        val cached = File(codeDirectory, "${repo.id.take(16)}_$cacheKey.js")
-        if (cached.exists() && cached.length() in 1..MAX_CODE_BYTES.toLong() &&
-            System.currentTimeMillis() - cached.lastModified() < CODE_CACHE_TTL_MS
-        ) {
-            return cached.readText(Charsets.UTF_8)
+        @Volatile private var pluginManager: PluginManager? = null
+
+        /** Nuvio's PluginDataStore, made once for the app (Hilt makes it a singleton in Nuvio). */
+        private fun store(context: Context): PluginDataStore = dataStore ?: synchronized(this) {
+            dataStore ?: PluginDataStore(
+                context.applicationContext,
+                Moshi.Builder().add(KotlinJsonAdapterFactory()).build(),
+                ProfileDataStoreFactory(context.applicationContext),
+                ProfileManager()
+            ).also { dataStore = it }
         }
 
-        val url = resolveCodeUrl(repo.manifestUrl, scraper.filename)
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "LeXia/NuvioJS")
-            .header("Accept", "application/javascript, text/javascript, */*")
-            .get()
-            .build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Scraper HTTP ${response.code}: ${scraper.name}")
-            val body = response.body ?: throw IOException("Boş scraper dosyası: ${scraper.name}")
-            if (body.contentLength() > MAX_CODE_BYTES) throw IOException("Scraper dosyası çok büyük: ${scraper.name}")
-            val code = body.string()
-            if (code.toByteArray(Charsets.UTF_8).size > MAX_CODE_BYTES) {
-                throw IOException("Scraper dosyası çok büyük: ${scraper.name}")
-            }
-            codeDirectory.mkdirs()
-            cached.writeText(code, Charsets.UTF_8)
-            return code
+        /** Nuvio's PluginManager, made once for the app, with LeXia's stand-ins for accounts and CloudStream. */
+        private fun nuvio(context: Context): PluginManager = pluginManager ?: synchronized(this) {
+            pluginManager ?: PluginManager(
+                store(context),
+                PluginRuntime(),
+                PluginSyncService(),
+                AuthManager(),
+                ExternalRepoParser(),
+                ExternalExtensionLoader(),
+                ExternalExtensionRunner()
+            ).also { pluginManager = it }
         }
-    }
-
-    private fun getJson(url: String): JSONObject {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "LeXia/NuvioJS")
-            .header("Accept", "application/json")
-            .get()
-            .build()
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Manifest HTTP ${response.code}")
-            val body = response.body ?: throw IOException("Manifest boş")
-            if (body.contentLength() > MAX_MANIFEST_BYTES) throw IOException("Manifest dosyası çok büyük")
-            val text = body.string()
-            if (text.toByteArray(Charsets.UTF_8).size > MAX_MANIFEST_BYTES) throw IOException("Manifest dosyası çok büyük")
-            return JSONObject(text)
-        }
-    }
-
-    private fun normalizeManifestUrl(address: String): String {
-        var raw = address.trim()
-        require(raw.isNotBlank()) { "Depo adresi boş olamaz." }
-        require('?' !in raw && '#' !in raw) { "Yapılandırma sorgusu içeren depo URL'leri henüz desteklenmiyor." }
-        if (!raw.endsWith(".json", true)) raw = raw.trimEnd('/') + "/manifest.json"
-        val url = raw.toHttpUrlOrNull() ?: throw IllegalArgumentException("Geçerli bir HTTPS manifest adresi gir.")
-        require(url.scheme == "https" && url.username.isEmpty() && url.password.isEmpty()) {
-            "Güvenlik nedeniyle yalnızca kimlik bilgisi içermeyen HTTPS depoları destekleniyor."
-        }
-        return url.toString()
-    }
-
-    private fun resolveCodeUrl(manifestUrl: String, filename: String): String {
-        val manifest = manifestUrl.toHttpUrlOrNull() ?: throw IllegalArgumentException("Geçersiz manifest URL")
-        val resolved = if (filename.startsWith("https://", true)) {
-            filename.toHttpUrlOrNull()
-        } else {
-            manifest.resolve(filename)
-        } ?: throw IllegalArgumentException("Scraper dosya adresi çözümlenemedi: $filename")
-        require(resolved.scheme == "https" && resolved.username.isEmpty() && resolved.password.isEmpty()) {
-            "Scraper dosyaları yalnızca HTTPS üzerinden yüklenebilir."
-        }
-        return resolved.toString()
-    }
-
-    private fun parseStoredRepository(item: JSONObject): NuvioRepositoryInfo? {
-        val id = item.optString("id")
-        val manifestUrl = item.optString("manifestUrl")
-        val name = item.optString("name")
-        if (id.isBlank() || manifestUrl.isBlank() || name.isBlank()) return null
-        val raw = item.optJSONArray("scrapers") ?: JSONArray()
-        val scrapers = (0 until raw.length()).mapNotNull { index ->
-            val scraper = raw.optJSONObject(index) ?: return@mapNotNull null
-            NuvioScraperInfo(
-                id = scraper.optString("id"),
-                name = scraper.optString("name"),
-                description = scraper.optString("description"),
-                version = scraper.optString("version"),
-                author = scraper.optString("author"),
-                filename = scraper.optString("filename"),
-                supportedTypes = stringList(scraper.optJSONArray("supportedTypes")),
-                enabled = scraper.optBoolean("enabled", true),
-                hasSettings = scraper.optBoolean("hasSettings", false),
-                limited = scraper.optBoolean("limited", false),
-                logo = scraper.optString("logo"),
-                contentLanguage = stringList(scraper.optJSONArray("contentLanguage")),
-                formats = stringList(scraper.optJSONArray("formats")),
-                supportedPlatforms = stringList(scraper.optJSONArray("supportedPlatforms")),
-                disabledPlatforms = stringList(scraper.optJSONArray("disabledPlatforms")),
-                supportsExternalPlayer = scraper.optBoolean("supportsExternalPlayer", false)
-            )
-        }
-        return NuvioRepositoryInfo(
-            id = id,
-            name = name,
-            version = item.optString("version"),
-            description = item.optString("description"),
-            manifestUrl = manifestUrl,
-            scrapers = scrapers,
-            enabled = item.optBoolean("enabled", true)
-        )
-    }
-
-    private fun saveRepositories(repositories: List<NuvioRepositoryInfo>) {
-        val array = JSONArray()
-        repositories.forEach { repo ->
-            val scraperArray = JSONArray()
-            repo.scrapers.forEach { scraper ->
-                scraperArray.put(
-                    JSONObject()
-                        .put("id", scraper.id)
-                        .put("name", scraper.name)
-                        .put("description", scraper.description)
-                        .put("version", scraper.version)
-                        .put("author", scraper.author)
-                        .put("filename", scraper.filename)
-                        .put("supportedTypes", JSONArray(scraper.supportedTypes))
-                        .put("enabled", scraper.enabled)
-                        .put("hasSettings", scraper.hasSettings)
-                        .put("limited", scraper.limited)
-                        .put("logo", scraper.logo)
-                        .put("contentLanguage", JSONArray(scraper.contentLanguage))
-                        .put("formats", JSONArray(scraper.formats))
-                        .put("supportedPlatforms", JSONArray(scraper.supportedPlatforms))
-                        .put("disabledPlatforms", JSONArray(scraper.disabledPlatforms))
-                        .put("supportsExternalPlayer", scraper.supportsExternalPlayer)
-                )
-            }
-            array.put(
-                JSONObject()
-                    .put("id", repo.id)
-                    .put("name", repo.name)
-                    .put("version", repo.version)
-                    .put("description", repo.description)
-                    .put("manifestUrl", repo.manifestUrl)
-                    .put("enabled", repo.enabled)
-                    .put("scrapers", scraperArray)
-            )
-        }
-        prefs.edit().putString(KEY_REPOSITORIES, array.toString()).apply()
-    }
-
-    private fun stringList(array: JSONArray?): List<String> =
-        if (array == null) emptyList()
-        else (0 until minOf(array.length(), 100))
-            .map { array.optString(it).trim() }
-            .filter { it.isNotEmpty() }
-
-    /**
-     * Nuvio manifests use "tv" to explicitly include or exclude TV clients.
-     * An empty supportedPlatforms list means the scraper is platform-agnostic.
-     */
-    private fun isSupportedOnTv(scraper: NuvioScraperInfo): Boolean {
-        val supported = scraper.supportedPlatforms.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-        val disabled = scraper.disabledPlatforms.map { it.trim().lowercase() }
-        return (supported.isEmpty() || "tv" in supported) && "tv" !in disabled
-    }
-
-    private fun normalizeType(value: String): String =
-        when (value.lowercase()) {
-            "tv", "series", "show" -> "tv"
-            else -> value.lowercase()
-        }
-
-    /** http or https, as Nuvio allows; never another scheme. */
-    private fun isHttps(raw: String): Boolean =
-        raw.toHttpUrlOrNull() != null
-
-    private fun sha256(value: String): String =
-        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
-    private companion object {
-        const val TAG = "NuvioJsRepository"
-        const val PREFS_NAME = "nuvio_js_repositories"
-        const val KEY_REPOSITORIES = "repositories_v1"
-        const val MAX_MANIFEST_BYTES = 3 * 1024 * 1024
-        const val MAX_CODE_BYTES = 2 * 1024 * 1024
-        const val MAX_SCRAPERS_PER_SEARCH = 100
-        const val MAX_PARALLEL_SCRAPERS = 8
-        const val SCRAPER_TIMEOUT_MS = 120_000L
-        const val MAX_STREAMS = 60
-        val CODE_CACHE_TTL_MS = TimeUnit.HOURS.toMillis(6)
     }
 }

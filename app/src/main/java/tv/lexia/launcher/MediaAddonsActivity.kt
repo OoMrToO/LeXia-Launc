@@ -132,7 +132,7 @@ class MediaAddonsActivity : Activity() {
         val addons = repository.installedAddons()
         val nuvioRepos = nuvioRepository.installedRepositories()
         val nuvioCount = nuvioRepos.sumOf { it.scrapers.size }
-        status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} Nuvio deposu  ·  $nuvioCount JS scraper"
+        status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} Nuvio deposu  ·  $nuvioCount sağlayıcı"
 
         if (addons.isEmpty() && nuvioRepos.isEmpty()) {
             list.addView(
@@ -156,24 +156,11 @@ class MediaAddonsActivity : Activity() {
                 typeface = Typeface.DEFAULT_BOLD
             })
             card.addView(TextView(this).apply {
-                text = "NUVIO JS  ·  ${repo.scrapers.size} scraper  ·  v${repo.version}  ·  ${if (repo.enabled) "ETKİN" else "DEVRE DIŞI"}"
+                val on = repo.scrapers.count { it.enabled }
+                text = "NUVIO DEPOSU  ·  ${repo.scrapers.size} sağlayıcı, $on açık" + if (repo.enabled) "" else "  ·  KAPALI"
                 textSize = 14f
                 setTextColor(Color.rgb(125, 151, 255))
                 setPadding(0, dp(5), 0, dp(4))
-            })
-            card.addView(TextView(this).apply {
-                text = repo.manifestUrl
-                textSize = 13f
-                setTextColor(Color.rgb(133, 164, 225))
-                maxLines = 2
-            })
-            card.addView(TextView(this).apply {
-                text = repo.scrapers.take(8).joinToString("  ·  ") { it.name } +
-                    if (repo.scrapers.size > 8) "  ·  +${repo.scrapers.size - 8}" else ""
-                textSize = 13f
-                setTextColor(Color.rgb(155, 165, 184))
-                setPadding(0, dp(7), 0, 0)
-                maxLines = 2
             })
             val scraperHeading = TextView(this).apply {
                 text = "SAĞLAYICILAR"
@@ -196,26 +183,17 @@ class MediaAddonsActivity : Activity() {
                     setTextColor(Color.WHITE)
                     typeface = Typeface.DEFAULT_BOLD
                 })
-                details.addView(TextView(this).apply {
-                    val flags = mutableListOf<String>()
-                    if (scraper.hasSettings) flags.add("Ayarları var")
-                    if (scraper.limited) flags.add("Sınırlı")
-                    if (scraper.formats.isNotEmpty()) flags.add(scraper.formats.joinToString("/"))
-                    if (scraper.contentLanguage.isNotEmpty()) flags.add(scraper.contentLanguage.joinToString("/"))
-                    if (scraper.supportedTypes.isNotEmpty()) flags.add(scraper.supportedTypes.joinToString("/"))
-                    if (scraper.supportedPlatforms.isNotEmpty()) flags.add(scraper.supportedPlatforms.joinToString("/"))
-                    if (scraper.disabledPlatforms.isNotEmpty()) flags.add("Hariç: ${scraper.disabledPlatforms.joinToString("/")}")
-                    if (scraper.supportsExternalPlayer) flags.add("Harici oynatıcı")
-                    if (scraper.author.isNotBlank()) flags.add("© ${scraper.author}")
-                    text = flags.joinToString(" · ").ifBlank { "Nuvio JS sağlayıcısı" }
+                val kinds = scraper.supportedTypes.map { if (it.equals("movie", true)) "Film" else "Dizi" }.distinct().joinToString(", ")
+                val langs = scraper.contentLanguage.joinToString(", ") { Lang.name(Lang.code(it)).ifBlank { it.uppercase() } }
+                val line = listOf(kinds, langs, scraper.description).filter { it.isNotBlank() }.joinToString("  ·  ")
+                if (line.isNotBlank()) details.addView(TextView(this).apply {
+                    text = line
                     textSize = 12f
                     setTextColor(Color.rgb(150, 160, 180))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                 })
                 row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                row.addView(action("Test et").apply {
-                    tag = "test:${repo.id}:${scraper.id}"
-                    setOnClickListener { showScraperTestDialog(repo.id, scraper) }
-                })
                 if (scraper.hasSettings) {
                     row.addView(action("Ayarlar").apply {
                         tag = "settings:${repo.id}:${scraper.id}"
@@ -233,18 +211,11 @@ class MediaAddonsActivity : Activity() {
                 card.addView(row)
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            repoActions.addView(action(if (repo.enabled) "Depoyu devre dışı bırak" else "Depoyu etkinleştir", primary = !repo.enabled).apply {
-                tag = "repo:${repo.id}"
-                setOnClickListener {
-                    nuvioRepository.setRepositoryEnabled(repo.id, !repo.enabled)
-                    renderAddons()
-                }
-            })
             val allEnabled = repo.scrapers.all { it.enabled }
             repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
                 tag = "all:${repo.id}"
                 setOnClickListener {
-                    repo.scrapers.forEach { nuvioRepository.setScraperEnabled(repo.id, it.id, !allEnabled) }
+                    nuvioRepository.setAllScrapersEnabled(repo.id, !allEnabled)
                     renderAddons()
                 }
             })
@@ -380,7 +351,7 @@ class MediaAddonsActivity : Activity() {
                             }
                             runOnUiThread {
                                 busy = false
-                                status.text = "${nuvio.name} eklendi · ${nuvio.scrapers.size} Nuvio JS scraper"
+                                status.text = "${nuvio.name} eklendi · ${nuvio.scrapers.size} sağlayıcı"
                                 renderAddons()
                             }
                             return@execute
@@ -535,103 +506,6 @@ class MediaAddonsActivity : Activity() {
         if (rows.childCount > 0) rows.getChildAt(0).requestFocus()
     }
 
-    private fun showScraperTestDialog(repositoryId: String, scraper: NuvioScraperInfo) {
-        val fields = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(6), dp(12), 0)
-        }
-        val typeChoices = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.HORIZONTAL }
-        val movieChoice = android.widget.RadioButton(this).apply { id = View.generateViewId(); text = "Film"; isChecked = true; setTextColor(Color.WHITE) }
-        val tvChoice = android.widget.RadioButton(this).apply { id = View.generateViewId(); text = "Dizi"; setTextColor(Color.WHITE) }
-        typeChoices.addView(movieChoice)
-        typeChoices.addView(tvChoice)
-        fields.addView(typeChoices)
-        val input = EditText(this).apply {
-            hint = "TMDB içerik kimliği · Örn. 550"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            isSingleLine = true
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val season = EditText(this).apply {
-            hint = "Sezon numarası"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText("1")
-            setTextColor(Color.WHITE)
-            visibility = View.GONE
-        }
-        val episode = EditText(this).apply {
-            hint = "Bölüm numarası"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText("1")
-            setTextColor(Color.WHITE)
-            visibility = View.GONE
-        }
-        typeChoices.setOnCheckedChangeListener { _, checkedId ->
-            val isTv = checkedId == tvChoice.id
-            season.visibility = if (isTv) View.VISIBLE else View.GONE
-            episode.visibility = if (isTv) View.VISIBLE else View.GONE
-        }
-        fields.addView(input)
-        fields.addView(season)
-        fields.addView(episode)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("${scraper.name} · Sağlayıcı testi")
-            .setMessage("Yalnızca seçilen scraper çalıştırılır. Film veya dizi için TMDB kimliğini gir.")
-            .setView(fields)
-            .setNegativeButton("İptal", null)
-            .setPositiveButton("Testi başlat", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val mediaId = input.text?.toString()?.trim().orEmpty()
-                val isTv = tvChoice.isChecked
-                val seasonNumber = if (isTv) season.text?.toString()?.toIntOrNull() else null
-                val episodeNumber = if (isTv) episode.text?.toString()?.toIntOrNull() else null
-                if (mediaId.isBlank()) {
-                    input.error = "TMDB kimliği gerekli"
-                    return@setOnClickListener
-                }
-                if (isTv && (seasonNumber == null || seasonNumber !in 1..100 || episodeNumber == null || episodeNumber !in 1..500)) {
-                    season.error = if (seasonNumber == null || seasonNumber !in 1..100) "Geçerli sezon gir" else null
-                    episode.error = if (episodeNumber == null || episodeNumber !in 1..500) "Geçerli bölüm gir" else null
-                    return@setOnClickListener
-                }
-                if (busy) return@setOnClickListener
-                busy = true
-                status.text = "${scraper.name} test ediliyor…"
-                dialog.dismiss()
-                worker.execute {
-                    val result = runCatching {
-                        nuvioRepository.testScraper(
-                            repositoryId, scraper.id, mediaId,
-                            mediaType = if (isTv) "tv" else "movie",
-                            season = seasonNumber, episode = episodeNumber
-                        )
-                    }
-                    runOnUiThread {
-                        busy = false
-                        val report = result.getOrNull()
-                        val message = if (report != null) {
-                            "${report.message}\n\nSüre: ${report.elapsedMs} ms\nDönen kaynak: ${report.streamCount}"
-                        } else {
-                            result.exceptionOrNull()?.message ?: "Sağlayıcı testi başarısız."
-                        }
-                        status.text = "${scraper.name}: $message"
-                        AlertDialog.Builder(this@MediaAddonsActivity)
-                            .setTitle(if (report?.successful == true) "Sağlayıcı testi başarılı" else "Sağlayıcı testi tamamlandı")
-                            .setMessage(message)
-                            .setPositiveButton("Tamam", null)
-                            .show()
-                    }
-                }
-            }
-        }
-        dialog.show()
-        dialog.window?.setLayout(dp(620), LinearLayout.LayoutParams.WRAP_CONTENT)
-        input.requestFocus()
-    }
     private fun refreshNuvioRepository(repositoryId: String, name: String) {
         if (busy) return
         busy = true
@@ -641,7 +515,7 @@ class MediaAddonsActivity : Activity() {
                 val updated = nuvioRepository.refreshRepository(repositoryId)
                 runOnUiThread {
                     busy = false
-                    status.text = "${updated.name} güncellendi · ${updated.scrapers.size} scraper"
+                    status.text = "${updated.name} güncellendi · ${updated.scrapers.size} sağlayıcı"
                     renderAddons()
                 }
             } catch (error: Exception) {
@@ -656,7 +530,7 @@ class MediaAddonsActivity : Activity() {
     private fun confirmRemoveNuvio(repositoryId: String, name: String) {
         AlertDialog.Builder(this)
             .setTitle("Nuvio deposu kaldırılsın mı?")
-            .setMessage("$name deposu ve indirilen scraper önbelleği kaldırılacak.")
+            .setMessage("$name deposu ve sağlayıcıları kaldırılacak.")
             .setNegativeButton("Vazgeç", null)
             .setPositiveButton("Kaldır") { _, _ ->
                 nuvioRepository.removeRepository(repositoryId)
