@@ -9,7 +9,113 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
+import android.util.Log
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+
+/** What the source said about one separate subtitle file. */
+internal class SubtitleHint(val language: String, val mime: String)
+
+/**
+ * Hands the player its data as usual, except separate subtitle files: those are downloaded whole
+ * and repaired first (see [SubtitleText]). A subtitle that cannot be loaded becomes an empty one,
+ * so a dead subtitle link never stops the film.
+ */
+@UnstableApi
+internal class SubtitleFixDataSource(
+    private val media: DataSource,
+    private val subtitles: Map<String, SubtitleHint>
+) : DataSource {
+
+    class Factory(
+        private val media: DataSource.Factory,
+        private val subtitles: Map<String, SubtitleHint>
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource = SubtitleFixDataSource(media.createDataSource(), subtitles)
+    }
+
+    private var passThrough = true
+    private var uri: Uri? = null
+    private var data: ByteArray? = null
+    private var position = 0
+    private var remaining = 0
+
+    override fun addTransferListener(transferListener: TransferListener) = media.addTransferListener(transferListener)
+
+    override fun open(dataSpec: DataSpec): Long {
+        val hint = subtitles[dataSpec.uri.toString()]
+        if (hint == null) {
+            passThrough = true
+            return media.open(dataSpec)
+        }
+        passThrough = false
+        uri = dataSpec.uri
+        val fixed = try {
+            SubtitleText.normalize(download(dataSpec.uri), hint.language, hint.mime)
+        } catch (e: Exception) {
+            Log.w("LeXiaPlayer", "Subtitle could not be loaded: ${e.message}")
+            SubtitleText.empty(hint.mime)
+        }
+        data = fixed
+        position = dataSpec.position.coerceIn(0L, fixed.size.toLong()).toInt()
+        val left = fixed.size - position
+        remaining = if (dataSpec.length == MediaC.LENGTH_UNSET.toLong()) left else minOf(dataSpec.length, left.toLong()).toInt()
+        return remaining.toLong()
+    }
+
+    /** The whole file, without the film's own request headers: subtitles live on other servers. */
+    private fun download(address: Uri): ByteArray {
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(10_000)
+            .setReadTimeoutMs(15_000)
+            .createDataSource()
+        try {
+            http.open(DataSpec(address))
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val read = http.read(buffer, 0, buffer.size)
+                if (read == MediaC.RESULT_END_OF_INPUT) break
+                out.write(buffer, 0, read)
+                if (out.size() > SubtitleText.MAX_BYTES) throw IOException("Subtitle file is too large")
+            }
+            return out.toByteArray()
+        } finally {
+            try {
+                http.close()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (passThrough) return media.read(buffer, offset, length)
+        if (length == 0) return 0
+        if (remaining <= 0) return MediaC.RESULT_END_OF_INPUT
+        val count = minOf(length, remaining)
+        System.arraycopy(data!!, position, buffer, offset, count)
+        position += count
+        remaining -= count
+        return count
+    }
+
+    override fun getUri(): Uri? = if (passThrough) media.uri else uri
+
+    override fun getResponseHeaders(): Map<String, List<String>> =
+        if (passThrough) media.responseHeaders else emptyMap()
+
+    override fun close() {
+        if (passThrough) {
+            media.close()
+        } else {
+            data = null
+            uri = null
+            remaining = 0
+            passThrough = true
+        }
+    }
+}
 
 /**
  * Fetches a YouTube stream in pieces. YouTube slows a stream that is asked for in one go down to

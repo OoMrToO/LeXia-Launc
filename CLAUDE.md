@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 16 Kasım 2026 (PR #44: fragman + eklentilerin kaynak bulamamasının asıl nedenleri düzeltildi: IMDb kimliği, TMDB anahtarı, bölüm listesi, eklenti ekleme).
+Son güncelleme: 16 Kasım 2026 (Nuvio'yu LeXia'nın içine alma işi başladı: deneme derlemesi `nuvio-build.yml`; bölüm 2 sonu).
 
 ## 1. Çalışma biçimi
 
@@ -52,6 +52,13 @@ Son güncelleme: 16 Kasım 2026 (PR #44: fragman + eklentilerin kaynak bulamamas
   - **Kaynak yoksa nedeni yazılır** (`whyNothing`): hepsi torrent, https değil, eklenti cevap vermedi, IMDb kimliği yok, TMDB anahtarı yok.
   - Ayarlar'da tek giriş kaldı: "Medya kaynakları" ("Entegrasyonlar" sayfası kaldırıldı).
   - **Hâlâ fark:** LeXia torrent ve debrid oynatmaz; Nuvio oynatır. Kullanıcının eklentileri torrent veriyorsa (Torrentio gibi) LeXia'da kaynak çıkmaz. Kullanıcıya soruldu: hangi eklentiler? "Birebir Nuvio" için gerçek yollar: (a) Nuvio'yu ayrı kurup LeXia'nın "Oynat"ını `stremio://` bağlantısıyla Nuvio'da açmak (Nuvio manifestinde `nuvio://` ve `stremio://` var), (b) fork'u LeXia ana ekranıyla tek APK yapmak (çok büyük iş). Karar bekliyor.
+
+- **Tek uygulama, içinde Nuvio (16 Kasım, kullanıcı kararı: "tek uygulama olsun, Nuvio'yu LeXia'nın içine al", sonuçları dinleyip "Başla" dedi).** Parça taşımak yerine tersi: `OoMrToO/NuvioTV` fork'u temel, LeXia onun içinde kitaplık modülü.
+  - `scripts/merge_nuvio.py <nuvio klasörü>`: LeXia'nın kodunu ve görsellerini `lexia/` modülüne kopyalar (kendi oynatıcı/kaynak/eklenti dosyaları hariç; kaynak adlarına `lx_` öneki, çünkü aynı adlı kitaplık görselini uygulamanınki sessizce ezer), Nuvio'nun `settings.gradle.kts`, `app/build.gradle.kts` (paket `tv.lexia.launcher`, sürüm kodu `GITHUB_RUN_NUMBER`, yalnızca ARM, Nuvio'nun kendi güncelleyicisi kapalı), manifestleri (Nuvio uygulama listesinde görünmez; ad/simge LeXia'nın) ve `NuvioApplication.kt` dosyasını (LeXia'nın `App.start`) yamalar. Fork'a hiçbir şey commit edilmez.
+  - `Media.kt`: "ne oynatır" kapısı. Bağımsız LeXia'da kendi ekranları; birleşik sürümde `nuvio-bridge/Media.kt` onun yerine geçer: "Oynat" → `nuvio://imdb|tmdb/movie|series/<kimlik>` ile aynı uygulamadaki `com.nuvio.tv.MainActivity`; Ayarlar › Medya kaynakları → Nuvio'nun ana ekranı (eklenti sayfasına doğrudan bağlantı henüz yok). `Media.NUVIO` doğruyken Ayarlar'daki LeXia oynatıcı seçenekleri gizlenir.
+  - `.github/workflows/nuvio-build.yml` (deneme): fork'un sabitlenmiş commit'ini (`NUVIO_REF`) çeker, betiği çalıştırır, `:app:assembleFullDebug` derler (LeXia'nın imzasıyla: `NUVIO_RELEASE_*` ortam değişkenleri), APK'ları artifact olarak saklar. **TV'nin güncelleme kanalına dokunmaz.** `claude/**` dallarında betik/köprü/iş akışı değişince ve elle çalışır.
+  - Bilinenler: Nuvio kendi Media3 yapısını (1.8) taşır; LeXia'nın fragman oynatıcısı ona karşı derlenir (`compileOnly`). Nuvio'nun hesap/eşitleme özellikleri sunucu anahtarı ister (yok). APK büyür (tahmin 80–100 MB): Cloudflare Pages dosya başına 25 MB taşır, yayın kopyadan (GitHub, 100 MB sınırı) yapılmalı. GPL: Nuvio'yu içeren APK başkalarına dağıtılırsa kaynak da açılmalı (kullanıcıya söylendi).
+  - **Durum:** ilk deneme derlemesi gönderildi; sonucu bilinmiyor. Sıra: derleme yeşil → deneme APK'sını kullanıcıya ulaştır (kopya deposunda ayrı bir yol) → TV'de dene → yayın kanalını çevir.
 
 ## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
 

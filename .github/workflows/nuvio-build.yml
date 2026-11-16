@@ -1,0 +1,70 @@
+name: LeXia + Nuvio (deneme)
+
+# One app from both: the NuvioTV fork with LeXia inside as its home screen (scripts/merge_nuvio.py).
+# A trial build: the APKs are kept as artifacts, nothing is published to the TV's update channel.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "scripts/merge_nuvio.py"
+      - "nuvio-bridge/**"
+      - ".github/workflows/nuvio-build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuvio-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The NuvioTV fork's commit this build is known against; raise it deliberately.
+  NUVIO_REF: a3532b819f29881b2e9438095424799bbeb88282
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_KEY }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: OoMrToO/NuvioTV
+          ref: ${{ env.NUVIO_REF }}
+          path: nuvio
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Put LeXia inside Nuvio
+        run: python3 scripts/merge_nuvio.py nuvio
+      - name: Signing key
+        run: |
+          # The same key as LeXia's own builds, so this app installs over the LeXia on the TV.
+          if [ ! -f app/signing.p12 ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::İmza anahtarı (app/signing.p12) ya da KEYSTORE_PASSWORD sırrı yok."; exit 1
+          fi
+          {
+            echo "NUVIO_RELEASE_STORE_FILE=$GITHUB_WORKSPACE/app/signing.p12"
+            echo "NUVIO_RELEASE_KEY_ALIAS=lexia"
+            echo "NUVIO_RELEASE_KEY_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "NUVIO_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+          } >> "$GITHUB_ENV"
+      - name: Build
+        working-directory: nuvio
+        run: ./gradlew :app:assembleFullDebug --stacktrace -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+      - name: Sizes
+        run: ls -la nuvio/app/build/outputs/apk/full/debug/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lexia-nuvio-deneme
+          path: |
+            nuvio/app/build/outputs/apk/full/debug/*armeabi-v7a*.apk
+            nuvio/app/build/outputs/apk/full/debug/*arm64-v8a*.apk
+          if-no-files-found: error
+          retention-days: 7

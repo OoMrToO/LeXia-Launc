@@ -568,8 +568,8 @@ class SettingsActivity : Activity() {
                 "Medya kaynakları",
                 "Stremio eklentileri ve Nuvio JS depoları: ekle, aç ya da kapat, dene, kaldır.",
                 chevron = true,
-                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" },
-                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
+                value = { Media.sourcesSummary(this) },
+                action = { Media.openSources(this) }
             ),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
@@ -619,7 +619,8 @@ class SettingsActivity : Activity() {
         "Oynatma ve Takip", R.drawable.ic_tv,
         keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
-        listOf(
+        // With Nuvio inside, sources, sound and subtitles are set in Nuvio's own settings.
+        (if (Media.NUVIO) emptyList<Item>() else listOf<Item>(
             Header("KAYNAK"),
             toggle(
                 "En iyi kaynağı kendiliğinden aç",
@@ -652,6 +653,7 @@ class SettingsActivity : Activity() {
                 { prefs.playSubSize }, { prefs.playSubSize = it }
             ),
             Note("Harfleri bozuk gelen Türkçe altyazılar (ş, ğ, ı yerine başka işaretler) oynatılırken kendiliğinden düzeltilir."),
+        )) + listOf<Item>(
             Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
                 { prefs.trailerInApp }, { prefs.trailerInApp = it }),

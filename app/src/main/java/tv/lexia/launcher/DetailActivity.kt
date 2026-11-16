@@ -209,7 +209,7 @@ class DetailActivity : Activity() {
             if (film.id <= 0) {
                 Glass.toast(this, "Bu içerik için TMDB kimliği bulunamadı")
             } else {
-                MediaSourcePickerActivity.open(this, film)
+                Media.play(this, film)
             }
         }
         val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)

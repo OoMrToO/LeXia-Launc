@@ -12,6 +12,15 @@ import java.util.Locale
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        start(this)
+    }
+
+    companion object {
+        fun crashFile(app: android.content.Context) = File(app.filesDir, "last_crash.txt")
+
+        /** LeXia's start-up work; also called by Nuvio's Application in the combined build. */
+        @JvmStatic
+        fun start(app: Application) = with(app) {
         Guard.started(this)
         Net.diskCache = File(cacheDir, "img")
         // Off the main thread: a crash from last time, and the setup build's "I was opened".
@@ -32,9 +41,6 @@ class App : Application() {
             Guard.crashed(this)
             previous?.uncaughtException(t, e)
         }
-    }
-
-    companion object {
-        fun crashFile(app: android.content.Context) = File(app.filesDir, "last_crash.txt")
+        }
     }
 }
