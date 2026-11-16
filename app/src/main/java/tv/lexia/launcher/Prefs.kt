@@ -193,6 +193,8 @@ class Prefs(ctx: Context) {
     var tester: Boolean get() = bool("tester", false); set(v) = putBool("tester", v)
     /** Trailers play inside LeXia (YouTube's embedded player) instead of the YouTube app. */
     var trailerInApp: Boolean get() = bool("trailerInApp", true); set(v) = putBool("trailerInApp", v)
+    /** Trailers play in LeXia's own player, without YouTube's page; the embedded player is the fallback. */
+    var trailerNative: Boolean get() = bool("trailerNative", true); set(v) = putBool("trailerNative", v)
     /** Sound to start a film with: "" the TV's language, "orig" whatever the file puts first, or a language code. */
     var playAudioLang: String get() = str("playAudioLang"); set(v) = putStr("playAudioLang", v)
     /** Subtitles to start a film with: "" the TV's language, "off" none, or a language code. */

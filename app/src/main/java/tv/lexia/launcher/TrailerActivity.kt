@@ -25,13 +25,34 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C as MediaC
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.PlayerView
+import java.util.concurrent.Executors
 
 /**
- * A trailer inside LeXia: YouTube's own embedded player, full screen, run with the remote.
- * The video still comes from YouTube; only the YouTube app is skipped. When a trailer may not be
- * embedded (the studio turned it off) or nothing plays, it opens in the YouTube app as before.
+ * A trailer inside LeXia, full screen, run with the remote. Two players, tried in this order:
+ *
+ *  1. LeXia's own player on the trailer's streams ([YouTubeStreams]): nothing of YouTube's page on
+ *     screen. Unofficial, so it can stop working when YouTube changes something
+ *     (Ayarlar › Oynatma ve Takip › "Fragmanlar YouTube çerçevesi olmadan oynasın").
+ *  2. YouTube's own embedded player in a web view, whenever the first finds nothing, is too slow
+ *     or fails while playing; the trailer carries on from where it was.
+ *
+ * When neither plays (the studio turned embedding off, no web view), the YouTube app opens.
  * Can be switched off in Ayarlar › Filmler › "Fragmanlar LeXia'da oynasın".
  */
+@OptIn(UnstableApi::class)
 class TrailerActivity : Activity() {
 
     companion object {
@@ -39,6 +60,10 @@ class TrailerActivity : Activity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_LIST = "list"
         private const val EXTRA_TITLES = "titles"
+
+        /** LeXia's own player failed this many times in a row; after two it rests for half an hour. */
+        private var nativeFailures = 0
+        private var nativeOffUntil = 0L
 
         /** The films of the trailers being opened (same order), for the menu and the end card; read once. */
         private var pendingFilms: List<Pick> = emptyList()
@@ -123,6 +148,24 @@ class TrailerActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var web: WebView? = null
+    private var webLoaded = false
+    /** LeXia's own player and its picture; made the first time a trailer plays in it. */
+    private var exo: ExoPlayer? = null
+    private var playerView: PlayerView? = null
+    /** The trailer on screen plays in LeXia's own player (not the web view). */
+    private var nativeMode = false
+    private var nativeStarted = false
+    private var resumeOnReturn = false
+    private var volumeFade: android.animation.ValueAnimator? = null
+    /** Each search for streams gets a number; an answer to an older search is dropped. */
+    private var findGeneration = 0
+    private var pendingStart = 0
+    private val finder = Executors.newCachedThreadPool()
+    private val maxHeight by lazy {
+        @Suppress("DEPRECATION")
+        val tallest = windowManager.defaultDisplay.supportedModes.maxOfOrNull { it.physicalHeight } ?: 1080
+        if (Fx.lite) 720 else if (tallest >= 2000) 2160 else 1080
+    }
     private lateinit var ui: Ui
     private lateinit var prefs: Prefs
     private lateinit var frame: FrameLayout
@@ -181,7 +224,40 @@ class TrailerActivity : Activity() {
 
     private val skipEnd = Runnable { skipSum = 0; bubble.animate().alpha(0f).setDuration(D.MED).start() }
     /** Nothing played after this long: the YouTube app takes over (or the next trailer). */
-    private val giveUp = Runnable { if (!playing) { if (list.size > 1) nextTrailer() else fallBack() } }
+    private val giveUp = Runnable {
+        if (!playing) {
+            if (nativeMode) giveUpOnNative() else if (list.size > 1) nextTrailer() else fallBack()
+        }
+    }
+    /** The streams took too long to find: the embedded player starts instead. */
+    private val nativeTooSlow = Runnable {
+        nativeFailed()
+        playInWeb(pendingStart)
+    }
+    private val nativeListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (!nativeMode) return
+            if (isPlaying) {
+                if (!nativeStarted) {
+                    nativeStarted = true
+                    nativeFailures = 0
+                    fadeVolume(1f, 1600)
+                }
+                onPlaying()
+            } else {
+                val p = exo ?: return
+                if (!p.playWhenReady && p.playbackState == Player.STATE_READY) onPaused()
+            }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (nativeMode && playbackState == Player.STATE_ENDED) showEnd()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            if (nativeMode) giveUpOnNative()
+        }
+    }
     private val hideInfo = Runnable { if (!paused && !onButtons && endCard == null) info.animate().alpha(0f).setDuration(D.MED).start() }
     /** While the controls are on screen, the time and bar follow the trailer twice a second. */
     private val tick = object : Runnable {
@@ -216,42 +292,6 @@ class TrailerActivity : Activity() {
         frame.setBackgroundColor(Color.BLACK)
         frame.clipChildren = false
 
-        // Some TVs have no working web view; then the YouTube app it is.
-        val w = try {
-            WebView(this)
-        } catch (e: Throwable) {
-            null
-        }
-        if (w == null) {
-            fallBack()
-            return
-        }
-        web = w
-        w.setBackgroundColor(Color.BLACK)
-        w.isFocusable = false
-        w.settings.javaScriptEnabled = true
-        w.settings.domStorageEnabled = true
-        w.settings.mediaPlaybackRequiresUserGesture = false
-        w.settings.setSupportZoom(false)
-        w.webViewClient = object : WebViewClient() {
-            // Links inside the player (YouTube logo, "watch on YouTube") open the YouTube app instead.
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                fallBack()
-                return true
-            }
-        }
-        // The page reports back through its title: "p" playing, "pause", "end" finished, "e:<code>" error.
-        w.webChromeClient = object : WebChromeClient() {
-            override fun onReceivedTitle(view: WebView, t: String?) {
-                when {
-                    t == "p" -> onPlaying()
-                    t == "pause" -> onPaused()
-                    t == "end" -> showEnd()
-                    t != null && t.startsWith("e:") -> if (list.size > 1 && at < list.size - 1) nextTrailer() else fallBack()
-                }
-            }
-        }
-        frame.addView(w, ui.fl(ui.match, ui.match))
         shield = View(this)
         shield.setBackgroundColor(Color.BLACK)
         frame.addView(shield, ui.fl(ui.match, ui.match))
@@ -294,11 +334,223 @@ class TrailerActivity : Activity() {
         if (saved >= 8) {
             Dialogs.list(
                 this, "Kaldığın yerden?", listOf("Kaldığın yerden devam et" to clock(saved.toDouble()), "Baştan başla" to ""),
-                subtitle = title, icon = R.drawable.ic_film, cancel = { load(w, 0) }
-            ) { i -> load(w, if (i == 0) saved else 0) }
+                subtitle = title, icon = R.drawable.ic_film, cancel = { startTrailer(0) }
+            ) { i -> startTrailer(if (i == 0) saved else 0) }
         } else {
-            load(w, 0)
+            startTrailer(0)
         }
+    }
+
+    // ---------- Which player ----------
+
+    private fun nativeAllowed() = prefs.trailerNative && System.currentTimeMillis() >= nativeOffUntil
+
+    private fun nativeFailed() {
+        if (++nativeFailures >= 2) {
+            nativeFailures = 0
+            nativeOffUntil = System.currentTimeMillis() + 30 * 60_000L
+        }
+    }
+
+    /** Starts the trailer on screen ([id]) at [startSec]: LeXia's own player first, the embedded one otherwise. */
+    private fun startTrailer(startSec: Int) {
+        if (done || isFinishing) return
+        handler.removeCallbacks(giveUp)
+        handler.removeCallbacks(nativeTooSlow)
+        // Another trailer was playing here (the next of a marathon, a second trailer of the film):
+        // it goes quiet now, not when the new one has been found.
+        if (nativeMode) {
+            volumeFade?.cancel()
+            exo?.stop()
+        }
+        if (!nativeAllowed()) {
+            playInWeb(startSec)
+            return
+        }
+        val wanted = id
+        val mine = ++findGeneration
+        pendingStart = startSec
+        handler.postDelayed(nativeTooSlow, 8_000)
+        finder.execute {
+            val source = YouTubeStreams.find(wanted, maxHeight, TrailerDecoders::canDecode)
+            runOnUiThread {
+                if (mine != findGeneration || done || isFinishing || wanted != id) return@runOnUiThread
+                handler.removeCallbacks(nativeTooSlow)
+                if (source == null) {
+                    nativeFailed()
+                    playInWeb(startSec)
+                } else {
+                    playNative(source, startSec)
+                }
+            }
+        }
+    }
+
+    /** LeXia's own player could not play this trailer: the embedded one carries on from the same place. */
+    private fun giveUpOnNative() {
+        val at = ((exo?.currentPosition ?: 0L) / 1000L).toInt()
+        YouTubeStreams.forget(id)
+        nativeFailed()
+        playInWeb(if (nativeStarted) at else pendingStart)
+    }
+
+    private fun playNative(source: TrailerSource, startSec: Int) {
+        web?.let {
+            it.evaluateJavascript("try{if(player)player.stopVideo();}catch(x){}", null)
+            it.visibility = View.INVISIBLE
+        }
+        val view = playerView ?: PlayerView(this).also { v ->
+            v.useController = false
+            v.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+            v.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            v.setBackgroundColor(Color.BLACK)
+            v.isFocusable = false
+            v.descendantFocusability = FrameLayout.FOCUS_BLOCK_DESCENDANTS
+            v.subtitleView?.apply {
+                setApplyEmbeddedFontSizes(false)
+                setStyle(
+                    CaptionStyleCompat(
+                        Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, ui.font(600)
+                    )
+                )
+                setBottomPaddingFraction(0.09f)
+            }
+            // Under the black shield and the controls, where the web view sits too.
+            frame.addView(v, frame.indexOfChild(shield), ui.fl(ui.match, ui.match))
+            playerView = v
+        }
+        view.visibility = View.VISIBLE
+        val player = exo ?: ExoPlayer.Builder(this)
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(MediaC.USAGE_MEDIA).setContentType(MediaC.AUDIO_CONTENT_TYPE_MOVIE).build(),
+                true
+            )
+            .build().also { p ->
+                p.addListener(nativeListener)
+                // Subtitles only in Turkish: a Turkish track if the trailer has one, otherwise none.
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setPreferredTextLanguage("tr").build()
+                exo = p
+            }
+        view.player = player
+
+        val hints = HashMap<String, SubtitleHint>()
+        val item = MediaItem.Builder().setUri(source.video)
+        if (source.hls) item.setMimeType(MimeTypes.APPLICATION_M3U8)
+        source.turkishSubtitles?.let { address ->
+            val uri = Uri.parse(address)
+            hints[uri.toString()] = SubtitleHint("tr", SubtitleText.VTT)
+            item.setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration.Builder(uri)
+                        .setMimeType(SubtitleText.VTT)
+                        .setLanguage("tr")
+                        .setSelectionFlags(MediaC.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            )
+        }
+        val sources = DefaultMediaSourceFactory(
+            SubtitleFixDataSource.Factory(YouTubeChunkedDataSource.Factory(source.userAgent), hints)
+        )
+        val picture = sources.createMediaSource(item.build())
+        val media = if (source.audio != null) {
+            MergingMediaSource(picture, sources.createMediaSource(MediaItem.fromUri(source.audio)))
+        } else {
+            picture
+        }
+        nativeMode = true
+        nativeStarted = false
+        pendingStart = startSec
+        volumeFade?.cancel()
+        player.volume = 0f
+        player.setMediaSource(media, startSec * 1000L)
+        player.prepare()
+        player.playWhenReady = true
+        handler.removeCallbacks(giveUp)
+        handler.postDelayed(giveUp, 15000)
+    }
+
+    private fun stopNative() {
+        nativeMode = false
+        volumeFade?.cancel()
+        exo?.let {
+            it.stop()
+            it.clearMediaItems()
+        }
+        playerView?.visibility = View.GONE
+    }
+
+    private fun fadeVolume(to: Float, ms: Long) {
+        val p = exo ?: return
+        volumeFade?.cancel()
+        volumeFade = android.animation.ValueAnimator.ofFloat(p.volume, to).apply {
+            duration = ms
+            addUpdateListener { exo?.volume = it.animatedValue as Float }
+            start()
+        }
+    }
+
+    /** YouTube's embedded player takes the trailer on screen, from [startSec] when it is its first. */
+    private fun playInWeb(startSec: Int) {
+        // An answer of the stream search still on its way is no longer wanted.
+        findGeneration++
+        handler.removeCallbacks(nativeTooSlow)
+        stopNative()
+        val w = ensureWeb()
+        if (w == null) {
+            fallBack()
+            return
+        }
+        w.visibility = View.VISIBLE
+        if (!webLoaded) {
+            load(w, startSec)
+        } else {
+            w.evaluateJavascript("play('$id')", null)
+            handler.removeCallbacks(giveUp)
+            handler.postDelayed(giveUp, 15000)
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun ensureWeb(): WebView? {
+        web?.let { return it }
+        // Some TVs have no working web view; then the YouTube app it is.
+        val w = try {
+            WebView(this)
+        } catch (e: Throwable) {
+            null
+        }
+        if (w == null) return null
+        web = w
+        w.setBackgroundColor(Color.BLACK)
+        w.isFocusable = false
+        w.settings.javaScriptEnabled = true
+        w.settings.domStorageEnabled = true
+        w.settings.mediaPlaybackRequiresUserGesture = false
+        w.settings.setSupportZoom(false)
+        w.webViewClient = object : WebViewClient() {
+            // Links inside the player (YouTube logo, "watch on YouTube") open the YouTube app instead.
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                fallBack()
+                return true
+            }
+        }
+        // The page reports back through its title: "p" playing, "pause", "end" finished, "e:<code>" error.
+        w.webChromeClient = object : WebChromeClient() {
+            override fun onReceivedTitle(view: WebView, t: String?) {
+                // The trailer moved to LeXia's own player: what the page still reports is stale.
+                if (nativeMode) return
+                when {
+                    t == "p" -> onPlaying()
+                    t == "pause" -> onPaused()
+                    t == "end" -> showEnd()
+                    t != null && t.startsWith("e:") -> if (list.size > 1 && at < list.size - 1) nextTrailer() else fallBack()
+                }
+            }
+        }
+        frame.addView(w, 0, ui.fl(ui.match, ui.match))
+        return w
     }
 
     /**
@@ -351,6 +603,7 @@ class TrailerActivity : Activity() {
             function prep(v){var o=1-cur;if(cued[o]===v)return;cued[o]=v;if(!P[o]){mk(o,v,0);}else if(ready[o]){P[o].cueVideoById(v);}}
             </script></body></html>
         """.trimIndent()
+        webLoaded = true
         w.loadDataWithBaseURL(Net.OLD_SITE + "/", html, "text/html", "utf-8", null)
         handler.removeCallbacks(giveUp)
         handler.postDelayed(giveUp, 15000)
@@ -577,7 +830,15 @@ class TrailerActivity : Activity() {
         paused = false
         openCurtain()
         // Marathon: the next trailer waits ready in the hidden player.
-        if (list.size > 1 && at + 1 < list.size) web?.evaluateJavascript("prep('${list[at + 1]}')", null)
+        if (list.size > 1 && at + 1 < list.size) {
+            val next = list[at + 1]
+            if (nativeMode) {
+                val height = maxHeight
+                finder.execute { YouTubeStreams.find(next, height, TrailerDecoders::canDecode) }
+            } else {
+                web?.evaluateJavascript("prep('$next')", null)
+            }
+        }
         center.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setDuration(D.MED).start()
         status.animate().alpha(0f).setDuration(D.MED).start()
         // A moment after it starts: YouTube shows its title over the first frames.
@@ -606,18 +867,27 @@ class TrailerActivity : Activity() {
 
     /** Asks the player where it is ("72.4|150.2|1") and moves the bar, the knob and the times. */
     private fun readTime() {
+        if (nativeMode) {
+            val p = exo ?: return
+            showTime(p.currentPosition / 1000.0, p.duration / 1000.0)
+            return
+        }
         val w = web ?: return
         w.evaluateJavascript("(player&&player.getDuration)?(player.getCurrentTime()+'|'+player.getDuration()+'|'+player.getPlayerState()):''") { r ->
             val parts = r?.trim('"')?.split('|') ?: return@evaluateJavascript
             if (parts.size < 3) return@evaluateJavascript
             val now = parts[0].toDoubleOrNull() ?: return@evaluateJavascript
             val all = parts[1].toDoubleOrNull() ?: return@evaluateJavascript
-            if (all <= 0) return@evaluateJavascript
-            progress = (now / all).toFloat().coerceIn(0f, 1f)
-            tip.text = clock(now)
-            timeLeft.text = "−" + clock(all - now)
-            placeKnob()
+            showTime(now, all)
         }
+    }
+
+    private fun showTime(now: Double, all: Double) {
+        if (all <= 0) return
+        progress = (now / all).toFloat().coerceIn(0f, 1f)
+        tip.text = clock(now)
+        timeLeft.text = "−" + clock(all - now)
+        placeKnob()
     }
 
     private fun placeKnob() {
@@ -637,7 +907,6 @@ class TrailerActivity : Activity() {
     // ---------- Keys ----------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val w = web ?: return super.dispatchKeyEvent(event)
         val back = event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE
         // The end card has buttons: the remote moves between them; Geri closes.
         if (endCard != null) {
@@ -668,7 +937,8 @@ class TrailerActivity : Activity() {
         val step = if (event.repeatCount >= 6) 30 else 10
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_SPACE -> w.evaluateJavascript("toggle()", null)
+            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_SPACE ->
+                if (nativeMode) exo?.let { it.playWhenReady = !it.playWhenReady } else web?.evaluateJavascript("toggle()", null)
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> skip(-step)
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> skip(step)
             KeyEvent.KEYCODE_DPAD_UP -> if (buttons.childCount > 0) { enterButtons(); return true }
@@ -695,7 +965,14 @@ class TrailerActivity : Activity() {
     }
 
     private fun skip(s: Int) {
-        web?.evaluateJavascript("seek($s)", null)
+        if (nativeMode) {
+            exo?.let { p ->
+                val last = (p.duration - 1000L).coerceAtLeast(0L)
+                p.seekTo((p.currentPosition + s * 1000L).coerceIn(0L, last))
+            }
+        } else {
+            web?.evaluateJavascript("seek($s)", null)
+        }
         skipSum += s
         bubble.text = (if (skipSum >= 0) "+" else "−") + Math.abs(skipSum) + " sn"
         bubble.animate().cancel()
@@ -740,7 +1017,8 @@ class TrailerActivity : Activity() {
     }
 
     private fun pausePlayer() {
-        web?.evaluateJavascript("if(player&&player.getPlayerState()===1)player.pauseVideo();", null)
+        if (nativeMode) exo?.playWhenReady = false
+        else web?.evaluateJavascript("if(player&&player.getPlayerState()===1)player.pauseVideo();", null)
     }
 
     /** The film's page; the trailer stops while it is open. */
@@ -907,7 +1185,7 @@ class TrailerActivity : Activity() {
         removeEnd()
         playing = false
         shieldTo(1f)
-        web?.evaluateJavascript("play('$id')", null)
+        startTrailer(0)
         showInfo()
     }
 
@@ -932,7 +1210,7 @@ class TrailerActivity : Activity() {
         placeKnob()
         bindFilm()
         showInfo()
-        web?.evaluateJavascript("play('$id')", null)
+        startTrailer(0)
         handler.removeCallbacks(giveUp)
         handler.postDelayed(giveUp, 15000)
     }
@@ -973,7 +1251,7 @@ class TrailerActivity : Activity() {
         if (done) return
         done = true
         savePlace()
-        web?.evaluateJavascript("fadeTo(0,420)", null)
+        if (nativeMode) fadeVolume(0f, 420) else web?.evaluateJavascript("fadeTo(0,420)", null)
         if (Fx.lite) {
             handler.postDelayed({ finish() }, 150)
             return
@@ -992,14 +1270,22 @@ class TrailerActivity : Activity() {
 
     /** Where the trailer was left, if it was left half way (not in the first or last seconds). */
     private fun savePlace() {
-        val w = web ?: return
         val key = id
+        fun keep(now: Double, all: Double) {
+            if (all <= 0) return
+            prefs.trailerAt = if (now >= 8 && now < all - 10) prefs.trailerAt + (key to now.toInt()) else prefs.trailerAt - key
+        }
+        if (nativeMode) {
+            val p = exo ?: return
+            if (nativeStarted) keep(p.currentPosition / 1000.0, p.duration / 1000.0)
+            return
+        }
+        val w = web ?: return
         w.evaluateJavascript("(player&&player.getDuration)?(player.getCurrentTime()+'|'+player.getDuration()):''") { r ->
             val parts = r?.trim('"')?.split('|') ?: return@evaluateJavascript
             val now = parts.getOrNull(0)?.toDoubleOrNull() ?: return@evaluateJavascript
             val all = parts.getOrNull(1)?.toDoubleOrNull() ?: return@evaluateJavascript
-            if (all <= 0) return@evaluateJavascript
-            prefs.trailerAt = if (now >= 8 && now < all - 10) prefs.trailerAt + (key to now.toInt()) else prefs.trailerAt - key
+            keep(now, all)
         }
     }
 
@@ -1037,7 +1323,7 @@ class TrailerActivity : Activity() {
             status.animate().alpha(1f).setDuration(D.FAST).start()
             bindFilm()
             showInfo()
-            web?.evaluateJavascript("play('$id')", null)
+            startTrailer(0)
             handler.removeCallbacks(giveUp)
             handler.postDelayed(giveUp, 15000)
         }
@@ -1120,17 +1406,31 @@ class TrailerActivity : Activity() {
         super.onPause()
         // Leaving (Home, another app): stop the sound, keep the place.
         if (!done) savePlace()
+        exo?.let {
+            resumeOnReturn = nativeMode && it.playWhenReady
+            it.playWhenReady = false
+        }
         web?.onPause()
         if (isFinishing) web?.loadUrl("about:blank")
     }
 
     override fun onResume() {
         super.onResume()
+        if (nativeMode && resumeOnReturn && !done && endCard == null) exo?.playWhenReady = true
+        resumeOnReturn = false
         web?.onResume()
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        finder.shutdownNow()
+        volumeFade?.cancel()
+        playerView?.player = null
+        exo?.let {
+            it.removeListener(nativeListener)
+            it.release()
+        }
+        exo = null
         web?.let {
             (it.parent as? FrameLayout)?.removeView(it)
             it.destroy()

@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       PROJECT: lexia-tv
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Secrets
         run: |
-          if [ -z "$TMDB_API_KEY" ]; then echo "::warning::TMDB_API_KEY secret is not set; Nuvio JS providers that resolve titles through TMDB may return no streams."; fi
+          if [ -z "$TMDB_API_KEY" ]; then echo "::warning::Neither TMDB_API_KEY nor TMDB_KEY secret is set; Nuvio JS providers that resolve titles through TMDB may return no streams."; fi
           for n in KEYSTORE_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
             if [ -z "${!n}" ]; then echo "::error::Depo sırrı eksik: $n (Settings › Secrets and variables › Actions)"; exit 1; fi
           done

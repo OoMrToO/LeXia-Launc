@@ -11,6 +11,7 @@ import java.io.IOException
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 internal data class InstalledMediaAddon(
     val baseUrl: String,
@@ -123,16 +124,10 @@ internal class MediaAddonRepository(context: Context) {
             "Manifest dosyasında eklenti adı veya kimliği bulunamadı."
         }
 
+        // Any Stremio add-on is welcome, as in Nuvio: sources, episode lists (Cinemeta), subtitles.
+        // What it can do is read from its manifest when it is asked.
         val types = strings(json.optJSONArray("types"))
         val resources = parseResourceNames(json.optJSONArray("resources"))
-        require("stream" in resources || resources.any {
-            it.equals("subtitles", true) || it.equals("subtitle", true)
-        }) {
-            "Bu eklenti video veya altyazı kaynağı sunmuyor."
-        }
-        require(types.isEmpty() || types.any { it == "movie" || it == "series" || it == "tv" }) {
-            "Eklenti film veya dizi desteği bildirmiyor."
-        }
 
         val addon = InstalledMediaAddon(
             baseUrl = base.toString().trimEnd('/'),
@@ -173,27 +168,27 @@ internal class MediaAddonRepository(context: Context) {
                 if (!supportsId(addon, id)) continue
                 val before = result.size
                 try {
-                    val root = getJson(endpoint(addon.baseUrl, "meta", "series", id))
-                    val meta = root.optJSONObject("meta") ?: root
-                    val videos = meta.optJSONArray("videos") ?: continue
-                    for (i in 0 until videos.length()) {
-                        val item = videos.optJSONObject(i) ?: continue
-                        val videoId = item.optString("id").trim()
-                        if (videoId.isBlank() || videoId.length > 300) continue
-                        val season = item.optInt("season", 0)
-                        val episode = item.optInt("episode", 0)
-                        val title = item.optString("title").ifBlank {
-                            if (season > 0 && episode > 0) "$season. Sezon · $episode. Bölüm" else "Bölüm"
-                        }.take(160)
-                        result.putIfAbsent(
-                            videoId,
-                            MediaEpisode(videoId, title, season.coerceAtLeast(0), episode.coerceAtLeast(0), item.optString("released"))
-                        )
-                    }
+                    addEpisodes(getJson(endpoint(addon.baseUrl, "meta", "series", id)), result)
                 } catch (_: Exception) {
                     // One offline or incompatible add-on must not block the other providers.
                 }
                 if (result.size > before) break
+            }
+        }
+        // No installed add-on lists episodes: Cinemeta (the list Stremio and Nuvio use themselves),
+        // then TMDB's season sizes. Typing season and episode numbers by hand is the last resort.
+        val imdb = imdbId.takeIf { IMDB_ID.matches(it) } ?: imdbId("tv", tmdbId)
+        if (result.isEmpty() && imdb.isNotEmpty()) {
+            try {
+                addEpisodes(getJson(CINEMETA.toHttpUrlOrNull()!!.newBuilder()
+                    .addPathSegment("meta").addPathSegment("series").addPathSegment("$imdb.json").build()), result)
+            } catch (_: Exception) {
+            }
+        }
+        if (result.isEmpty()) {
+            try {
+                seasonsFromTmdb(tmdbId, imdb.ifEmpty { "tmdb:$tmdbId" }, result)
+            } catch (_: Exception) {
             }
         }
         return result.values
@@ -202,6 +197,81 @@ internal class MediaAddonRepository(context: Context) {
             .sortedWith(compareBy<MediaEpisode> { it.season }.thenBy { it.episode }.thenBy { it.title })
             .take(MAX_EPISODES)
     }
+
+    private fun addEpisodes(root: JSONObject, result: MutableMap<String, MediaEpisode>) {
+        val meta = root.optJSONObject("meta") ?: root
+        val videos = meta.optJSONArray("videos") ?: return
+        for (i in 0 until videos.length()) {
+            val item = videos.optJSONObject(i) ?: continue
+            val videoId = item.optString("id").trim()
+            if (videoId.isBlank() || videoId.length > 300) continue
+            val season = item.optInt("season", 0)
+            val episode = item.optInt("episode", item.optInt("number", 0))
+            val title = item.optString("title").ifBlank { item.optString("name") }.takeIf { it != "null" }.orEmpty().ifBlank {
+                if (season > 0 && episode > 0) "$season. Sezon · $episode. Bölüm" else "Bölüm"
+            }.take(160)
+            result.putIfAbsent(
+                videoId,
+                MediaEpisode(videoId, title, season.coerceAtLeast(0), episode.coerceAtLeast(0), item.optString("released"))
+            )
+        }
+    }
+
+    /** Every season's episodes by number alone, from how many TMDB says each season has. */
+    private fun seasonsFromTmdb(tmdbId: Int, seriesId: String, result: MutableMap<String, MediaEpisode>) {
+        val key = BuildConfig.TMDB_API_KEY
+        if (key.isBlank()) return
+        val show = getJson(TMDB.toHttpUrlOrNull()!!.newBuilder()
+            .addPathSegment("tv").addPathSegment(tmdbId.toString())
+            .addQueryParameter("api_key", key).addQueryParameter("language", "tr-TR").build())
+        val seasons = show.optJSONArray("seasons") ?: return
+        for (i in 0 until seasons.length()) {
+            val item = seasons.optJSONObject(i) ?: continue
+            val season = item.optInt("season_number", 0)
+            if (season <= 0) continue
+            for (episode in 1..item.optInt("episode_count", 0).coerceAtMost(500)) {
+                val id = "$seriesId:$season:$episode"
+                result.putIfAbsent(id, MediaEpisode(id, "$episode. Bölüm", season, episode))
+            }
+        }
+    }
+
+    /**
+     * The IMDb id ("tt0133093") of a TMDB film ("movie") or series ("tv"); empty when it cannot be
+     * found. Stremio add-ons look films up by it. Asked from TMDB once per title, then remembered.
+     */
+    fun imdbId(type: String, tmdbId: Int): String {
+        if (tmdbId <= 0) return ""
+        prefs.getString("imdb:$type:$tmdbId", "")?.takeIf { IMDB_ID.matches(it) }?.let { return it }
+        val key = BuildConfig.TMDB_API_KEY
+        if (key.isBlank()) return ""
+        return try {
+            val found = getJson(TMDB.toHttpUrlOrNull()!!.newBuilder()
+                .addPathSegment(type).addPathSegment(tmdbId.toString()).addPathSegment("external_ids")
+                .addQueryParameter("api_key", key).build()).optString("imdb_id")
+            if (IMDB_ID.matches(found)) {
+                prefs.edit().putString("imdb:$type:$tmdbId", found).apply()
+                found
+            } else ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /** What the last source search ran into, for telling the viewer why nothing came. */
+    class SearchNotes {
+        /** Add-ons that were asked. */
+        val asked = AtomicInteger()
+        /** Add-ons that did not answer. */
+        val failed = AtomicInteger()
+        /** Sources that are torrents only (no address to play). */
+        val torrents = AtomicInteger()
+        /** Sources left out for another reason (not HTTPS, a web page, a YouTube id). */
+        val unplayable = AtomicInteger()
+    }
+
+    @Volatile var notes = SearchNotes()
+        private set
 
     /** Queries Stremio subtitle resources independently of stream resources. */
     fun fetchSubtitles(type: String, videoId: String): List<MediaSubtitle> {
@@ -254,7 +324,10 @@ internal class MediaAddonRepository(context: Context) {
         val addons = installedAddons().filter {
             "stream" in it.resources && supports(it, type) && supportsId(it, videoId)
         }
+        val found = SearchNotes()
+        notes = found
         if (addons.isEmpty()) return emptyList()
+        found.asked.set(addons.size)
         val pool = Executors.newFixedThreadPool(minOf(addons.size, MAX_PARALLEL_ADDONS))
         try {
             val answers = addons.map { addon ->
@@ -263,6 +336,7 @@ internal class MediaAddonRepository(context: Context) {
                     try {
                         streamsOf(addon, type, videoId).also { part -> if (part.isNotEmpty()) onPartial?.invoke(part) }
                     } catch (_: Exception) {
+                        found.failed.incrementAndGet()
                         emptyList()
                     }
                 })
@@ -280,7 +354,11 @@ internal class MediaAddonRepository(context: Context) {
         for (i in 0 until streams.length()) {
             val item = streams.optJSONObject(i) ?: continue
             val url = item.optString("url")
-            if (!isDirectHttpUrl(url)) continue
+            if (!isDirectHttpUrl(url)) {
+                if (item.optString("infoHash").isNotBlank() || url.startsWith("magnet:", true)) notes.torrents.incrementAndGet()
+                else notes.unplayable.incrementAndGet()
+                continue
+            }
 
             val behavior = item.optJSONObject("behaviorHints")
             val proxyHeaders = behavior?.optJSONObject("proxyHeaders")
@@ -385,8 +463,12 @@ internal class MediaAddonRepository(context: Context) {
     private fun normalizeBaseUrl(raw: String): HttpUrl {
         var value = raw.trim()
         require(value.isNotEmpty()) { "Eklenti adresi boş olamaz." }
-        require('?' !in value && '#' !in value) {
-            "İlk sürümde yapılandırma sorgusu içeren eklenti adresleri desteklenmiyor."
+        // "stremio://…/manifest.json" is how add-on pages write their install link.
+        if (value.startsWith("stremio://", ignoreCase = true)) value = "https://" + value.substring("stremio://".length)
+        if (!value.contains("://")) value = "https://$value"
+        value = value.substringBefore('#')
+        require('?' !in value) {
+            "Adresinde soru işareti olan eklentiler desteklenmiyor."
         }
         if (value.endsWith("/manifest.json", ignoreCase = true)) {
             value = value.dropLast("/manifest.json".length)
@@ -447,6 +529,8 @@ internal class MediaAddonRepository(context: Context) {
     }
 
     private companion object {
+        const val CINEMETA = "https://v3-cinemeta.strem.io"
+        const val TMDB = "https://api.themoviedb.org/3"
         const val PREFS_NAME = "media_addons"
         const val KEY_INSTALLED = "installed_v1"
         const val MAX_RESPONSE_BYTES = 5 * 1024 * 1024

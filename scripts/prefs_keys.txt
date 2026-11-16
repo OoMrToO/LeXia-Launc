@@ -116,3 +116,5 @@ playSubSize int
 playAutoSource bool
 choices text
 episodes text
+trailerNative bool
+imdb:$type:$tmdbId text

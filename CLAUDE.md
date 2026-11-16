@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman aşımına düşüyordu, düzeltildi; Medya kaynakları ekranında odak korunuyor).
+Son güncelleme: 16 Kasım 2026 (PR #44: fragman + eklentilerin kaynak bulamamasının asıl nedenleri düzeltildi: IMDb kimliği, TMDB anahtarı, bölüm listesi, eklenti ekleme).
 
 ## 1. Çalışma biçimi
 
@@ -29,7 +29,7 @@ Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman 
   - **Altyazı (`SubtitleText.kt`, `Lang.kt`):** ayrı altyazı dosyaları `SubtitleFixDataSource` ile bütün indirilir; Windows-1254 ve benzerleri, işaretsiz UTF-16, çift dönüştürülmüş metin ("ÅŸ") UTF-8'e çevrilir; SRT/VTT karışıklığı dönüştürülür; yüklenemeyen ya da tanınmayan altyazı boş altyazı olur (film durmaz). Zamanlama `DelayedSubtitleRenderers` (Nuvio'daki gibi `ForwardingRenderer`).
   - **Dil tercihi:** Ayarlar › Oynatma ve Takip: ses dili, altyazı dili, "ses aynı dildeyse altyazı açılmasın", altyazı boyutu (`playAudioLang`, `playSubLang`, `playSubSmart`, `playSubSize`).
   - **Kaynak listesi (`MediaSourcePickerActivity`, `StreamTags.kt`):** rozetler (4K, HDR, Dublaj, WEB-DL, HEVC, ses, boyut) kaynak adından okunur; eklentiler aynı anda sorulur ve liste sonuç geldikçe dolar; `playAutoSource` (varsayılan açık) en uygun kaynağı kendiliğinden açar (ilk sonuçtan 6 sn sonra ya da arama bitince; bir tuşa basılırsa vazgeçer); ekran çözünürlüğüne/HDR'ye ve dublaj tercihine göre puanlar, sinema çekimini (CAM) sona atar; başlık başına son seçilen kaynak ve son bölüm hatırlanır (`media_source_picker` › `choices`, `episodes`). Diziler sezon düğmeleriyle; bölüm sınırı 2000.
-  - **Fragman:** Nuvio'nun yöntemi (YouTube'un kendi uygulamalarını taklit eden akış çıkarıcı) **alınmadı**: sık bozulur ve YouTube kurallarına aykırı; mevcut gömülü oynatıcı kaldı. Kullanıcıya söylendi.
+  - **Fragman:** #42'de alınmadı; kullanıcı sakıncaları duyduktan sonra "fragmanı da yap" dedi, #44'te eklendi (aşağıda).
   - Torrent/debrid ve MPV yine yok. **Hiçbiri TV'de denenmedi.**
 
 - **#43 (Claude, 15 Kasım; kullanıcı "medya kaynakları çalıştırıcısını gözden geçir" dedi):**
@@ -38,6 +38,20 @@ Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman 
   - Kaynak adı: scraper'ın `name` alanı (sağlayıcı + kalite) kart başlığı, `title` açıklama; önceden `name` hiç gösterilmiyordu ve rozetlere girmiyordu.
   - `MediaAddonsActivity`: liste yeniden çizilince kumanda aynı düğmede kalır (düğmelerde `tag`); ekleme başarısızsa Stremio ve Nuvio nedenleri birlikte gösterilir.
   - **Bu ortamda scraper çalıştırıcısı gerçekten çalıştırılabiliyor:** Maven'den `io.github.dokar3:quickjs-kt-jvm:1.0.5` (Linux kitaplığı içinde) + `android.util.Log`/`Base64` için iki küçük taklit sınıf + `org.json`; `NuvioJsRuntime.kt` olduğu gibi derlenip örnek scraper'larla denenir (fetch, cheerio, CryptoJS, zamanlayıcılar). Üst düzey `await` (#40) bu yolla doğrulandı.
+
+- **#44 (Claude, 15 Kasım; kullanıcı "fragmanı da yap" dedi):** `TrailerActivity` artık iki oynatıcılı.
+  - **Önce LeXia'nın oynatıcısı:** `YouTubeStreams.find` YouTube'un oynatıcı hizmetine kendi uygulamaları gibi sorar (VISIONOS → ANDROID → IOS; izleme sayfasından ziyaretçi kimliği, 6 saat saklanır). Seçim: ayrı görüntü + ses (ekrana sığan en net, HDR değil, 30 kare ve H.264 önde; VP9/AV1 yalnızca TV'nin kendi çözücüsü varsa), yoksa HLS, yoksa tek dosya. `YouTubeChunkedDataSource` akışı `&range=` ile 10 MB'lık parçalarda çeker (tek seferde istenince YouTube yavaşlatır). Türkçe altyazı (otomatik olmayan) varsa eklenir. Ses yumuşak açılır/kapanır, maratonda sıradaki önceden aranır.
+  - **Yedek:** akış 8 sn'de bulunamazsa, 15 sn'de başlamazsa ya da oynarken hata verirse aynı yerden YouTube'un gömülü oynatıcısı (eski yol, web görünümü artık gerektiğinde oluşturulur) devralır; o da olmazsa YouTube uygulaması. Art arda 2 başarısızlıkta yerel yol 30 dk dinlenir. Ayar: `trailerNative` (Ayarlar › Oynatma ve Takip › "Fragmanlar YouTube çerçevesi olmadan oynasın", varsayılan açık).
+  - **Resmî olmayan bir yol:** YouTube değiştirince bozulur; o zaman istemci sürümleri (`YouTubeStreams.clients`) Nuvio'nun `InAppYouTubeExtractor.kt` dosyasındaki güncel değerlerle karşılaştırılır. **Bu ortamdan YouTube'a erişim yok: canlı denenmedi**, yalnızca akış seçimi uydurma cevaplarla sınandı. TV'de de denenmedi.
+
+- **Kullanıcı şikâyeti (16 Kasım, sürüm 43 TV'de):** "Ayarlarda iki eklenti girişi var, filmleri çekmiyor, dizide sezon/bölümü elle girdiriyor, sonuç gelmiyor; Nuvio beta manifestleri ekletiyordu; medya kısmını Nuvio'dan **birebir** alacaktık." Bulunan nedenler (hepsi #44'e eklendi):
+  - **IMDb kimliği yoktu:** `pick.json`'daki 2487 kaydın yalnızca 274'ünde `imdb_id` vardı (yalnızca "günün filmleri" adaylarında). Geri kalanlar eklentilere `tmdb:123` diye soruluyordu; Stremio eklentilerinin çoğu yalnızca `tt…` tanır. Artık `scripts/pick.py` her tam kayda `imdb_id` yazar (`external_ids`, ek istek yok) ve uygulama eksik olanı TMDB'den sorup saklar (`MediaAddonRepository.imdbId`, `media_addons` › `imdb:<tür>:<id>`).
+  - **TMDB anahtarı APK'ya boş gidiyordu:** iş akışları `secrets.TMDB_API_KEY` okuyordu, depodaki sırrın adı `TMDB_KEY`. Artık `TMDB_API_KEY || TMDB_KEY`. (Nuvio scraper'ları yapımı TMDB'den tanır; anahtarsız kaynak bulamazlar.)
+  - **Bölüm listesi:** yalnızca kullanıcının kurduğu "meta" eklentilerinden geliyordu; yoksa elle sezon/bölüm ekranı açılıyordu. Artık sırayla: kurulu eklentiler → Cinemeta (`v3-cinemeta.strem.io`, yerleşik) → TMDB sezon sayıları; elle giriş en son çare.
+  - **Eklenti ekleme:** yalnızca "stream"/"subtitles" veren eklentiler kabul ediliyordu (Cinemeta gibi katalog/meta eklentileri reddediliyordu); artık geçerli her Stremio manifesti eklenir, `stremio://` ve şemasız adres de olur.
+  - **Kaynak yoksa nedeni yazılır** (`whyNothing`): hepsi torrent, https değil, eklenti cevap vermedi, IMDb kimliği yok, TMDB anahtarı yok.
+  - Ayarlar'da tek giriş kaldı: "Medya kaynakları" ("Entegrasyonlar" sayfası kaldırıldı).
+  - **Hâlâ fark:** LeXia torrent ve debrid oynatmaz; Nuvio oynatır. Kullanıcının eklentileri torrent veriyorsa (Torrentio gibi) LeXia'da kaynak çıkmaz. Kullanıcıya soruldu: hangi eklentiler? "Birebir Nuvio" için gerçek yollar: (a) Nuvio'yu ayrı kurup LeXia'nın "Oynat"ını `stremio://` bağlantısıyla Nuvio'da açmak (Nuvio manifestinde `nuvio://` ve `stremio://` var), (b) fork'u LeXia ana ekranıyla tek APK yapmak (çok büyük iş). Karar bekliyor.
 
 ## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
 
@@ -99,6 +113,7 @@ Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman 
 ## 9. Açık işler
 
 - Oynatma ve eklentiler (#28, #29, #42) TV'de denenmedi: "Oynat" düğmesi, otomatik kaynak, yeni oynatıcının kumandası, ses/altyazı listeleri, altyazı düzeltmesi, sonraki bölüm.
+- Fragmanların yerel oynatıcısı (#44) hiç canlı denenmedi; TV'de fragman açılıyor mu, YouTube çerçevesi görünüyor mu (görünüyorsa yedek yola düşmüştür) sorulacak.
 - Gerçek bir Nuvio deposuyla (kullanıcının eklediği scraper'larla) TV'de kaynak bulunup bulunmadığı denenmedi; cheerio taklidi eksik olabilir (`hasClass`, `closest`, `siblings` yok).
 
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
@@ -124,3 +139,4 @@ Son güncelleme: 15 Kasım 2026 (PR #43: Nuvio scraper ağ istekleri 1 ms zaman 
 | #40, #41 | ChatGPT | Nuvio scraper sonucunun beklenmesi (`await`); Stremio altyazı eklentileri (OpenSubtitles gibi) ayrıca sorulur. İkisi de #42'nin dalına alındı |
 | #42 | Claude | Oynatıcı ve kaynak listesi yeniden yazıldı: Türkçe altyazı düzeltmesi, dil tercihi, altyazı boyutu/zamanlaması, rozetler, otomatik en iyi kaynak, sonraki bölüm (bölüm 2) |
 | #43 | Claude | Nuvio scraper isteklerinin 1 ms zaman aşımı düzeltildi; gerçek `setTimeout`; kaynak adları; Medya kaynakları ekranında odak |
+| #44 | Claude | Fragmanlar LeXia'nın kendi oynatıcısında (YouTube akışları), olmazsa gömülü oynatıcıya düşer |

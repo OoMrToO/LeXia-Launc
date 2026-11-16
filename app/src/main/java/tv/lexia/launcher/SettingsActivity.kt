@@ -562,14 +562,13 @@ class SettingsActivity : Activity() {
             Header("KİŞİSELLEŞTİR"),
             sub("Görünüm", "Arka plan, kart boyutu, karşılama, saat ve hava durumu.", { lookPage() }),
             sub("İçerik ve Keşif", "Film önerileri, türler, yayın platformları ve ana ekran keşif satırları.", { discoveryPage() }),
-            sub("Entegrasyonlar", "Stremio eklentileri, Nuvio JS depoları ve kaynak sağlayıcıları.", { integrationsPage() },
-                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" }),
             sub("Oynatma ve Takip", "Kaynak seçimi, ses ve altyazı dili, fragmanlar ve izleme takibi.", { playbackTrackingPage() }),
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             Row(
                 "Medya kaynakları",
-                "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
+                "Stremio eklentileri ve Nuvio JS depoları: ekle, aç ya da kapat, dene, kaldır.",
                 chevron = true,
+                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" },
                 action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
             ),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
@@ -616,26 +615,9 @@ class SettingsActivity : Activity() {
         )
     }
 
-    private fun integrationsPage() = Page("Entegrasyonlar", R.drawable.ic_tv) {
-        listOf(
-            Header("MEDYA KAYNAKLARI"),
-            Row(
-                "Eklenti ve scraper yöneticisi",
-                "Stremio manifest'lerini ve Nuvio JavaScript depolarını ekle. Sağlayıcıları ayrı ayrı etkinleştir, test et ve ayarla.",
-                value = {
-                    val stremio = MediaAddonRepository(this).installedAddons().size
-                    val nuvio = NuvioJsRepository(this).installedRepositories().sumOf { it.scrapers.size }
-                    "$stremio Stremio · $nuvio Nuvio JS"
-                },
-                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
-            ),
-            Note("Stremio add-on'ları ve Nuvio JS scraper'ları farklı çalışma biçimlerine sahiptir. LeXia ikisini aynı kaynak seçme ekranında birleştirir.")
-        )
-    }
-
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp")
+        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -673,6 +655,13 @@ class SettingsActivity : Activity() {
             Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
                 { prefs.trailerInApp }, { prefs.trailerInApp = it }),
+            toggle(
+                "Fragmanlar YouTube çerçevesi olmadan oynasın",
+                "Fragman doğrudan LeXia'nın oynatıcısında, YouTube'un yazıları ve önerileri olmadan oynar. " +
+                    "YouTube bir şey değiştirirse bu yol çalışmayabilir; o zaman fragman kendiliğinden YouTube'un gömülü oynatıcısında açılır. " +
+                    "Fragmanlarda sorun görürsen kapat.",
+                { prefs.trailerNative }, { prefs.trailerNative = it }
+            ),
             Header("İZLEME TAKİBİ"),
             Row("İzlenen içerikler", "Tamamlanan film ve bölümler izlenenler listesine kaydedilir.", value = { "${prefs.watched.size} içerik" }),
             Row("Listem", "Daha sonra izlemek üzere kaydettiğin içerikler.", value = { "${prefs.watchlist.size} içerik" }),
