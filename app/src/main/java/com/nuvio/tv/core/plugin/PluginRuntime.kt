@@ -1,7 +1,4 @@
-// Copied from NuvioTV (github.com/NuvioMedia/NuvioTV, GPL-3.0), app/src/full/java/com/nuvio/tv/core/plugin/
-// PluginRuntime.kt at a3532b81: Nuvio's own JavaScript scraper runtime, unchanged except for the
-// package, the class name and the dependency injection. Keep it in step with Nuvio rather than editing it.
-package tv.lexia.launcher
+package com.nuvio.tv.core.plugin
 
 import android.util.Log
 import com.dokar.quickjs.binding.define
@@ -9,6 +6,11 @@ import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.quickJs
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.domain.model.LocalScraperResult
+import com.nuvio.tv.domain.model.Subtitle
+import com.nuvio.tv.domain.model.toStreamAudioDelayLanguage
+import com.nuvio.tv.domain.model.toStreamAudioDelayMs
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
@@ -34,17 +36,20 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
 import kotlin.text.Charsets
+import javax.inject.Inject
+import javax.inject.Singleton
 
 private const val TAG = "PluginRuntime"
 private const val PLUGIN_TIMEOUT_MS = 60_000L
 private const val MAX_FETCH_RESPONSE_BYTES = 1024 * 1024
 private const val MAX_FETCH_BODY_CHARS = 1024 * 1024
-internal class NuvioPluginRuntime {
+@Singleton
+class PluginRuntime @Inject constructor() {
 
     private val gson: Gson = GsonBuilder().create()
 
     private val httpClient = OkHttpClient.Builder()
-        .dns(NuvioIPv4FirstDns())
+        .dns(com.nuvio.tv.core.network.IPv4FirstDns())
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)

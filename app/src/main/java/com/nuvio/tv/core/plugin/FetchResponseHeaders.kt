@@ -1,5 +1,4 @@
-// Copied from NuvioTV (GPL-3.0), app/src/full/java/com/nuvio/tv/core/plugin/FetchResponseHeaders.kt at a3532b81.
-package tv.lexia.launcher
+package com.nuvio.tv.core.plugin
 
 import okhttp3.Headers
 

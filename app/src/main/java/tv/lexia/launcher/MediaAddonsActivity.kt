@@ -211,13 +211,6 @@ class MediaAddonsActivity : Activity() {
                 card.addView(row)
             }
             val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            repoActions.addView(action(if (repo.enabled) "Depoyu devre dışı bırak" else "Depoyu etkinleştir", primary = !repo.enabled).apply {
-                tag = "repo:${repo.id}"
-                setOnClickListener {
-                    nuvioRepository.setRepositoryEnabled(repo.id, !repo.enabled)
-                    renderAddons()
-                }
-            })
             val allEnabled = repo.scrapers.all { it.enabled }
             repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
                 tag = "all:${repo.id}"
