@@ -63,6 +63,8 @@ class MediaSourcePickerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var film: Pick
+    /** The title's IMDb id ("tt…"): what Stremio add-ons look it up by. Looked up when the film list has none. */
+    private var imdb = ""
     private lateinit var root: LinearLayout
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
@@ -117,6 +119,7 @@ class MediaSourcePickerActivity : Activity() {
             finish()
             return
         }
+        imdb = film.imdbId
         sortByQuality = sourcePrefs.getBoolean("sort_quality", true)
         groupByProvider = sourcePrefs.getBoolean("group_provider", true)
         buildUi()
@@ -248,13 +251,46 @@ class MediaSourcePickerActivity : Activity() {
             showNoAddons()
             return
         }
-        if (film.isSeries) loadEpisodes() else loadMovieStreams()
+        // Most add-ons know a film only by its IMDb id; without it they answer nothing.
+        if (imdb.isNotEmpty()) {
+            if (film.isSeries) loadEpisodes() else loadMovieStreams()
+            return
+        }
+        cancelSearch()
+        val mine = generation
+        status.text = "Yapım bilgisi alınıyor…"
+        worker.execute {
+            val found = repository.imdbId(if (film.isSeries) "tv" else "movie", film.id)
+            runOnUiThread {
+                if (mine != generation || isFinishing) return@runOnUiThread
+                imdb = found
+                if (film.isSeries) loadEpisodes() else loadMovieStreams()
+            }
+        }
+    }
+
+    /** Why the add-ons gave nothing, in the viewer's words. */
+    private fun whyNothing(): String {
+        val notes = repository.notes
+        val stremio = repository.installedAddons().count { "stream" in it.resources }
+        val scrapers = nuvioRepository.installedScraperCount()
+        val reasons = ArrayList<String>()
+        if (notes.torrents.get() > 0) {
+            reasons.add("Eklentiler ${notes.torrents.get()} kaynak verdi, ama hepsi torrent. LeXia torrent oynatmıyor; doğrudan bağlantı veren bir eklenti gerekir (örneğin debrid ayarlı bir eklenti).")
+        }
+        if (notes.unplayable.get() > 0) reasons.add("${notes.unplayable.get()} kaynak güvenli (https) bir video adresi değildi.")
+        if (notes.failed.get() > 0) reasons.add("${notes.failed.get()} eklenti cevap vermedi.")
+        if (imdb.isEmpty()) reasons.add("Bu yapımın IMDb kimliği bulunamadı; çoğu eklenti onsuz arama yapamaz.")
+        if (stremio > 0 && notes.asked.get() == 0) reasons.add("Kurulu Stremio eklentileri bu tür içeriği desteklemiyor.")
+        if (scrapers > 0 && BuildConfig.TMDB_API_KEY.isBlank()) reasons.add("Bu sürümde TMDB anahtarı yok; Nuvio scraper'ları yapımı tanıyamıyor.")
+        if (stremio == 0 && scrapers == 0) reasons.add("Kaynak veren bir eklenti kurulu değil.")
+        return reasons.joinToString(" ").ifBlank { "Kurulu eklentiler bu yapım için oynatılabilir bir kaynak vermedi." }
     }
 
     private fun loadMovieStreams() {
         episodeIndex = -1
         // Stremio add-ons commonly expect IMDb IDs; Nuvio's getStreams contract expects a TMDB ID.
-        val stremioId = film.imdbId.ifBlank { "tmdb:${film.id}" }
+        val stremioId = imdb.ifBlank { "tmdb:${film.id}" }
         search(
             message = "Film kaynakları aranıyor…",
             title = film.title,
@@ -277,7 +313,7 @@ class MediaSourcePickerActivity : Activity() {
         }
         worker.execute {
             val found = try {
-                repository.fetchEpisodes(film.id, film.imdbId)
+                repository.fetchEpisodes(film.id, imdb)
             } catch (_: Exception) {
                 emptyList()
             }
@@ -412,7 +448,7 @@ class MediaSourcePickerActivity : Activity() {
         episodeIndex = -1
         typedSeason = s
         typedEpisode = e
-        searchEpisode("${film.imdbId.ifBlank { "tmdb:${film.id}" }}:$s:$e", "$s. Sezon · $e. Bölüm", s, e, auto)
+        searchEpisode("${imdb.ifBlank { "tmdb:${film.id}" }}:$s:$e", "$s. Sezon · $e. Bölüm", s, e, auto)
     }
 
     private fun searchEpisode(videoId: String, title: String, s: Int, e: Int, auto: Auto) {
@@ -547,7 +583,7 @@ class MediaSourcePickerActivity : Activity() {
             auto = Auto.NO
             showMessage(
                 if (film.isSeries) "Bu bölüm için kaynak bulunamadı" else "Oynatılabilir kaynak bulunamadı",
-                "Kurulu eklentiler oynatılabilir bir kaynak vermedi. Başka bir eklenti ekleyebilirsin."
+                whyNothing()
             )
             if (film.isSeries) addBackToEpisodes()
             return

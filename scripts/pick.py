@@ -180,7 +180,7 @@ def imdb_ratings(ids):
 def details_of(c):
     """Runtime, tagline, director, cast and similar films for the detail page."""
     try:
-        extra = "credits,recommendations,watch/providers" + (",release_dates" if c["type"] == "movie" else ",content_ratings")
+        extra = "credits,recommendations,watch/providers,external_ids" + (",release_dates" if c["type"] == "movie" else ",content_ratings")
         d = tmdb(f'{c["type"]}/{c["id"]}', language="tr-TR", append_to_response=extra)
     except Exception:
         return {}
@@ -217,6 +217,8 @@ def details_of(c):
     return {
         "where": where[:4],
         "cert": cert_of(d, c["type"]),
+        # Stremio add-ons find films by their IMDb id.
+        "imdb_id": ((d.get("external_ids") or {}).get("imdb_id") or d.get("imdb_id") or ""),
         "next_ep": next_episode(d) if c["type"] == "tv" else {},
         "release": release,
         "runtime": (d.get("runtime") or 0) if c["type"] == "movie" else 0,
@@ -585,6 +587,7 @@ def entry(c, names, full):
     if not full:
         return e
     d = details_of(c)
+    e["imdb_id"] = e["imdb_id"] or d.get("imdb_id", "")
     e["runtime"] = d.get("runtime", 0)
     e["seasons"] = d.get("seasons", 0)
     e["release"] = d.get("release") or c.get("release_date", "")

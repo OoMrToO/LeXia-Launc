@@ -562,14 +562,13 @@ class SettingsActivity : Activity() {
             Header("KİŞİSELLEŞTİR"),
             sub("Görünüm", "Arka plan, kart boyutu, karşılama, saat ve hava durumu.", { lookPage() }),
             sub("İçerik ve Keşif", "Film önerileri, türler, yayın platformları ve ana ekran keşif satırları.", { discoveryPage() }),
-            sub("Entegrasyonlar", "Stremio eklentileri, Nuvio JS depoları ve kaynak sağlayıcıları.", { integrationsPage() },
-                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" }),
             sub("Oynatma ve Takip", "Kaynak seçimi, ses ve altyazı dili, fragmanlar ve izleme takibi.", { playbackTrackingPage() }),
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             Row(
                 "Medya kaynakları",
-                "Film ve diziler için uyumlu yayın eklentilerini ekle, görüntüle ve kaldır.",
+                "Stremio eklentileri ve Nuvio JS depoları: ekle, aç ya da kapat, dene, kaldır.",
                 chevron = true,
+                value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" },
                 action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
             ),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
@@ -613,23 +612,6 @@ class SettingsActivity : Activity() {
             sub("Yayın platformları", "Hangi platformların yeni yapımlarını ana ekranda görmek istediğini seç.", { platformsPage() }),
             sub("Ana ekran satırları", "Keşif satırlarının sırasını değiştir veya istemediklerini gizle.", { rowsPage() }),
             Note("Tür tercihleri ve platform seçimleri öneri sıralamasını etkiler. Hiçbir tür veya platform seçilmezse katalog daha geniş tutulur.")
-        )
-    }
-
-    private fun integrationsPage() = Page("Entegrasyonlar", R.drawable.ic_tv) {
-        listOf(
-            Header("MEDYA KAYNAKLARI"),
-            Row(
-                "Eklenti ve scraper yöneticisi",
-                "Stremio manifest'lerini ve Nuvio JavaScript depolarını ekle. Sağlayıcıları ayrı ayrı etkinleştir, test et ve ayarla.",
-                value = {
-                    val stremio = MediaAddonRepository(this).installedAddons().size
-                    val nuvio = NuvioJsRepository(this).installedRepositories().sumOf { it.scrapers.size }
-                    "$stremio Stremio · $nuvio Nuvio JS"
-                },
-                action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
-            ),
-            Note("Stremio add-on'ları ve Nuvio JS scraper'ları farklı çalışma biçimlerine sahiptir. LeXia ikisini aynı kaynak seçme ekranında birleştirir.")
         )
     }
 

@@ -273,7 +273,13 @@ class MediaAddonsActivity : Activity() {
             }
             card.addView(name)
             val version = TextView(this).apply {
-                text = "Sürüm ${addon.version}  ·  ${addon.types.joinToString().ifBlank { "tür bilgisi yok" }}"
+                val gives = listOfNotNull(
+                    "Kaynak".takeIf { "stream" in addon.resources },
+                    "Bölüm listesi".takeIf { "meta" in addon.resources },
+                    "Altyazı".takeIf { addon.resources.any { it.startsWith("subtitle", true) } },
+                    "Katalog".takeIf { "catalog" in addon.resources }
+                ).joinToString(", ").ifBlank { "bilgi yok" }
+                text = "STREMIO  ·  Sürüm ${addon.version}  ·  Verdiği: $gives"
                 textSize = 14f
                 setTextColor(Color.rgb(143, 155, 176))
                 setPadding(0, dp(5), 0, dp(4))
