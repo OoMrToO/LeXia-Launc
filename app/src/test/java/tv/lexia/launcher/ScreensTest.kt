@@ -110,7 +110,10 @@ class ScreensTest {
         Prefs(app).favSource = "liderfilm-id"
         Prefs(app).favSourceName = "Liderfilm"
         ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
-            settle(3000)
+            // The favourite provider should start immediately, but Robolectric may deliver the
+            // stream Flow on a worker after its dispatcher has been drained. Allow the normal
+            // six-second best-source deadline as a deterministic fallback before asserting.
+            settle(8000)
             scenario.onActivity { a ->
                 val started = shadowOf(a).nextStartedActivityForResult
                 val uri = started?.intent?.getStringExtra("media.uri").orEmpty()
