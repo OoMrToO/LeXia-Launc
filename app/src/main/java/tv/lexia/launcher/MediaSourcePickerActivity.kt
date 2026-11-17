@@ -17,6 +17,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -83,7 +84,8 @@ class MediaSourcePickerActivity : Activity() {
     private var searching = false
 
     private var episodes: List<MediaEpisode> = emptyList()
-    private var season = 0
+    /** The season on screen; -1 until one is chosen (then the last watched, or the first real season). */
+    private var season = -1
     /** The episode whose sources are on screen: its place in [episodes], or -1 (a film, or typed numbers). */
     private var episodeIndex = -1
     private var typedSeason = 0
@@ -339,13 +341,15 @@ class MediaSourcePickerActivity : Activity() {
     private fun showEpisodes(focusSeason: Boolean = false) {
         episodeIndex = -1
         val last = remembered("episodes")
-        val seasons = episodes.map { it.season }.distinct()
+        // Specials ("season 0") go last, as in Nuvio.
+        val seasons = episodes.map { it.season }.distinct().sortedWith(compareBy({ it <= 0 }, { it }))
         if (season !in seasons) {
             season = episodes.firstOrNull { it.id == last }?.season
                 ?: seasons.firstOrNull { it > 0 } ?: seasons.first()
         }
         val shown = episodes.withIndex().filter { it.value.season == season }
-        status.text = if (seasons.size > 1) "${seasons.size} sezon  ·  ${episodes.size} bölüm" else "${episodes.size} bölüm"
+        val realSeasons = seasons.count { it > 0 }
+        status.text = if (realSeasons > 1) "$realSeasons sezon  ·  ${episodes.count { it.season > 0 }} bölüm" else "${episodes.size} bölüm"
         clearContent()
 
         var focus: View? = null
@@ -373,14 +377,132 @@ class MediaSourcePickerActivity : Activity() {
         }
         addSectionTitle(seasonName(season).uppercase(Locale.forLanguageTag("tr-TR")))
         shown.forEach { (index, episode) ->
-            val card = addCard(
-                episode.title,
-                episodeLine(episode) + if (isUnreleased(episode)) "  ·  Henüz yayınlanmadı" else "",
-                "Kaynakları ara"
-            ) { loadEpisodeStreams(index, if (prefs.playAutoSource) Auto.BEST else Auto.NO) }
+            val card = addEpisodeCard(episode) { loadEpisodeStreams(index, if (prefs.playAutoSource) Auto.BEST else Auto.NO) }
             if (!focusSeason && (episode.id == last || focus == null)) focus = card
         }
         focusLater(focus)
+        enrichSeason(season)
+    }
+
+    /** Seasons whose Turkish names, summaries and stills were already asked of TMDB. */
+    private val enrichedSeasons = HashSet<Int>()
+
+    /**
+     * Fills the shown season with TMDB's Turkish episode names, summaries and stills (the add-ons'
+     * details are mostly English), then draws the list again where the remote was.
+     */
+    private fun enrichSeason(number: Int) {
+        if (!enrichedSeasons.add(number) || film.id <= 0) return
+        val mine = generation
+        worker.execute {
+            val turkish = try {
+                repository.tmdbSeason(film.id, number)
+            } catch (_: Exception) {
+                emptyMap()
+            }
+            if (turkish.isEmpty()) return@execute
+            runOnUiThread {
+                if (mine != generation || isFinishing || episodeIndex >= 0) return@runOnUiThread
+                episodes = episodes.map { e ->
+                    val tr = turkish[e.episode]
+                    if (e.season != number || tr == null) e else e.copy(
+                        title = tr.title.takeIf { it.isNotBlank() && !isGenericTitle(it) } ?: e.title,
+                        overview = tr.overview.ifBlank { e.overview },
+                        thumbnail = e.thumbnail.ifBlank { tr.thumbnail },
+                        released = e.released.ifBlank { tr.released },
+                        runtime = if (e.runtime > 0) e.runtime else tr.runtime
+                    )
+                }
+                if (season == number) {
+                    // Drawn again with the Turkish details; the remote stays where it was.
+                    val focusTag = currentFocus?.tag as? String
+                    showEpisodes(focusSeason = currentFocus != null && focusTag == null)
+                    if (focusTag != null) content.findViewWithTag<View>(focusTag)?.let { focusLater(it) }
+                }
+            }
+        }
+    }
+
+    /** "Bölüm 3", "Episode 3", "3. Bölüm": no name of its own. */
+    private fun isGenericTitle(title: String) =
+        Regex("^(\\d+\\.\\s*)?(bölüm|episode)(\\s*\\d+)?$", RegexOption.IGNORE_CASE).matches(title.trim())
+
+    private fun releaseDay(e: MediaEpisode): String {
+        val day = e.released.take(10)
+        if (day.length < 10) return ""
+        return try {
+            val date = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(day) ?: return ""
+            SimpleDateFormat("d MMMM yyyy", Locale.forLanguageTag("tr-TR")).format(date)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /** An episode with its still, name, number, air date, length and summary. */
+    private fun addEpisodeCard(episode: MediaEpisode, onClick: () -> Unit): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(14), dp(20), dp(14))
+            background = panelBackground()
+            isFocusable = true
+            isClickable = true
+            tag = "episode:${episode.id}"
+            alpha = if (isUnreleased(episode)) 0.6f else 1f
+            setOnClickListener { onClick() }
+        }
+        val still = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
+                }
+            }
+            setBackgroundColor(Color.rgb(30, 34, 46))
+        }
+        card.addView(still, LinearLayout.LayoutParams(dp(208), dp(117)).apply { rightMargin = dp(18) })
+        Img.load(this, "w300", episode.thumbnail, dp(208), still)
+
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(TextView(this).apply {
+            text = episode.title
+            textSize = 19f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val facts = listOfNotNull(
+            if (episode.episode > 0) "${episode.episode}. Bölüm" else null,
+            releaseDay(episode).takeIf { it.isNotBlank() },
+            episode.runtime.takeIf { it > 0 }?.let { "$it dk" },
+            "Henüz yayınlanmadı".takeIf { isUnreleased(episode) }
+        )
+        texts.addView(TextView(this).apply {
+            text = facts.joinToString("  ·  ")
+            textSize = 13f
+            setTextColor(Color.rgb(125, 151, 255))
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(5), 0, 0)
+        })
+        if (episode.overview.isNotBlank()) texts.addView(TextView(this).apply {
+            text = episode.overview
+            textSize = 14f
+            setTextColor(Color.rgb(153, 165, 185))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setLineSpacing(0f, 1.1f)
+            setPadding(0, dp(6), 0, 0)
+        })
+        card.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        card.setOnFocusChangeListener { view, focused ->
+            view.background = if (focused) focusedBackground() else panelBackground()
+            view.scaleX = if (focused) 1.012f else 1f
+            view.scaleY = if (focused) 1.012f else 1f
+        }
+        content.addView(card, fullWidthParams(bottom = 10))
+        return card
     }
 
     private fun isUnreleased(e: MediaEpisode): Boolean {

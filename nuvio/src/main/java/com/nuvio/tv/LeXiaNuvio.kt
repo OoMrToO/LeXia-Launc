@@ -46,7 +46,10 @@ import com.nuvio.tv.data.mediaserver.ServerPlayback
 import com.nuvio.tv.data.mediaserver.ServerStreams
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.data.remote.api.TmdbApi
+import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.data.repository.AddonRepositoryImpl
+import com.nuvio.tv.data.repository.MetaRepositoryImpl
+import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.data.repository.LeXiaMetaRepository
 import com.nuvio.tv.data.repository.LeXiaSubtitleRepository
 import com.nuvio.tv.data.repository.LeXiaWatchProgressRepository
@@ -83,6 +86,7 @@ object LeXiaNuvio {
     @Volatile private var addons: AddonRepository? = null
     @Volatile private var api: AddonApi? = null
     @Volatile private var preferences: AddonPreferences? = null
+    @Volatile private var meta: MetaRepository? = null
     @Volatile private var factory: ProfileDataStoreFactory? = null
     /** Set only by off-device screen tests, to show fixed sources. */
     @Volatile var streams: StreamRepository? = null
@@ -170,7 +174,10 @@ object LeXiaNuvio {
      * Makes Nuvio's list of Stremio addons the given one, in that order. LeXia's own settings screen
      * still keeps the list; this hands it to Nuvio's store before a search.
      */
-    suspend fun setStremioAddons(context: Context, urls: List<String>) {
+    suspend fun setStremioAddons(context: Context, given: List<String>) {
+        // Cinemeta stays, as in Nuvio's defaults (AddonPreferences): it is where episode lists and
+        // details come from when no other add-on gives them; it gives no streams.
+        val urls = if (given.any { it.contains("v3-cinemeta.strem.io") }) given else given + CINEMETA
         val store = addonPreferences(context)
         val have = store.installedAddonUrls.first()
         fun key(url: String) = url.trim().trimEnd('/').removeSuffix("/manifest.json").lowercase()
@@ -180,6 +187,14 @@ object LeXiaNuvio {
         urls.filter { key(it) !in kept }.forEach { store.addAddon(it) }
         if (urls.isNotEmpty()) store.setAddonOrder(urls)
     }
+
+    /** Nuvio's details source (MetaRepositoryImpl): film and episode information from the add-ons. */
+    fun metaRepository(context: Context): MetaRepository = meta ?: synchronized(this) {
+        meta ?: MetaRepositoryImpl(context.applicationContext, addonApi(context), addonRepository(context), ServerCatalog())
+            .also { meta = it }
+    }
+
+    private const val CINEMETA = "https://v3-cinemeta.strem.io"
 
     private fun addonApi(context: Context): AddonApi = api ?: synchronized(this) {
         api ?: retrofit("https://placeholder.nuvio.tv/", addonClient(context)).create(AddonApi::class.java).also { api = it }

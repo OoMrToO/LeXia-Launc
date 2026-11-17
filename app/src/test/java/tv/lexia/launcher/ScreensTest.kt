@@ -34,7 +34,8 @@ class ScreensTest {
     private fun settle(ms: Long = 1500) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
-            shadowOf(Looper.getMainLooper()).idle()
+            // The main thread's clock moves with real time, so fades and delayed posts finish.
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50))
             Thread.sleep(50)
         }
     }
@@ -83,6 +84,18 @@ class ScreensTest {
         ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
             settle(4000)
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/kaynaklar.png") }
+        }
+
+        // A series: the episode list from Nuvio's details source (Cinemeta), with stills.
+        val series = Pick(
+            title = "Breaking Bad", meta = "", overview = "", backdrop = "", reason = "", trailer = "", logo = "",
+            imdb = 9.5, year = "2008", genres = listOf("Dram"), runtime = 47, kind = "tv", seasons = 5,
+            id = 1396, imdbId = "tt0903747"
+        )
+        val seriesIntent = Intent(app, MediaSourcePickerActivity::class.java).putExtra("media.pick", series.toJson().toString())
+        ActivityScenario.launch<MediaSourcePickerActivity>(seriesIntent).use { scenario ->
+            settle(15000)
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/bolumler.png") }
         }
     }
 }

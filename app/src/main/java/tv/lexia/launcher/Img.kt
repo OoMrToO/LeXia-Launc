@@ -68,7 +68,8 @@ object Img {
             done(false)
             return
         }
-        val url = "https://image.tmdb.org/t/p/$size$path"
+        // A full address (an add-on's picture) is loaded as it is; anything else is a TMDB path.
+        val url = if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/$size$path"
         cache.get(url)?.let {
             into.setImageBitmap(it)
             done(true)
