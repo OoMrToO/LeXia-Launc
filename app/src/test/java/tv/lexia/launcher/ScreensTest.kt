@@ -126,7 +126,7 @@ class ScreensTest {
 
         // A series: the episode list from Nuvio's details source (Cinemeta), with stills.
         val series = Pick(
-            title = "Breaking Bad", meta = "", overview = "", backdrop = "", reason = "", trailer = "", logo = "",
+            title = "Breaking Bad", meta = "", overview = "Kimya öğretmeni Walter White, ölümcül bir hastalık teşhisi koyulunca ailesinin geleceğini güvenceye almak için eski bir öğrencisiyle uyuşturucu üretmeye başlar.", backdrop = "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg", reason = "", trailer = "", logo = "",
             imdb = 9.5, year = "2008", genres = listOf("Dram"), runtime = 47, kind = "tv", seasons = 5,
             id = 1396, imdbId = "tt0903747"
         )
@@ -140,5 +140,19 @@ class ScreensTest {
             settle(15000)
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/bolumler.png") }
         }
-    }
+    
+        // The series page: seasons and episodes under the buttons, the remote on an episode.
+        MediaPlaybackStore(app).saveLast(series.key, "tt0903747:1:1")
+        val detail = Intent(app, DetailActivity::class.java).putExtra("film", series.toJson().toString())
+        ActivityScenario.launch<DetailActivity>(detail).use { scenario ->
+            settle(12000)
+            scenario.onActivity { a ->
+                val card = a.window.decorView.findViewWithTag<android.view.View>("episode:tt0903747:1:3")
+                println("EPISODE card=" + (card != null))
+                card?.let { it.isFocusableInTouchMode = true; it.requestFocus() }
+            }
+            settle(3000)
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/dizi-sayfasi.png") }
+        }
+}
 }

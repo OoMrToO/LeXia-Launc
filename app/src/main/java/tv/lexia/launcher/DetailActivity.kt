@@ -282,8 +282,20 @@ class DetailActivity : Activity() {
         top.addView(buttons, ui.ll(w, w, top = 34))
         col.addView(top, ui.ll(m, screenH))
 
+        // A series: its seasons and episodes on this page; an episode opens its sources.
+        val hasEpisodes = film.isSeries && film.id > 0
+        if (hasEpisodes) {
+            col.addView(label("BÖLÜMLER"), ui.ll(w, w, top = 10))
+            seasonRow = ui.hbox()
+            col.addView(rowOf(seasonRow), rowParams())
+            episodeRow = ui.hbox()
+            episodeNote = ui.text("Bölümler yükleniyor…", 19, C.TEXT2, 500)
+            episodeRow.addView(episodeNote)
+            col.addView(rowOf(episodeRow), rowParams())
+            loadEpisodes()
+        }
         if (film.cast.isNotEmpty()) {
-            col.addView(label("OYUNCULAR"), ui.ll(w, w, top = 10))
+            col.addView(label("OYUNCULAR"), ui.ll(w, w, top = if (hasEpisodes) 40 else 10))
             val row = ui.hbox()
             for (c in film.cast) row.addView(castCard(c))
             col.addView(rowOf(row), rowParams())
@@ -415,6 +427,162 @@ class DetailActivity : Activity() {
             col.addView(role, ui.ll(ui.u(170), ui.wrap, top = 4))
         }
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 24)
+        return col
+    }
+
+    private lateinit var seasonRow: LinearLayout
+    private lateinit var episodeRow: LinearLayout
+    private lateinit var episodeNote: TextView
+    private var episodeList: List<MediaEpisode> = emptyList()
+    private var shownSeason = -1
+    private val turkishSeasons = HashSet<Int>()
+    private val playback by lazy { MediaPlaybackStore(this) }
+
+    /** The episodes from Nuvio's details source (and TMDB), off the main thread. */
+    private fun loadEpisodes() {
+        Thread {
+            val repository = MediaAddonRepository(this)
+            val imdb = film.imdbId.ifBlank {
+                try { repository.imdbId("tv", film.id) } catch (_: Exception) { "" }
+            }
+            val found = try { repository.fetchEpisodes(film.id, imdb) } catch (_: Exception) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                episodeList = found
+                if (found.isEmpty()) {
+                    episodeNote.text = "Bölüm listesi bulunamadı. Oynat ile kaynak sayfasından seçebilirsin."
+                    return@runOnUiThread
+                }
+                // The season of the episode last watched, else the first real season.
+                val lastSeason = Regex(":(\\d+):\\d+$").find(playback.last(film.key))?.groupValues?.get(1)?.toIntOrNull()
+                val seasons = seasonsOf(found)
+                shownSeason = lastSeason?.takeIf { it in seasons } ?: seasons.first()
+                renderSeasons()
+                renderEpisodes()
+            }
+        }.start()
+    }
+
+    /** Real seasons first, specials last. */
+    private fun seasonsOf(list: List<MediaEpisode>) =
+        list.map { it.season }.distinct().sortedWith(compareBy({ it <= 0 }, { it }))
+
+    private fun renderSeasons() {
+        seasonRow.removeAllViews()
+        val seasons = seasonsOf(episodeList)
+        if (seasons.size < 2) return
+        seasons.forEach { number ->
+            val chosen = number == shownSeason
+            val pill = ui.pill(if (number > 0) "$number. Sezon" else "Özel bölümler", 54, 19, primary = chosen)
+            val style = pill.onFocusChangeListener
+            pill.setOnFocusChangeListener { v, f ->
+                style?.onFocusChange(v, f)
+                if (f) onRowFocus(v)
+            }
+            pill.setOnClickListener {
+                if (shownSeason == number) return@setOnClickListener
+                shownSeason = number
+                renderSeasons()
+                renderEpisodes()
+                seasonRow.findViewWithTag<View>("season:$number")?.requestFocus()
+            }
+            pill.tag = "season:$number"
+            seasonRow.addView(pill, ui.ll(ui.wrap, ui.wrap, right = 16))
+        }
+    }
+
+    private fun renderEpisodes() {
+        if (!::episodeRow.isInitialized || episodeList.isEmpty()) return
+        val focusedTag = (currentFocus?.tag as? String)?.takeIf { it.startsWith("episode:") }
+        episodeRow.removeAllViews()
+        episodeList.filter { it.season == shownSeason }.forEach { episodeRow.addView(episodeCard(it)) }
+        focusedTag?.let { tag -> episodeRow.findViewWithTag<View>(tag)?.requestFocus() }
+        enrichSeason(shownSeason)
+    }
+
+    /** The shown season's names, summaries and stills in Turkish from TMDB, once. */
+    private fun enrichSeason(number: Int) {
+        if (!turkishSeasons.add(number)) return
+        Thread {
+            val turkish = try { MediaAddonRepository(this).tmdbSeason(film.id, number) } catch (_: Exception) { emptyMap() }
+            if (turkish.isEmpty()) return@Thread
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                episodeList = episodeList.map { e ->
+                    val tr = turkish[e.episode]
+                    if (e.season != number || tr == null) e else e.copy(
+                        title = tr.title.takeIf { it.isNotBlank() && !Regex("^(\\d+\\.\\s*)?(bölüm|episode)(\\s*\\d+)?$", RegexOption.IGNORE_CASE).matches(it.trim()) } ?: e.title,
+                        overview = tr.overview.ifBlank { e.overview },
+                        thumbnail = e.thumbnail.ifBlank { tr.thumbnail },
+                        released = e.released.ifBlank { tr.released },
+                        runtime = if (e.runtime > 0) e.runtime else tr.runtime
+                    )
+                }
+                if (shownSeason == number) renderEpisodes()
+            }
+        }.start()
+    }
+
+    private fun isUnaired(e: MediaEpisode): Boolean {
+        val day = e.released.take(10)
+        return day.length == 10 && day > java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(java.util.Date())
+    }
+
+    /** An episode: its still (with how much was watched), number and name, air date or length. */
+    private fun episodeCard(e: MediaEpisode): View {
+        val col = ui.vbox()
+        col.clipChildren = false
+        val card = FrameLayout(this)
+        card.isFocusable = true
+        card.isClickable = true
+        card.tag = "episode:${e.id}"
+        card.background = ui.round(C.CARD, D.CARD)
+        card.clipToOutline = true
+        val img = ImageView(this)
+        img.scaleType = ImageView.ScaleType.CENTER_CROP
+        card.addView(img, ui.fl(ui.match, ui.match))
+        Img.load(this, "w300", e.thumbnail.ifBlank { film.backdrop }, ui.u(360), img)
+        val progress = playback.progress(e.id)
+        val finished = progress == null && playback.isFinished(e.id)
+        if (progress != null) {
+            val track = FrameLayout(this)
+            track.setBackgroundColor(Color.argb(110, 0, 0, 0))
+            val fill = View(this)
+            fill.setBackgroundColor(Color.rgb(125, 151, 255))
+            track.addView(fill, ui.fl(0, ui.match))
+            card.addView(track, ui.fl(ui.match, ui.u(6), Gravity.BOTTOM))
+            track.post { fill.layoutParams = fill.layoutParams.apply { width = (track.width * progress.coerceAtLeast(0.03f)).toInt() } }
+        }
+        if (finished) {
+            img.alpha = 0.55f
+            val mark = ui.text("✓ İzlendi", 16, C.TEXT, 700)
+            mark.setPadding(ui.u(12), ui.u(5), ui.u(12), ui.u(5))
+            mark.background = ui.round(Color.argb(200, 0, 0, 0), 14)
+            card.addView(mark, ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.END).apply { setMargins(0, ui.u(10), ui.u(10), 0) })
+        }
+        val fx = Fx.decorate(ui, card, D.CARD)
+        val title = ui.text((if (e.episode > 0) "${e.episode}. " else "") + e.title, 19, C.TEXT, 600)
+        title.maxLines = 1
+        title.ellipsize = TextUtils.TruncateAt.END
+        title.alpha = 0.75f
+        val when_ = when {
+            isUnaired(e) -> "Henüz yayınlanmadı"
+            e.runtime > 0 -> "${e.runtime} dk"
+            else -> ""
+        }
+        val sub = ui.text(when_, 16, C.TEXT3, 500)
+        if (isUnaired(e)) col.alpha = 0.6f
+        card.setOnFocusChangeListener { v, f ->
+            ui.lift(v, f, 1.08f, 30)
+            fx(f)
+            title.animate().alpha(if (f) 1f else 0.75f).setDuration(D.FAST).start()
+            if (f) onRowFocus(v)
+        }
+        card.setOnClickListener { MediaSourcePickerActivity.open(this, film, resumeEpisode = e.id) }
+        col.addView(card, ui.ll(ui.u(360), ui.u(203)))
+        col.addView(title, ui.ll(ui.u(360), ui.wrap, top = 14))
+        if (when_.isNotBlank()) col.addView(sub, ui.ll(ui.u(360), ui.wrap, top = 4))
+        col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 30)
         return col
     }
 
@@ -613,8 +781,9 @@ class DetailActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::frame.isInitialized) Fx.zoomReset(frame)
-        // Back from the player: "Oynat" says where it was left.
+        // Back from the player: "Oynat" says where it was left, the episodes how far they were watched.
         updatePlayBtn()
+        renderEpisodes()
     }
 
     /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */

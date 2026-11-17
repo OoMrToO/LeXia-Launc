@@ -180,14 +180,32 @@ class MediaSourcePickerActivity : Activity() {
             setTextColor(Color.rgb(125, 151, 255))
             typeface = Typeface.DEFAULT_BOLD
         })
-        heading.addView(TextView(this).apply {
+        val titleText = TextView(this).apply {
             text = film.title
             textSize = 31f
             setTextColor(Color.WHITE)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-        })
+        }
+        // The film's logo instead of its name, when it has one that shows on a dark page.
+        if (film.logo.isNotBlank()) {
+            val logo = ImageView(this).apply {
+                adjustViewBounds = true
+                maxHeight = dp(76)
+                maxWidth = dp(420)
+                scaleType = ImageView.ScaleType.FIT_START
+                visibility = View.GONE
+            }
+            heading.addView(logo, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+            Img.load(this, "w500", film.logo, dp(420), logo, opaque = false, skipDark = true) { ok ->
+                if (ok) {
+                    logo.visibility = View.VISIBLE
+                    titleText.visibility = View.GONE
+                }
+            }
+        }
+        heading.addView(titleText)
         top.addView(heading, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val manage = action("Kaynakları yönet").apply {
             setOnClickListener {
@@ -893,7 +911,9 @@ class MediaSourcePickerActivity : Activity() {
                 watchKey = film.key,
                 markWatchedOnCompletion = !film.isSeries,
                 nextTitle = nextEpisode()?.first.orEmpty(),
-                fromSourceList = true
+                fromSourceList = true,
+                logo = film.logo,
+                filmTitle = film.title
             )
         } catch (e: Exception) {
             status.text = e.message ?: "Oynatıcı açılamadı."
