@@ -47,3 +47,13 @@
 # jsoup marks its packages with JSpecify annotations that are only needed while compiling.
 -dontwarn org.jspecify.annotations.**
 -keepattributes *Annotation*
+
+# Copied from NuvioTV's proguard-rules.pro (Retrofit, kotlinx serialization): Nuvio's stream and
+# addon screens ask Stremio addons and TMDB through Retrofit interfaces with generic return types.
+-keep,allowobfuscation,allowshrinking interface retrofit2.Call
+-keep,allowobfuscation,allowshrinking class retrofit2.Response
+-keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+-keepclassmembers class * {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-dontwarn retrofit2.**

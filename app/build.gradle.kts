@@ -100,13 +100,8 @@ dependencies {
     // Sandboxed Nuvio JS scraper runtime.
     // Nuvio's own build of the JavaScript engine its scrapers are written against (from NuvioTV's app/libs).
     implementation(files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
-    // What NuvioTV's copied plugin files (app/src/main/java/com/nuvio/tv) are built on, at Nuvio's versions.
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
-    implementation("javax.inject:javax.inject:1")
-    implementation("org.jsoup:jsoup:1.17.2")
+    // NuvioTV's copied code and screens, with the libraries they are built on.
+    implementation(project(":nuvio"))
     // Nuvio Beta scrapers commonly rely on the CryptoJS global.
     implementation("org.webjars.npm:crypto-js:4.2.0")
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
