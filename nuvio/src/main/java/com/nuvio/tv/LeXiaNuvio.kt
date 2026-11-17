@@ -84,7 +84,8 @@ object LeXiaNuvio {
     @Volatile private var api: AddonApi? = null
     @Volatile private var preferences: AddonPreferences? = null
     @Volatile private var factory: ProfileDataStoreFactory? = null
-    @Volatile internal var streams: StreamRepository? = null
+    /** Set only by off-device screen tests, to show fixed sources. */
+    @Volatile var streams: StreamRepository? = null
     val profileManager: ProfileManager by lazy { ProfileManager() }
 
     fun pluginDataStore(context: Context): PluginDataStore = dataStore ?: synchronized(this) {
@@ -251,6 +252,10 @@ object LeXiaNuvio {
             SavedStateHandle(args)
         )
     }
+
+    /** Nuvio's plugin screen asks before switching on such a scraper (PluginSafety is internal to this module). */
+    fun isVideoEasyScraper(id: String, name: String, filename: String): Boolean =
+        com.nuvio.tv.core.plugin.PluginSafety.isVideoEasyScraper(id, name, filename)
 
     /** What Nuvio's navigation hands a screen as route arguments: here, the opening activity's text extras. */
     private fun navigationArguments(context: Context): Map<String, String?> {

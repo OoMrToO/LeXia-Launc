@@ -75,19 +75,3 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 }
 
-// Off-device drawing of Nuvio's screens (Robolectric): how they look is checked without a TV.
-android.testOptions.unitTests.isIncludeAndroidResources = true
-android.testOptions.unitTests.all {
-    it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
-    it.systemProperty("roborazzi.test.record", "true")
-}
-dependencies {
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.14.1")
-    testImplementation("androidx.compose.ui:ui-test-junit4")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.46.1")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.46.1")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.dokar3:quickjs-kt-jvm:1.0.5")
-    testImplementation("androidx.test:core:1.6.1")
-}

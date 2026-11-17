@@ -41,7 +41,6 @@ class MediaSourcePickerActivity : Activity() {
     companion object {
         private const val EXTRA_FILM = "media.pick"
         private const val REQUEST_PLAY = 41
-        private const val REQUEST_STREAMS = 42
         /** Once the first sources are in, how long the rest get before the best so far is played. */
         private const val AUTO_WAIT_MS = 6_000L
         private const val MEMORY_SIZE = 60
@@ -274,29 +273,22 @@ class MediaSourcePickerActivity : Activity() {
 
     /** Why the add-ons gave nothing, in the viewer's words. */
     private fun whyNothing(): String {
-        val notes = repository.notes
-        val stremio = repository.installedAddons().count { "stream" in it.resources }
+        val notes = NuvioSearch.notes
+        val stremio = repository.installedAddons().count { it.enabled && "stream" in it.resources }
         val scrapers = nuvioRepository.installedScraperCount()
         val reasons = ArrayList<String>()
         if (notes.torrents.get() > 0) {
-            reasons.add("Eklentiler ${notes.torrents.get()} kaynak verdi, ama hepsi torrent. LeXia torrent oynatmıyor; doğrudan bağlantı veren bir eklenti gerekir (örneğin debrid ayarlı bir eklenti).")
+            reasons.add("${notes.torrents.get()} kaynak bulundu, ama hepsi torrent. LeXia torrent oynatmıyor.")
         }
         if (notes.unplayable.get() > 0) reasons.add("${notes.unplayable.get()} kaynak oynatılabilir bir video adresi vermedi (bir web sayfası ya da YouTube bağlantısıydı).")
-        if (notes.failed.get() > 0) reasons.add("${notes.failed.get()} eklenti cevap vermedi.")
-        val js = nuvioRepository.notes
-        if (js.asked.get() > 0) {
-            reasons.add(
-                if (js.answered.get() == 0) "Nuvio deposundaki ${js.asked.get()} sağlayıcının hiçbiri bu yapım için sonuç vermedi."
-                else "Nuvio sağlayıcılarından ${js.answered.get()} tanesi sonuç verdi" +
-                    (if (js.unplayable.get() > 0) ", ama ${js.unplayable.get()} sonuç video adresi değildi (torrent ya da başka bir bağlantı)." else ".")
-            )
-            if (js.answered.get() == 0 && js.errors.isNotEmpty()) reasons.add("Nuvio'nun bildirdiği hata: " + js.errors.joinToString("  •  "))
-        } else if (scrapers > 0) {
-            reasons.add("Kurulu Nuvio sağlayıcılarından hiçbiri bu tür içeriği (film/dizi) desteklemiyor ya da hepsi kapalı.")
+        if (scrapers > 0 && notes.providers.get() == 0) {
+            reasons.add("Kurulu $scrapers Nuvio sağlayıcısının hiçbiri bu yapım için sonuç vermedi; bu sitelerde olmayabilir.")
+            val errors = nuvioRepository.nuvioErrorsNow()
+            if (errors.isNotEmpty()) reasons.add("Nuvio'nun bildirdiği hata: " + errors.joinToString("  •  "))
         }
+        if (notes.error.isNotBlank()) reasons.add(notes.error)
         if (imdb.isEmpty()) reasons.add("Bu yapımın IMDb kimliği bulunamadı; çoğu eklenti onsuz arama yapamaz.")
-        if (stremio > 0 && notes.asked.get() == 0) reasons.add("Kurulu Stremio eklentileri bu tür içeriği desteklemiyor.")
-        if (scrapers > 0 && BuildConfig.TMDB_API_KEY.isBlank()) reasons.add("Bu sürümde TMDB anahtarı yok; Nuvio scraper'ları yapımı tanıyamıyor.")
+        if (scrapers > 0 && BuildConfig.TMDB_API_KEY.isBlank()) reasons.add("Bu sürümde TMDB anahtarı yok; Nuvio sağlayıcıları yapımı tanıyamıyor.")
         if (stremio == 0 && scrapers == 0) reasons.add("Kaynak veren bir eklenti kurulu değil.")
         return reasons.joinToString(" ").ifBlank { "Kurulu eklentiler bu yapım için oynatılabilir bir kaynak vermedi." }
     }
@@ -305,7 +297,14 @@ class MediaSourcePickerActivity : Activity() {
         episodeIndex = -1
         // Stremio add-ons commonly expect IMDb IDs; Nuvio turns it into the TMDB id its scrapers take.
         val stremioId = imdb.ifBlank { "tmdb:${film.id}" }
-        openNuvioStreams(title = film.title, key = stremioId, season = null, episode = null, episodeName = null)
+        search(
+            message = "Film kaynakları aranıyor…",
+            title = film.title,
+            key = stremioId,
+            auto = if (prefs.playAutoSource) Auto.BEST else Auto.NO,
+            sources = { update -> nuvioSearch("movie", stremioId, null, null, update) },
+            subtitles = { repository.fetchSubtitles("movie", stremioId) }
+        )
     }
 
     private fun loadEpisodes() {
@@ -458,53 +457,40 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun searchEpisode(videoId: String, title: String, s: Int, e: Int, auto: Auto) {
-        openNuvioStreams(
+        search(
+            message = "Kaynaklar aranıyor  ·  $title",
             title = "${film.title} · $title",
             key = videoId,
-            season = s.takeIf { it > 0 && e > 0 },
-            episode = e.takeIf { s > 0 && it > 0 },
-            episodeName = title
+            auto = auto,
+            sources = { update ->
+                nuvioSearch("series", videoId, s.takeIf { it > 0 && e > 0 }, e.takeIf { s > 0 && it > 0 }, update)
+            },
+            subtitles = { repository.fetchSubtitles("series", videoId) }
         )
     }
 
     /**
-     * Opens Nuvio's own stream screen for the film or episode. LeXia's Stremio add-ons are handed
-     * to Nuvio's store first, so its search asks them together with the plugin scrapers.
+     * NuvioTV's own search (Stremio add-ons and plugin repositories together), shown in this list.
+     * LeXia's Stremio add-ons are handed to Nuvio's store first; runs on a worker thread.
      */
-    private fun openNuvioStreams(title: String, key: String, season: Int?, episode: Int?, episodeName: String?) {
-        cancelSearch()
-        val mine = generation
-        playbackTitle = title
-        mediaKey = key
-        status.text = "Kaynaklar açılıyor…"
-        clearContent()
+    private fun nuvioSearch(
+        type: String,
+        videoId: String,
+        season: Int?,
+        episode: Int?,
+        update: (List<MediaStream>) -> Unit
+    ): List<MediaStream> {
         val app = applicationContext
-        val addons = repository.installedAddons().filter { it.enabled }.map { it.baseUrl }
-        val contentId = imdb.ifBlank { "tmdb:${film.id}" }
         if (imdb.isNotBlank()) {
             // LeXia already knows both ids: Nuvio need not ask TMDB for the pair.
             LeXiaNuvio.tmdbService.preCacheMapping(imdb, film.id, if (film.isSeries) "tv" else "movie")
         }
-        worker.execute {
-            try {
-                runBlocking { LeXiaNuvio.setStremioAddons(app, addons) }
-            } catch (e: Exception) {
-                Log.w("LeXiaSources", "Add-ons not handed to Nuvio: ${e.message}")
-            }
-            runOnUiThread {
-                if (mine != generation || isFinishing) return@runOnUiThread
-                @Suppress("DEPRECATION")
-                startActivityForResult(
-                    NuvioStreamsActivity.intent(
-                        this, film, key, contentId, season, episode, episodeName,
-                        playbackTitle = title,
-                        mediaKey = key,
-                        nextTitle = nextEpisode()?.first.orEmpty()
-                    ),
-                    REQUEST_STREAMS
-                )
-            }
+        try {
+            runBlocking { LeXiaNuvio.setStremioAddons(app, repository.installedAddons().filter { it.enabled }.map { it.baseUrl }) }
+        } catch (e: Exception) {
+            Log.w("LeXiaSources", "Add-ons not handed to Nuvio: ${e.message}")
         }
+        return NuvioSearch.streams(app, type, videoId, season, episode, update)
     }
 
     /** The episode after the one on screen, as (what to show, how to load it); null at the end. */
@@ -552,8 +538,7 @@ class MediaSourcePickerActivity : Activity() {
         title: String,
         key: String,
         auto: Auto,
-        stremio: ((List<MediaStream>) -> Unit) -> List<MediaStream>,
-        nuvio: ((List<MediaStream>) -> Unit) -> List<MediaStream>,
+        sources: ((List<MediaStream>) -> Unit) -> List<MediaStream>,
         subtitles: () -> List<MediaSubtitle>
     ) {
         cancelSearch()
@@ -570,7 +555,7 @@ class MediaSourcePickerActivity : Activity() {
         status.text = message
         clearContent()
 
-        var open = 3
+        var open = 2
         fun partial(part: List<MediaStream>) = runOnUiThread {
             if (mine == generation && !isFinishing) addStreams(part)
         }
@@ -579,8 +564,6 @@ class MediaSourcePickerActivity : Activity() {
             open--
             if (open == 0) searchDone()
         }
-        // Keep the two plugin ecosystems independent: a malformed or offline Stremio add-on must
-        // not prevent Nuvio JS scrapers from running (and vice versa).
         // A broken subtitle add-on must not hide the sources.
         running.add(worker.submit {
             try {
@@ -592,17 +575,15 @@ class MediaSourcePickerActivity : Activity() {
                 finished()
             }
         })
-        listOf("Stremio" to stremio, "Nuvio JS" to nuvio).forEach { (name, task) ->
-            running.add(worker.submit {
-                try {
-                    partial(task(::partial))
-                } catch (e: Exception) {
-                    Log.w("LeXiaSources", "$name source search failed: ${e.message}")
-                } finally {
-                    finished()
-                }
-            })
-        }
+        running.add(worker.submit {
+            try {
+                partial(sources(::partial))
+            } catch (e: Exception) {
+                Log.w("LeXiaSources", "Source search failed: ${e.message}")
+            } finally {
+                finished()
+            }
+        })
     }
 
     private fun addStreams(part: List<MediaStream>) {
@@ -722,26 +703,6 @@ class MediaSourcePickerActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_STREAMS) {
-            when (resultCode) {
-                PlayerActivity.RESULT_NEXT -> {
-                    val next = nextEpisode()
-                    if (next != null) next.second(Auto.NEXT_EPISODE) else loadEpisodes()
-                }
-                RESULT_OK -> {
-                    if (!film.isSeries) {
-                        finish()
-                        return
-                    }
-                    // Watched to the end: the episode list opens on the one after it.
-                    if (episodeIndex >= 0) episodes.getOrNull(episodeIndex + 1)?.let { remember("episodes", it.id) }
-                    loadEpisodes()
-                }
-                // Back from Nuvio's list: a film has nothing else here, a series returns to its episodes.
-                else -> if (film.isSeries) loadEpisodes() else finish()
-            }
-            return
-        }
         if (requestCode != REQUEST_PLAY) return
         val stream = playing
         playing = null
