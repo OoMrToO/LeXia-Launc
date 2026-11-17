@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
 .gradle/
-build/
+/build/
+/app/build/
+/nuvio/build/
 local.properties
