@@ -114,6 +114,8 @@ playSubLang text
 playSubSmart bool
 playSubSize int
 playAutoSource bool
+favSource text
+favSourceName text
 choices text
 episodes text
 trailerNative bool

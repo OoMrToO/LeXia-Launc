@@ -615,12 +615,38 @@ class SettingsActivity : Activity() {
         )
     }
 
+    /** The Nuvio providers that are switched on, to pick the one asked first. */
+    private fun favoriteSourceRow(): Row {
+        val scrapers = try {
+            NuvioJsRepository(this).installedRepositories()
+                .flatMap { repo -> repo.scrapers.filter { it.enabled } }
+                .distinctBy { it.id }
+                .sortedBy { it.name.lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val ids = listOf("") + scrapers.map { it.id }
+        val names = listOf("Yok") + scrapers.map { it.name }
+        return choice(
+            "Favori kaynak",
+            "Seçince Oynat önce yalnızca bu kaynakta arar ve bulduğunu liste göstermeden açar; dizide sonraki bölümler de buradan devam eder. " +
+                "Burada bulunamazsa diğer kaynaklar aranır ve liste açılır. Liste Ayarlar › Medya kaynakları'nda açık olan Nuvio sağlayıcılarıdır.",
+            ids, names,
+            { prefs.favSource.takeIf { it in ids } ?: "" },
+            { id ->
+                prefs.favSource = id
+                prefs.favSourceName = names.getOrElse(ids.indexOf(id)) { "" }.takeIf { id.isNotEmpty() }.orEmpty()
+            }
+        )
+    }
+
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
+            favoriteSourceRow(),
             toggle(
                 "En iyi kaynağı kendiliğinden aç",
                 "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +

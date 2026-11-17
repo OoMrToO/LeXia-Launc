@@ -75,6 +75,7 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var sourceControls: LinearLayout
     private lateinit var sortButton: TextView
     private lateinit var groupButton: TextView
+    private lateinit var allButton: TextView
     private var sortByQuality = true
     private var groupByProvider = true
 
@@ -84,6 +85,18 @@ class MediaSourcePickerActivity : Activity() {
     private var searching = false
 
     private var episodes: List<MediaEpisode> = emptyList()
+
+    /** "Tüm kaynaklar" was pressed: this page searches everywhere, not only the favourite. */
+    private var skipFavorite = false
+    /** Runs the last search again (for "Tüm kaynaklar"). */
+    private var rerun: (() -> Unit)? = null
+
+    /** The favourite provider (Ayarlar › Oynatma) this search keeps to; "" for none. */
+    private val favoriteId: String get() = if (skipFavorite) "" else prefs.favSource
+    private val favoriteName: String get() = if (skipFavorite) "" else prefs.favSourceName
+
+    private fun isFavorite(stream: MediaStream) =
+        favoriteName.isNotBlank() && stream.addonName.trim().equals(favoriteName.trim(), ignoreCase = true)
     /** The season on screen; -1 until one is chosen (then the last watched, or the first real season). */
     private var season = -1
     /** The episode whose sources are on screen: its place in [episodes], or -1 (a film, or typed numbers). */
@@ -212,6 +225,15 @@ class MediaSourcePickerActivity : Activity() {
         }
         sourceControls.addView(sortButton)
         sourceControls.addView(groupButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        // Only the favourite provider was asked: this asks all of them, for this page.
+        allButton = action("Tüm kaynaklar").apply {
+            setOnClickListener {
+                skipFavorite = true
+                updateSourceControls()
+                rerun?.invoke()
+            }
+        }
+        sourceControls.addView(allButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
         root.addView(sourceControls)
 
         scroll = ScrollView(this).apply {
@@ -233,6 +255,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun updateSourceControls() {
         sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
         groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
+        allButton.visibility = if (favoriteName.isNotBlank()) View.VISIBLE else View.GONE
     }
 
     private fun clearContent(showSourceControls: Boolean = false) {
@@ -296,13 +319,15 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun loadMovieStreams() {
         episodeIndex = -1
+        rerun = { loadMovieStreams() }
         // Stremio add-ons commonly expect IMDb IDs; Nuvio turns it into the TMDB id its scrapers take.
         val stremioId = imdb.ifBlank { "tmdb:${film.id}" }
         search(
             message = "Film kaynakları aranıyor…",
             title = film.title,
             key = stremioId,
-            auto = if (prefs.playAutoSource) Auto.BEST else Auto.NO,
+            // With a favourite provider the film starts without a list, as the viewer asked.
+            auto = if (prefs.playAutoSource || favoriteId.isNotBlank()) Auto.BEST else Auto.NO,
             sources = { update -> nuvioSearch("movie", stremioId, null, null, update) },
             subtitles = { repository.fetchSubtitles("movie", stremioId) }
         )
@@ -578,11 +603,12 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun searchEpisode(videoId: String, title: String, s: Int, e: Int, auto: Auto) {
+        rerun = { searchEpisode(videoId, title, s, e, Auto.NO) }
         search(
             message = "Kaynaklar aranıyor  ·  $title",
             title = "${film.title} · $title",
             key = videoId,
-            auto = auto,
+            auto = if (auto == Auto.NO && favoriteId.isNotBlank()) Auto.BEST else auto,
             sources = { update ->
                 nuvioSearch("series", videoId, s.takeIf { it > 0 && e > 0 }, e.takeIf { s > 0 && it > 0 }, update)
             },
@@ -611,7 +637,7 @@ class MediaSourcePickerActivity : Activity() {
         } catch (e: Exception) {
             Log.w("LeXiaSources", "Add-ons not handed to Nuvio: ${e.message}")
         }
-        return NuvioSearch.streams(app, type, videoId, season, episode, update)
+        return NuvioSearch.streams(app, type, videoId, season, episode, favoriteId, update)
     }
 
     /** The episode after the one on screen, as (what to show, how to load it); null at the end. */
@@ -714,6 +740,11 @@ class MediaSourcePickerActivity : Activity() {
         val first = streams.isEmpty()
         streams = streams + fresh
         renderStreams()
+        // The favourite provider answered: its best source starts now, nothing else is waited for.
+        if (auto != Auto.NO && searching && fresh.any { isFavorite(it) }) {
+            playBestNow()
+            return
+        }
         if (first && auto != Auto.NO && searching) {
             handler.removeCallbacks(autoDeadline)
             handler.postDelayed(autoDeadline, AUTO_WAIT_MS)
@@ -768,7 +799,9 @@ class MediaSourcePickerActivity : Activity() {
      */
     private fun best(): MediaStream? {
         val wanted = remembered("choices")
-        return streams.filter { it.url !in failed }
+        val pool = streams.filter { it.url !in failed }
+        val favorite = pool.filter { isFavorite(it) }
+        return (if (favoriteName.isNotBlank()) favorite else pool)
             .withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
@@ -784,6 +817,9 @@ class MediaSourcePickerActivity : Activity() {
         auto = Auto.NO
         val choice = best()
         updateStatus()
+        if (choice == null && favoriteName.isNotBlank() && streams.isNotEmpty()) {
+            status.text = "$favoriteName bu yapımı bulamadı  ·  ${streams.size} kaynak başka sağlayıcılardan, birini seç."
+        }
         if (choice != null && !isFinishing) play(choice)
     }
 

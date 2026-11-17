@@ -251,35 +251,6 @@ class DetailActivity : Activity() {
         nightBtn.setOnClickListener { planNight() }
         updateNightBtn()
         if (upcoming || Remote.isOff("night")) nightBtn.visibility = View.GONE
-        // New on a streaming platform whose app is on this TV: open that app (the film is found there).
-        // The first of those platforms whose app is on this TV gets a button that opens it.
-        val platformName = platforms.firstOrNull { Apps.forPlatform(this, it) != null }
-        val platformApp = platformName?.let { Apps.forPlatform(this, it) }
-        // The platform's own name ("Netflix'i aç"), never the app's label (some TVs show "com.mstar.netflixo").
-        val openApp = ui.iconPill(platformName?.let { TrailerActivity.accusative(it) + " aç" } ?: "", R.drawable.ic_tv)
-        openApp.setOnClickListener {
-            platformApp?.let {
-                prefs.markUsed(it.key)
-                HomeButtonService.opened(it.pkg)
-                try {
-                    startActivity(Apps.launchIntent(it))
-                } catch (e: Exception) {
-                    Glass.toast(this, "Açılamadı")
-                }
-            }
-        }
-        // Not on this TV: find the platform's app in the store instead.
-        if (platformApp == null) {
-            val name = platforms.firstOrNull()
-            if (name == null) openApp.visibility = View.GONE
-            else {
-                openApp.text = "$name uygulamasını bul"
-                openApp.setOnClickListener {
-                    HomeButtonService.pause()
-                    Apps.findInStore(this, name)
-                }
-            }
-        }
         val another = ui.pill("Başka öner", 64, 23)
         another.setOnClickListener {
             Surprise.next(this)
@@ -287,7 +258,7 @@ class DetailActivity : Activity() {
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
         if (!surprise) another.visibility = View.GONE
-        for (b in listOf(playBtn, trailer, openApp, listBtn, nightBtn, watchedBtn, likeBtn, notBtn, remindBtn, another)) {
+        for (b in listOf(playBtn, trailer, listBtn, nightBtn, watchedBtn, likeBtn, notBtn, remindBtn, another)) {
             val own = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 own?.onFocusChange(v, f)
@@ -299,7 +270,6 @@ class DetailActivity : Activity() {
         }
         buttons.addView(playBtn)
         buttons.addView(trailer)
-        buttons.addView(openApp)
         buttons.addView(listBtn)
         buttons.addView(nightBtn)
         buttons.addView(watchedBtn)

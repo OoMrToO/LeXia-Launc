@@ -4,6 +4,7 @@ import android.content.Context
 import com.nuvio.tv.LeXiaNuvio
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.domain.model.Stream
+import com.nuvio.tv.domain.model.pluginBingeGroup
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.atomic.AtomicInteger
@@ -36,13 +37,20 @@ internal object NuvioSearch {
         videoId: String,
         season: Int?,
         episode: Int?,
+        favoriteScraperId: String = "",
         onUpdate: (List<MediaStream>) -> Unit
     ): List<MediaStream> = runBlocking {
         val found = Notes()
         notes = found
         var latest: List<MediaStream> = emptyList()
         LeXiaNuvio.streamRepository(context)
-            .getStreamsFromAllAddons(type, videoId, season, episode)
+            .getStreamsFromAllAddons(
+                type, videoId, season, episode,
+                // Nuvio's own "keep to this provider": it runs alone first; the other providers
+                // run only when it finds nothing (PluginManager.executeScrapersStreaming).
+                priorityBingeGroup = favoriteScraperId.takeIf { it.isNotBlank() }?.let { pluginBingeGroup(scraperId = it) },
+                preferredPluginOnly = favoriteScraperId.isNotBlank()
+            )
             .collect { result ->
                 when (result) {
                     is NetworkResult.Success -> {
