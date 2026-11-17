@@ -35,6 +35,15 @@ android {
     }
 }
 
+configurations.all {
+    exclude(group = "androidx.media3", module = "media3-exoplayer")
+    exclude(group = "androidx.media3", module = "media3-common")
+    exclude(group = "androidx.media3", module = "media3-datasource")
+    exclude(group = "androidx.media3", module = "media3-datasource-okhttp")
+    exclude(group = "androidx.media3", module = "media3-exoplayer-hls")
+    exclude(group = "androidx.media3", module = "media3-extractor")
+}
+
 dependencies {
     // Nuvio's own build of the JavaScript engine (the app module packs the same file).
     compileOnly(files("../app/libs/quickjs-kt-android-1.0.5-nuvio.aar"))
@@ -68,9 +77,21 @@ dependencies {
         exclude(group = "org.jetbrains.compose.foundation")
     }
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
-    // LeXia's player library version (the app module's), for the Nuvio files that name its types.
-    compileOnly("androidx.media3:media3-common:1.11.1")
-    compileOnly("androidx.media3:media3-exoplayer:1.11.1")
+    // Nuvio's own Media3 build (the app module packs it), for the Nuvio files that name its types.
+    compileOnly(files(
+        "../app/libs/lib-common-release.aar",
+        "../app/libs/lib-datasource-release.aar",
+        "../app/libs/lib-datasource-okhttp-release.aar",
+        "../app/libs/lib-exoplayer-release.aar",
+        "../app/libs/lib-exoplayer-hls-release.aar",
+        "../app/libs/lib-extractor-release.aar",
+        "../app/libs/lib-decoder-ffmpeg-release.aar"
+    ))
+    compileOnly("androidx.media3:media3-ui:1.8.0")
+    compileOnly("androidx.media3:media3-decoder:1.8.0")
+    compileOnly("androidx.media3:media3-database:1.8.0")
+    compileOnly("androidx.media3:media3-exoplayer-dash:1.8.0")
+    compileOnly("com.google.guava:guava:33.3.1-android")
     implementation("com.google.zxing:core:3.5.3")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 }

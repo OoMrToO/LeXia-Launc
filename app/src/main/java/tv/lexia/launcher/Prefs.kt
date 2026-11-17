@@ -207,6 +207,8 @@ class Prefs(ctx: Context) {
     /** Ayarlar › Oynatma: the Nuvio provider asked first, and played without a list ("" = none). */
     var favSource: String get() = str("favSource"); set(v) = putStr("favSource", v)
     var favSourceName: String get() = str("favSourceName"); set(v) = putStr("favSourceName", v)
+    /** Videos open through NuvioTV's own player code (media source, FFmpeg sound); off = LeXia's earlier way. */
+    var nuvioEngine: Boolean get() = bool("nuvioEngine", true); set(v) = putBool("nuvioEngine", v)
     var playAutoSource: Boolean get() = bool("playAutoSource", true); set(v) = putBool("playAutoSource", v)
     /** Subtitle size in the player: 0 small, 1 normal, 2 large, 3 very large. */
     var playSubSize: Int get() = int("playSubSize", 1); set(v) = putInt("playSubSize", v)

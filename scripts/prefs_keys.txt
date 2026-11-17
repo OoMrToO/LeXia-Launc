@@ -120,6 +120,7 @@ playAutoSource bool
 favSource text
 favSourceName text
 heroTrailer bool
+nuvioEngine bool
 choices text
 episodes text
 trailerNative bool

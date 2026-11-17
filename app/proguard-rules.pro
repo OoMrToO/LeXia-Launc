@@ -57,3 +57,28 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -dontwarn retrofit2.**
+
+# Copied from NuvioTV's proguard-rules.pro (ExoPlayer / Media3): Nuvio's own Media3 build finds the
+# FFmpeg audio decoder and other extensions by class name, so none of Media3 may be renamed.
+-dontwarn androidx.media3.**
+-keep class androidx.media3.** { *; }
+-keep interface androidx.media3.** { *; }
+-keep class androidx.media.** { *; }
+-keep class androidx.media3.decoder.** { *; }
+-keep class androidx.media3.exoplayer.** { *; }
+-keep class androidx.media3.ui.** { *; }
+-keep class com.google.android.exoplayer2.** { *; }
+-keep interface com.google.android.exoplayer2.** { *; }
+-keep class com.google.android.exoplayer2.ext.** { *; }
+
+# Keep native interfaces and handles for Nuvio Engine JNI
+-keep class androidx.media3.exoplayer.upstream.DefaultAllocatorNative {
+    native <methods>;
+}
+-keep class androidx.media3.exoplayer.source.SampleDataQueueNative {
+    native <methods>;
+}
+-keep class androidx.media3.exoplayer.upstream.Allocation {
+    <init>(java.nio.ByteBuffer, int, long);
+    public long nativeHandle;
+}

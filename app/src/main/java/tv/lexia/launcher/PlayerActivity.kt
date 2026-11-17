@@ -34,6 +34,9 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
+import com.nuvio.tv.LeXiaPlayback
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -358,7 +361,20 @@ class PlayerActivity : Activity() {
         player = exo
 
         val resumeAt = if (lastPositionMs >= 0) lastPositionMs else store.resumePositionMs(mediaKey)
-        if (resumeAt > 0) exo.setMediaItem(item, resumeAt) else exo.setMediaItem(item)
+        val viaNuvio = prefs.nuvioEngine && (uri.scheme.equals("http", true) || uri.scheme.equals("https", true))
+        if (viaNuvio) {
+            // The video opens through NuvioTV's own code (PlayerMediaSourceFactory: its kind read
+            // from the address or the host's answer, the stream's headers on every request); the
+            // subtitles still go through LeXia's Turkish fix and are added beside it.
+            LeXiaPlayback.start(this)
+            val session = nuvioSession ?: LeXiaPlayback.Session(this).also { nuvioSession = it }
+            val video = session.mediaSource(this, uri.toString(), PlaybackHttp.sanitize(headers))
+            val subtitles = item.localConfiguration?.subtitleConfigurations.orEmpty().map { config ->
+                SingleSampleMediaSource.Factory(dataSources).createMediaSource(config, MediaC.TIME_UNSET)
+            }
+            val media = if (subtitles.isEmpty()) video else MergingMediaSource(video, *subtitles.toTypedArray())
+            if (resumeAt > 0) exo.setMediaSource(media, resumeAt) else exo.setMediaSource(media)
+        } else if (resumeAt > 0) exo.setMediaItem(item, resumeAt) else exo.setMediaItem(item)
         exo.prepare()
         exo.playWhenReady = true
         ended = false
@@ -421,6 +437,15 @@ class PlayerActivity : Activity() {
         }
         if (configurations.isNotEmpty()) builder.setSubtitleConfigurations(configurations)
         return builder.build()
+    }
+
+    /** NuvioTV's media source factory for this playback (its caches and connections). */
+    private var nuvioSession: LeXiaPlayback.Session? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        nuvioSession?.release()
+        nuvioSession = null
     }
 
     private fun releasePlayer() {

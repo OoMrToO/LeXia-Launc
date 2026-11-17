@@ -137,6 +137,9 @@ internal class DelayedSubtitleRenderers(context: Context, private val delayUs: A
     init {
         // A second decoder is tried when the TV's first choice fails to start.
         setEnableDecoderFallback(true)
+        // As NuvioTV's player by default (decoder priority "on"): sound the TV cannot decode
+        // itself (AC3, E-AC3, DTS, TrueHD...) goes to Nuvio's FFmpeg decoder instead of failing.
+        setExtensionRendererMode(EXTENSION_RENDERER_MODE_ON)
     }
 
     override fun buildTextRenderers(

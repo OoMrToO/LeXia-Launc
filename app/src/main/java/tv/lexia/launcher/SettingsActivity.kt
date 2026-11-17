@@ -642,7 +642,7 @@ class SettingsActivity : Activity() {
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("favSource", "playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -652,6 +652,12 @@ class SettingsActivity : Activity() {
                 "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +
                     "Başka bir kaynak seçmek için oynatıcıdan Geri ile çık: kaynak listesi açılır. Kapalıyken kaynağı her seferinde listeden seçersin.",
                 { prefs.playAutoSource }, { prefs.playAutoSource = it }
+            ),
+            toggle(
+                "Nuvio oynatma motoru",
+                "Videolar Nuvio'nun oynatıcısının koduyla açılır: adresinden türü anlaşılmayan yayınlar da açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
+                    "Bir videoda sorun olursa kapatıp eski yolla deneyebilirsin.",
+                { prefs.nuvioEngine }, { prefs.nuvioEngine = it }
             ),
             Header("SES VE ALTYAZI"),
             choice(
