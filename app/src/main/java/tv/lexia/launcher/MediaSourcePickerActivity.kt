@@ -41,15 +41,18 @@ class MediaSourcePickerActivity : Activity() {
 
     companion object {
         private const val EXTRA_FILM = "media.pick"
+        private const val EXTRA_RESUME = "media.resume"
         private const val REQUEST_PLAY = 41
         /** Once the first sources are in, how long the rest get before the best so far is played. */
         private const val AUTO_WAIT_MS = 6_000L
         private const val MEMORY_SIZE = 60
 
-        fun open(activity: Activity, film: Pick) {
+        /** [resumeEpisode] ("tt…:2:5"): a series opens straight on that episode's sources. */
+        fun open(activity: Activity, film: Pick, resumeEpisode: String = "") {
             activity.startActivity(
                 Intent(activity, MediaSourcePickerActivity::class.java)
                     .putExtra(EXTRA_FILM, film.toJson().toString())
+                    .putExtra(EXTRA_RESUME, resumeEpisode)
             )
             activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
@@ -61,6 +64,7 @@ class MediaSourcePickerActivity : Activity() {
     private val repository by lazy { MediaAddonRepository(this) }
     private val nuvioRepository by lazy { NuvioJsRepository(this) }
     private val prefs by lazy { Prefs(this) }
+    private val playback by lazy { MediaPlaybackStore(this) }
     private val sourcePrefs by lazy { getSharedPreferences("media_source_picker", MODE_PRIVATE) }
     private val worker = Executors.newCachedThreadPool()
     private val handler = Handler(Looper.getMainLooper())
@@ -351,9 +355,27 @@ class MediaSourcePickerActivity : Activity() {
             runOnUiThread {
                 if (mine != generation || isFinishing) return@runOnUiThread
                 episodes = found
+                if (found.isNotEmpty() && openResumeEpisode()) return@runOnUiThread
                 if (found.isEmpty()) showManualEpisodeSearch() else showEpisodes()
             }
         }
+    }
+
+    /**
+     * Opened from the film page's "Devam et": goes straight to that episode's sources (once).
+     * The episode is matched by its id, or by its season and number.
+     */
+    private fun openResumeEpisode(): Boolean {
+        val target = intent.getStringExtra(EXTRA_RESUME).orEmpty()
+        if (target.isBlank()) return false
+        intent.removeExtra(EXTRA_RESUME)
+        val numbers = Regex(":(\\d+):(\\d+)$").find(target)?.groupValues
+        val index = episodes.indexOfFirst { it.id == target }.takeIf { it >= 0 }
+            ?: numbers?.let { n -> episodes.indexOfFirst { it.season == n[1].toInt() && it.episode == n[2].toInt() } }
+            ?: -1
+        if (index < 0) return false
+        loadEpisodeStreams(index, if (prefs.playAutoSource || favoriteId.isNotBlank()) Auto.BEST else Auto.NO)
+        return true
     }
 
     private fun seasonName(number: Int) = if (number > 0) "$number. Sezon" else "Özel bölümler"
@@ -497,8 +519,11 @@ class MediaSourcePickerActivity : Activity() {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         })
+        val progress = playback.progress(episode.id)
+        val finished = progress == null && playback.isFinished(episode.id)
         val facts = listOfNotNull(
             if (episode.episode > 0) "${episode.episode}. Bölüm" else null,
+            "✓ İzlendi".takeIf { finished },
             releaseDay(episode).takeIf { it.isNotBlank() },
             episode.runtime.takeIf { it > 0 }?.let { "$it dk" },
             "Henüz yayınlanmadı".takeIf { isUnreleased(episode) }
@@ -519,6 +544,27 @@ class MediaSourcePickerActivity : Activity() {
             setLineSpacing(0f, 1.1f)
             setPadding(0, dp(6), 0, 0)
         })
+        // How much of it was watched, as a thin bar under the text.
+        if (progress != null) {
+            val track = android.widget.FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat()
+                    setColor(Color.argb(60, 255, 255, 255))
+                }
+            }
+            val fill = View(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat()
+                    setColor(Color.rgb(125, 151, 255))
+                }
+            }
+            track.addView(fill, android.widget.FrameLayout.LayoutParams(0, -1))
+            track.post {
+                fill.layoutParams = fill.layoutParams.apply { width = (track.width * progress.coerceAtLeast(0.03f)).toInt() }
+            }
+            texts.addView(track, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(10); rightMargin = dp(40) })
+        }
+        if (finished) still.alpha = 0.55f
         card.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         card.setOnFocusChangeListener { view, focused ->
             view.background = if (focused) focusedBackground() else panelBackground()

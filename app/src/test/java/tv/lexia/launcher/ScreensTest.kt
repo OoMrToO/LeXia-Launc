@@ -130,6 +130,11 @@ class ScreensTest {
             imdb = 9.5, year = "2008", genres = listOf("Dram"), runtime = 47, kind = "tv", seasons = 5,
             id = 1396, imdbId = "tt0903747"
         )
+        // The first episode half watched, the second watched to the end.
+        MediaPlaybackStore(app).apply {
+            save("tt0903747:1:1", 25 * 60_000L, 58 * 60_000L)
+            markFinished("tt0903747:1:2")
+        }
         val seriesIntent = Intent(app, MediaSourcePickerActivity::class.java).putExtra("media.pick", series.toJson().toString())
         ActivityScenario.launch<MediaSourcePickerActivity>(seriesIntent).use { scenario ->
             settle(15000)

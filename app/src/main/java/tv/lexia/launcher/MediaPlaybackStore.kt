@@ -53,6 +53,35 @@ internal class MediaPlaybackStore(context: Context) {
         return false
     }
 
+    /** How far into it the viewer is, 0..1; null when nothing is kept (not started, or finished). */
+    fun progress(mediaKey: String): Float? {
+        val position = resumePositionMs(mediaKey)
+        if (position <= 0L) return null
+        val duration = preferences.getLong("${prefix(mediaKey)}_duration", 0L)
+        return if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else null
+    }
+
+    /** Watched to the end (the credits count). */
+    fun isFinished(mediaKey: String): Boolean =
+        mediaKey.isNotBlank() && preferences.getBoolean("${prefix(mediaKey)}_done", false)
+
+    fun markFinished(mediaKey: String) {
+        if (mediaKey.isBlank()) return
+        preferences.edit().putBoolean("${prefix(mediaKey)}_done", true).apply()
+    }
+
+    /**
+     * The film or episode last played of a title ([watchKey] is the title's own key): the film
+     * page offers to continue it.
+     */
+    fun saveLast(watchKey: String, mediaKey: String) {
+        if (watchKey.isBlank() || mediaKey.isBlank()) return
+        preferences.edit().putString("${prefix(watchKey)}_last", mediaKey).apply()
+    }
+
+    fun last(watchKey: String): String =
+        if (watchKey.isBlank()) "" else preferences.getString("${prefix(watchKey)}_last", null).orEmpty()
+
     /** How much later (or earlier, when negative) the viewer set this film's subtitles. */
     fun subtitleDelayMs(mediaKey: String): Long {
         if (mediaKey.isBlank()) return 0L

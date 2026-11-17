@@ -430,6 +430,7 @@ class PlayerActivity : Activity() {
         if (mediaKey.isBlank()) return
         val duration = p.duration.takeIf { it > 0L } ?: 0L
         val finished = ended || store.save(mediaKey, p.currentPosition, duration)
+        store.saveLast(watchKey, mediaKey)
         if (finished) {
             store.clear(mediaKey)
             markAsWatched()
@@ -437,6 +438,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun markAsWatched() {
+        store.markFinished(mediaKey)
         if (!markWatched || watchKey.isBlank()) return
         if (watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
     }

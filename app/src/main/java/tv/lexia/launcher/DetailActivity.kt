@@ -209,9 +209,11 @@ class DetailActivity : Activity() {
             if (film.id <= 0) {
                 Glass.toast(this, "Bu içerik için TMDB kimliği bulunamadı")
             } else {
-                MediaSourcePickerActivity.open(this, film)
+                // A series continues on the episode it was left at (or the one after a finished one).
+                MediaSourcePickerActivity.open(this, film, resumeEpisode = continueEpisode)
             }
         }
+        updatePlayBtn()
         val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)
         trailer.setOnClickListener {
             if (film.trailer.isEmpty()) {
@@ -611,5 +613,46 @@ class DetailActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::frame.isInitialized) Fx.zoomReset(frame)
+        // Back from the player: "Oynat" says where it was left.
+        updatePlayBtn()
+    }
+
+    /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */
+    private var continueEpisode = ""
+
+    /** "Oynat", "Devam et · 42:10", "Devam et · 2. Sezon 5. Bölüm", "Sonraki · 2. Sezon 6. Bölüm". */
+    private fun updatePlayBtn() {
+        if (!::playBtn.isInitialized) return
+        val store = MediaPlaybackStore(this)
+        val last = store.last(film.key)
+        val position = if (last.isNotBlank()) store.resumePositionMs(last) else 0L
+        val episode = Regex(":(\\d+):(\\d+)$").find(last)
+        continueEpisode = ""
+        playBtn.text = when {
+            last.isBlank() -> "▶   Oynat"
+            film.isSeries && episode != null -> {
+                val season = episode.groupValues[1].toInt()
+                val number = episode.groupValues[2].toInt()
+                if (position > 0L || !store.isFinished(last)) {
+                    continueEpisode = last
+                    "▶   Devam et  ·  $season. Sezon $number. Bölüm"
+                } else {
+                    continueEpisode = last.substring(0, episode.range.first) + ":$season:${number + 1}"
+                    "▶   Sonraki  ·  $season. Sezon ${number + 1}. Bölüm"
+                }
+            }
+            position > 0L -> "▶   Devam et  ·  ${clock(position)}"
+            store.isFinished(last) -> "▶   Yeniden izle"
+            else -> "▶   Oynat"
+        }
+    }
+
+    /** 42:10 or 1:12:30. */
+    private fun clock(ms: Long): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val sec = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
     }
 }
