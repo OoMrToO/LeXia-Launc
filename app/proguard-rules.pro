@@ -22,6 +22,12 @@
 -keepclasseswithmembers class * {
     @com.squareup.moshi.JsonClass <init>(...);
 }
+# Copied from NuvioTV's proguard-rules.pro (Gson). PluginRuntime reads each scraper's result list
+# through an anonymous TypeToken; without these R8 strips its type arguments, Gson throws, the
+# runtime swallows it and every scraper looks like it found nothing.
+-keepattributes Signature
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
 -keep class com.dokar.quickjs.** { *; }
 -keepclassmembers class com.dokar.quickjs.** { *; }
 -keep class com.nuvio.tv.core.plugin.** { *; }

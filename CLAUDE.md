@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 16 Kasım 2026 (PR #47: Nuvio'nun koruma kuralları; PR #46: Nuvio'nun eklenti sistemi `com/nuvio/tv` altında birebir kopya; ChatGPT'nin TV platform süzgeci ve test ekranı kaldırıldı).
+Son güncelleme: 17 Kasım 2026 (PR #49: Nuvio sağlayıcılarının sonuçlarını boşaltan küçültme hatası bulundu ve düzeltildi; derleme artık bu ortamda da yapılabiliyor).
 
 ## 1. Çalışma biçimi
 
@@ -60,6 +60,9 @@ Son güncelleme: 16 Kasım 2026 (PR #47: Nuvio'nun koruma kuralları; PR #46: Nu
 
 - **#47 (Claude, 16 Kasım; sürüm 46'da "Kurtuluş Projesi": "Nuvio deposundaki 37 sağlayıcının hiçbiri sonuç vermedi"):** güçlü neden: LeXia'nın sürüm derlemesi kodu küçültüyor (R8) ama Nuvio'nun koruma kuralları yoktu; QuickJS motoru yerel koddan Java sınıflarına adla seslenir, küçültülünce her sağlayıcı sessizce düşer (#39'dan beri hiçbir sürümde Nuvio kaynağı çıkmamasıyla uyumlu). Nuvio'nun `proguard-rules.pro`'sundaki ilgili kurallar (Moshi, QuickJS, `core.plugin`, kotlin, coroutines, okhttp, okio, jsoup) `app/proguard-rules.pro`'ya eklendi. Yine kaynak çıkmazsa "bulunamadı" kartında Nuvio kodunun yazdığı son hatalar görünür (`NuvioJsRepository.nuvioErrors`: uygulama kendi `logcat`'ini okur, `PluginRuntime`/`PluginManager` etiketleri). Medya kaynakları'nda yalnızca "Film • Dizi" diyen sağlayıcı açıklaması gizlenir (tür zaten yazıyor). **TV'de denenmedi.**
 
+- **#49 (Claude, 17 Kasım; sürüm 47'de de kaynak çıkmadı, Nuvio aynı TV'de aynı depoyla buluyor):** asıl neden **kanıtlandı**. `PluginRuntime.parseJsonResults` sağlayıcının sonuç listesini Gson'un adsız `TypeToken`'ı ile okur; sürüm derlemesindeki küçültme (R8) bu sınıfın tür bilgisini siliyordu (pakette `Signature` yalnızca `La3/a;` idi), Gson hata veriyor, Nuvio kodu hatayı yutup boş liste dönüyordu: **her sağlayıcı kaynak bulsa bile "sonuç yok"**. Nuvio'nun `proguard-rules.pro`'sundaki iki Gson kuralı (#47'de atlanmıştı) eklendi; yeni pakette tür bilgisi yerinde (`dexdump` ile bakıldı). Kullanıcının deposu: `liberta09/CloudStreamRepoManager` › `nuvio/izlelan/manifest.json` (39 sağlayıcı, kodlar `izlelan.com/providers/*.js`, şifrelenmiş; site listesi `cdn.izlelan.com/domains.json`, TMDB anahtarları kendi içinde). Masaüstü denemesinde Imu sağlayıcısı Nuvio çalıştırıcısında film sitesine kadar sorunsuz gitti (site bu ortamdan kapalı). **TV'de denenmedi.**
+- **Kullanıcı isteği (17 Kasım, kesin):** Ayarlar'daki eklenti ekranı ve "Oynat"taki kaynak listesi Nuvio'ya benzemiyor; ikisi de Nuvio'nun **özgün koduyla** (Compose, `PluginScreen`, `StreamScreen`) LeXia'ya alınacak. Nuvio adı görünebilir, ama "uygulama içinde uygulama" (Nuvio'nun ana ekranı, menüleri) görünmeyecek. Sırada.
+
 ## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
 
 - Kullanıcı `OoMrToO/NuvioTV` fork'unu oluşturdu; upstream `NuvioMedia/NuvioTV`, izlenen dal `dev`, lisans GPL-3.0.
@@ -97,7 +100,7 @@ Son güncelleme: 16 Kasım 2026 (PR #47: Nuvio'nun koruma kuralları; PR #46: Nu
 ## 6. Geliştirme akışı (Claude)
 
 1. `git fetch origin main && git checkout -B claude/<iş> origin/main` (ChatGPT de çalıştığı için hep güncel `main`'den başla).
-2. Tip kontrolü (Android SDK yok; `dl.google.com` kapalı, kullanıcı ortam değişikliğini reddetti): `kotlin-compiler-embeddable` + `org.robolectric:android-all:14-robolectric-10818077` + guava/okhttp/okio/jsoup/gson/quickjs-kt Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. **Media3 de denetlenir:** `github.com/androidx/media` 1.11.1 etiketinin `libraries/*/src/main/java` klasörleri kaynak kökü olarak verilir. Saf Kotlin dosyaları (`SubtitleText`, `Lang`, `StreamTags`) JVM'de küçük sınamalarla çalıştırılabilir. Asıl doğrulama `pr-build`.
+2. **Derleme bu ortamda yapılır (17 Kasım'dan beri):** kullanıcı "LeXia" çalışma ortamını ve Google'ın Android araçlarını onayladı (izinli adresler: `dl.google.com`, `maven.google.com`, `izlelan.com`, `cdn.izlelan.com`, `api.themoviedb.org`). Yeni oturumda SDK yeniden kurulur: `commandlinetools` indir → `sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"` → `ANDROID_HOME=… gradle --no-daemon :app:assembleFullRelease`. Küçültülmüş paket `build-tools/…/dexdump -a` ile incelenir. Öykünücü yok (KVM yok): ekranlar çalıştırılamaz. Nuvio çalıştırıcısı masaüstünde `quickjs-kt-jvm` ile denenir (bölüm 2, #43). SDK kurulamazsa eski yol: `kotlin-compiler-embeddable` + `org.robolectric:android-all:14-robolectric-10818077` + guava/okhttp/okio/jsoup/gson/quickjs-kt Maven'den, `K2JVMCompiler` ile `app/src/main/java` + `R`/`BuildConfig` taslağı. **Media3 de denetlenir:** `github.com/androidx/media` 1.11.1 etiketinin `libraries/*/src/main/java` klasörleri kaynak kökü olarak verilir. Saf Kotlin dosyaları (`SubtitleText`, `Lang`, `StreamTags`) JVM'de küçük sınamalarla çalıştırılabilir. Asıl doğrulama `pr-build`.
 3. Commit → push → PR → `pr-build` yeşil → birleştir (`expectedHeadSha` 40 karakter) → `build.yml` bitince sürüm numarasını kullanıcıya yaz.
 4. **Ayar anahtarları:** yeni `SharedPreferences` anahtarı `scripts/prefs_keys.txt`'ye türüyle eklenir; `scripts/check_prefs.py` her derlemede eski adların başka türle kullanılmasını yakalar (eski projede #119 çökmesi).
 5. Bu ortamda `git push` sonrası "This repository moved" mesajı zararsız (depo adı büyük/küçük harf).
@@ -121,7 +124,8 @@ Son güncelleme: 16 Kasım 2026 (PR #47: Nuvio'nun koruma kuralları; PR #46: Nu
 
 - Oynatma ve eklentiler (#28, #29, #42) TV'de denenmedi: "Oynat" düğmesi, otomatik kaynak, yeni oynatıcının kumandası, ses/altyazı listeleri, altyazı düzeltmesi, sonraki bölüm.
 - Fragmanların yerel oynatıcısı (#44) hiç canlı denenmedi; TV'de fragman açılıyor mu, YouTube çerçevesi görünüyor mu (görünüyorsa yedek yola düşmüştür) sorulacak.
-- Gerçek bir Nuvio deposuyla (kullanıcının eklediği scraper'larla) TV'de kaynak bulunup bulunmadığı denenmedi; cheerio taklidi eksik olabilir (`hasClass`, `closest`, `siblings` yok).
+- #49'dan sonra TV'de izlelan deposundan kaynak çıkıyor mu? (Kullanıcıdan sonuç bekleniyor.)
+- Nuvio'nun eklenti ve kaynak ekranlarının özgün koduyla alınması (bölüm 2, 17 Kasım isteği).
 
 - Eski LeXia TV'den kaldırıldı mı? Listem yedek koduyla taşındı mı? (13 Kasım'da adımlar verildi.)
 - Yeni uygulamanın TV fotoğrafı yok; hiçbir özellik bu pakette TV'de denenmedi.
@@ -150,3 +154,4 @@ Son güncelleme: 16 Kasım 2026 (PR #47: Nuvio'nun koruma kuralları; PR #46: Nu
 | #45 | Claude | Eklentiler Nuvio kurallarıyla: http, ayarlı adresler, aç/kapat, sıralama, eklenti ayarları; sürüm kodu 2000+ |
 | #47 | Claude | Nuvio'nun ProGuard koruma kuralları (küçültülmüş sürümde sağlayıcılar düşüyordu); kaynak çıkmazsa Nuvio'nun hatası ekranda |
 | #46 | Claude | Nuvio'nun scraper çalıştırıcısı (`PluginRuntime`) ve QuickJS yapısı birebir kopyalandı; Nuvio'nun eklenti sistemi (`PluginManager`, `PluginDataStore`, modeller) `com/nuvio/tv` altında birebir; TV platform süzgeci ve test ekranı kaldırıldı |
+| #49 | Claude | Nuvio'nun Gson koruma kuralları: küçültülmüş sürümde sağlayıcı sonuçları okunamıyordu (kanıtlandı, düzeltildi) |
