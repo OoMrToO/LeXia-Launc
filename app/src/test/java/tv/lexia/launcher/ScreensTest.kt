@@ -34,13 +34,14 @@ class ScreensTest {
     private fun settle(ms: Long = 1500) {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
-            shadowOf(Looper.getMainLooper()).idle()
+            // The main thread's clock moves with real time, so fades and delayed posts finish.
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50))
             Thread.sleep(50)
         }
     }
 
     private fun stream(provider: String, name: String, title: String) = Stream(
-        name = name, title = title, description = null, url = "https://example.com/$provider-${name.hashCode()}.m3u8",
+        name = name, title = title, description = null, url = "https://example.com/$provider-${(name + title).hashCode()}.m3u8",
         ytId = null, infoHash = null, fileIdx = null, externalUrl = null, behaviorHints = null,
         addonName = provider, addonLogo = null
     )
@@ -58,11 +59,20 @@ class ScreensTest {
         }
 
         val groups = listOf(
-            AddonStreams("Imu", null, listOf(
-                stream("Imu", "Imu - 1080p", "Kurtuluş Projesi (2026) · Türkçe Dublaj"),
-                stream("Imu", "Imu - 720p", "Kurtuluş Projesi (2026) · Türkçe Altyazı")
+            AddonStreams("Hdfilmce", null, listOf(
+                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p altyazılı"),
+                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p Türkçe dublaj")
             )),
-            AddonStreams("JoyBoy", null, listOf(stream("JoyBoy", "JoyBoy - 4K HDR", "Project Hail Mary 2026 2160p WEB-DL")))
+            AddonStreams("Setfilmizle", null, listOf(stream("Setfilmizle", "Setfilmizleyin", "Kurtuluş Projesi 720p altyazı"))),
+            AddonStreams("Liderfilm", null, listOf(
+                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p altyazı"),
+                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p dublaj")
+            )),
+            AddonStreams("Sinemaizle", null, listOf(
+                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi 2160p HDR altyazılı"),
+                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi dublaj")
+            )),
+            AddonStreams("Filmekseni", null, listOf(stream("Filmekseni", "Filmekseni", "Kurtuluş Projesi 1080p altyazı")))
         )
         LeXiaNuvio.streams = object : StreamRepository {
             override fun setLocalPluginSearchPaused(paused: Boolean) = Unit
@@ -76,13 +86,39 @@ class ScreensTest {
         }
         Prefs(app).playAutoSource = false
         val film = Pick(
-            title = "Kurtuluş Projesi", meta = "", overview = "", backdrop = "", reason = "", trailer = "", logo = "",
+            title = "Kurtuluş Projesi", meta = "", overview = "", backdrop = "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg", reason = "", trailer = "", logo = "",
             imdb = 7.9, year = "2026", genres = listOf("Bilim Kurgu"), runtime = 156, id = 687163, imdbId = "tt12042730"
         )
         val intent = Intent(app, MediaSourcePickerActivity::class.java).putExtra("media.pick", film.toJson().toString())
         ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
-            settle(4000)
+            settle(6000)
+            // The remote on the second source, as on the TV.
+            scenario.onActivity { a ->
+                fun tiles(v: android.view.View): List<android.view.View> =
+                    if (v is android.view.ViewGroup) (0 until v.childCount).flatMap { tiles(v.getChildAt(it)) }
+                    else emptyList<android.view.View>()
+                val all = ArrayList<android.view.View>()
+                fun walk(v: android.view.View) {
+                    if (v.isFocusable && (v.tag as? String)?.startsWith("https://example.com/") == true) all.add(v)
+                    if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                }
+                walk(a.window.decorView)
+                all.getOrNull(1)?.let { it.isFocusableInTouchMode = true; it.requestFocus() }
+            }
+            settle(800)
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/kaynaklar.png") }
+        }
+
+        // A series: the episode list from Nuvio's details source (Cinemeta), with stills.
+        val series = Pick(
+            title = "Breaking Bad", meta = "", overview = "", backdrop = "", reason = "", trailer = "", logo = "",
+            imdb = 9.5, year = "2008", genres = listOf("Dram"), runtime = 47, kind = "tv", seasons = 5,
+            id = 1396, imdbId = "tt0903747"
+        )
+        val seriesIntent = Intent(app, MediaSourcePickerActivity::class.java).putExtra("media.pick", series.toJson().toString())
+        ActivityScenario.launch<MediaSourcePickerActivity>(seriesIntent).use { scenario ->
+            settle(15000)
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/bolumler.png") }
         }
     }
 }

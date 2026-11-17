@@ -39,3 +39,24 @@ class ServerPlayback {
 
 /** Never reached: ServerPlayback.prepare is never asked for a session. */
 fun Throwable.serverPlaybackMessageRes(): Int = com.nuvio.tv.R.string.error_generic
+
+/** No media server ids in LeXia: nothing parses as one. */
+class ServerItemRef private constructor() {
+    fun encode(): String = ""
+
+    companion object {
+        fun isServerId(id: String?): Boolean = false
+        fun parse(id: String?): ServerItemRef? = null
+    }
+}
+
+class ServerItemDetails(val meta: com.nuvio.tv.domain.model.Meta)
+
+class ServerCatalog {
+    suspend fun details(ref: ServerItemRef): ServerItemDetails =
+        throw UnsupportedOperationException("Media servers are not part of LeXia")
+
+    companion object {
+        fun isServerAddon(baseUrl: String?): Boolean = false
+    }
+}

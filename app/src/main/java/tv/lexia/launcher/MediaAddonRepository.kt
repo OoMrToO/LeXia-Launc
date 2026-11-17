@@ -40,7 +40,13 @@ internal data class MediaEpisode(
     val title: String,
     val season: Int,
     val episode: Int,
-    val released: String = ""
+    val released: String = "",
+    /** A still from the episode: a full address, or a TMDB path ("/abc.jpg"). */
+    val thumbnail: String = "",
+    val overview: String = "",
+    /** Length in minutes; 0 when unknown. */
+    val runtime: Int = 0,
+    val rating: Double = 0.0
 )
 
 internal data class MediaSubtitle(
@@ -85,6 +91,8 @@ internal data class MediaStream(
  * browser/external and debrid-client-resolve entries are not silently misrepresented as playable.
  */
 internal class MediaAddonRepository(context: Context) {
+
+    private val appContext = context.applicationContext
 
     private val prefs = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
@@ -198,7 +206,14 @@ internal class MediaAddonRepository(context: Context) {
         ).distinct()
         val result = LinkedHashMap<String, MediaEpisode>()
 
-        for (addon in activeAddons()) {
+        // Nuvio's details source first (installed add-ons and Cinemeta, with pictures and summaries).
+        try {
+            NuvioMeta.episodes(appContext, lookupIds, activeAddons().map { it.baseUrl })
+                .forEach { result.putIfAbsent(it.id, it) }
+        } catch (_: Exception) {
+        }
+
+        for (addon in if (result.isEmpty()) activeAddons() else emptyList()) {
             if ("meta" !in addon.resources || !supports(addon, "series")) continue
             for (id in lookupIds) {
                 if (!supportsId(addon, id)) continue
@@ -254,6 +269,37 @@ internal class MediaAddonRepository(context: Context) {
     }
 
     /** Every season's episodes by number alone, from how many TMDB says each season has. */
+    /**
+     * One season's episodes in Turkish from TMDB (name, summary, still, air date, length), by
+     * episode number; empty when TMDB has no such season or there is no key.
+     */
+    fun tmdbSeason(tmdbId: Int, season: Int): Map<Int, MediaEpisode> {
+        val key = BuildConfig.TMDB_API_KEY
+        if (key.isBlank() || tmdbId <= 0 || season < 0) return emptyMap()
+        val root = getJson(TMDB.toHttpUrlOrNull()!!.newBuilder()
+            .addPathSegment("tv").addPathSegment(tmdbId.toString())
+            .addPathSegment("season").addPathSegment(season.toString())
+            .addQueryParameter("api_key", key).addQueryParameter("language", "tr-TR").build())
+        val list = root.optJSONArray("episodes") ?: return emptyMap()
+        val result = HashMap<Int, MediaEpisode>()
+        for (i in 0 until list.length()) {
+            val e = list.optJSONObject(i) ?: continue
+            val number = e.optInt("episode_number", 0).takeIf { it > 0 } ?: continue
+            result[number] = MediaEpisode(
+                id = "",
+                title = e.optString("name"),
+                season = season,
+                episode = number,
+                released = e.optString("air_date"),
+                thumbnail = e.optString("still_path").takeIf { it.startsWith("/") }.orEmpty(),
+                overview = e.optString("overview"),
+                runtime = e.optInt("runtime", 0),
+                rating = e.optDouble("vote_average", 0.0)
+            )
+        }
+        return result
+    }
+
     private fun seasonsFromTmdb(tmdbId: Int, seriesId: String, result: MutableMap<String, MediaEpisode>) {
         val key = BuildConfig.TMDB_API_KEY
         if (key.isBlank()) return
