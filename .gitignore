@@ -5,3 +5,4 @@ __pycache__/
 /app/build/
 /nuvio/build/
 local.properties
+.kotlin/
