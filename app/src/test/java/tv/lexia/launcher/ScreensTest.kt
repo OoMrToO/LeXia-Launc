@@ -154,7 +154,7 @@ class ScreensTest {
 
         // A film in cinemas: the play pill shows its release, coloured.
         val inCinema = Pick(
-            title = "Uzak Yıldız", meta = "", overview = "Bir okul öğretmeni, uzak bir yıldız sisteminde, Dünya'yı kurtarmak için tek başına uyanır.", backdrop = "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg", reason = "", trailer = "x", logo = "",
+            title = "Uzak Yıldız", meta = "", overview = "Bir okul öğretmeni, uzak bir yıldız sisteminde, Dünya'yı kurtarmak için tek başına uyanır.", backdrop = "/9SSEUrSqhljBMzRe4aBTh17rUaC.jpg", reason = "", trailer = "x", logo = "",
             imdb = 8.4, year = "2026", genres = listOf("Bilim Kurgu"), runtime = 156, kind = "movie", id = 999001,
             release = "2026-11-14"
         )
