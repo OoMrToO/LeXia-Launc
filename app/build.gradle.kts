@@ -107,3 +107,17 @@ dependencies {
     // Nuvio Beta scrapers commonly rely on the CryptoJS global.
     implementation("org.webjars.npm:crypto-js:4.2.0")
 }
+
+// Off-device drawing of LeXia's media pages (Robolectric + Roborazzi): build/shots/*.png.
+android.testOptions.unitTests.isIncludeAndroidResources = true
+android.testOptions.unitTests.all {
+    it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+    it.systemProperty("roborazzi.test.record", "true")
+    System.getProperty("lexia.repo")?.let { repo -> it.systemProperty("lexia.repo", repo) }
+}
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.46.1")
+    testImplementation("androidx.test:core:1.6.1")
+}

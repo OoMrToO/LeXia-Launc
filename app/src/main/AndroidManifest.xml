@@ -129,11 +129,6 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
-        <activity
-            android:name=".NuvioStreamsActivity"
-            android:exported="false"
-            android:screenOrientation="landscape"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
         <activity
             android:name=".WeekendActivity"

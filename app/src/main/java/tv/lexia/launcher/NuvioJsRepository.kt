@@ -91,6 +91,15 @@ internal class NuvioJsRepository(context: Context) {
         }
     }
 
+    /** Nuvio's "Enable plugin providers globally" switch (PluginManager.pluginsEnabled). */
+    fun pluginsEnabled(): Boolean = runBlocking { manager.pluginsEnabled.first() }
+
+    fun setPluginsEnabled(enabled: Boolean) = runBlocking { manager.setPluginsEnabled(enabled) }
+
+    /** Nuvio asks before switching on a "VideoEasy" scraper (PluginSafety.isVideoEasyScraper). */
+    fun needsConfirmation(scraper: NuvioScraperInfo): Boolean =
+        LeXiaNuvio.isVideoEasyScraper(scraper.id, scraper.name, scraper.filename)
+
     fun installedScraperCount(): Int = runBlocking { manager.scrapers.first().size }
 
     fun addRepository(address: String): NuvioRepositoryInfo {
@@ -163,6 +172,8 @@ internal class NuvioJsRepository(context: Context) {
      * The last errors Nuvio's copied plugin code wrote to the log (it logs them and goes on, so
      * they are not passed back). An app may read its own log lines.
      */
+    fun nuvioErrorsNow(): List<String> = nuvioErrors()
+
     private fun nuvioErrors(): List<String> = try {
         val process = ProcessBuilder(
             "logcat", "-d", "-t", "600", "--pid=${android.os.Process.myPid()}",
