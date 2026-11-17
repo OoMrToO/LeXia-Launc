@@ -50,6 +50,8 @@ class MainActivity : Activity() {
     companion object {
         /** "Short" for a weeknight: ends within an hour and 45 minutes. */
         private const val SHORT_MIN = 105
+        /** How long a film is on screen before its trailer starts (without sound). */
+        private const val HERO_TRAILER_DELAY_MS = 5_000L
         private const val SHELF_H = 330
         private const val TOP_H = 420
         private const val POSTER_H = 470
@@ -307,6 +309,8 @@ class MainActivity : Activity() {
     private var weatherSig = ""
 
     private val rotate = Runnable { autoNext() }
+    private lateinit var heroTrailer: HeroTrailer
+    private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
     /** Hands the screen back to the TV's own screensaver and sleep setting. */
     private val holdRelease = Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
@@ -349,6 +353,7 @@ class MainActivity : Activity() {
             stage.addView(b, ui.fl(m, m))
         }
         frame.addView(stage, ui.fl(m, m))
+        heroTrailer = HeroTrailer(this, stage).also { t -> t.onFinished = { schedule() } }
 
         // Dip to black between films, like a cut in the cinema.
         blackout = View(this)
@@ -518,6 +523,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (::heroTrailer.isInitialized) heroTrailer.release()
         try {
             netCallback?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) }
         } catch (e: Exception) {
@@ -811,7 +817,7 @@ class MainActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        Episodes.of(p)?.let { addBadge(poster, Episodes.badge(it), episode = true) }
+        episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
         if (p.key in watchedNow) addWatchedMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
         Img.load(this, "w342", p.poster, ui.u(180), img)
@@ -934,7 +940,9 @@ class MainActivity : Activity() {
         Img.load(this, "w342", p.poster, ui.u(180), img)
         if (badge.isNotEmpty()) addBadge(poster, badge)
         else addMoneyTag(poster, p)
+        if (badge.isEmpty()) episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
         if (p.key in watchedNow) addWatchedMark(poster)
+        else if (playback.isAvailable(p.key)) addPlayableMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
         val title = ui.text(p.title, 18, C.TEXT, 600)
         title.maxLines = 1
@@ -964,6 +972,20 @@ class MainActivity : Activity() {
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 26)
         return col
     }
+
+    /**
+     * A series' episode strip: a coming episode ("Bugün yeni bölüm", "Yeni bölüm · Perşembe"),
+     * else one that came out this week and is not watched to the end ("Yeni bölüm çıktı").
+     */
+    private fun episodeBadge(p: Pick): String? {
+        Episodes.of(p)?.let { return Episodes.badge(it) }
+        val recent = Episodes.recent(p) ?: return null
+        val id = p.imdbId.ifBlank { if (p.id > 0) "tmdb:${p.id}" else "" }
+        if (id.isNotEmpty() && playback.isFinished("$id:${recent.season}:${recent.episode}")) return null
+        return "Yeni bölüm çıktı"
+    }
+
+    private val playback by lazy { MediaPlaybackStore(this) }
 
     /**
      * A label on a card: dates sit in the top-left corner; a new episode is a light strip
@@ -1002,6 +1024,21 @@ class MainActivity : Activity() {
         val lp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.START)
         lp.setMargins(ui.u(10), ui.u(10), 0, 0)
         card.addView(b, lp)
+    }
+
+    /** A small play mark in a poster's top-right corner: sources were found for it this week. */
+    private fun addPlayableMark(card: FrameLayout) {
+        val box = FrameLayout(this)
+        box.background = ui.round(Color.argb(225, 92, 104, 246), 16)
+        val i = ImageView(this)
+        i.setImageResource(R.drawable.ic_play)
+        i.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
+        val pad = ui.u(6)
+        i.setPadding(pad, pad, pad, pad)
+        box.addView(i, ui.fl(ui.match, ui.match))
+        val lp = ui.fl(ui.u(32), ui.u(32), Gravity.TOP or Gravity.END)
+        lp.setMargins(0, ui.u(10), ui.u(10), 0)
+        card.addView(box, lp)
     }
 
     /** Small white check in a poster's top-right corner for films marked "İzledim". */
@@ -2485,7 +2522,7 @@ class MainActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         card.addView(img, ui.fl(ui.match, ui.match))
-        Episodes.of(p)?.let { addBadge(card, Episodes.badge(it), episode = true) }
+        episodeBadge(p)?.let { addBadge(card, it, episode = true) }
         val fx = Fx.decorate(ui, card, D.CARD)
         loadThumb(p.backdrop, img)
 
@@ -2567,6 +2604,8 @@ class MainActivity : Activity() {
     private fun shiftTo(target: Int) {
         if (target == level) return
         level = target
+        // Down in the rows the trailer stops; back on the film it starts again after a while.
+        if (target > 0) stopHeroTrailer() else queueHeroTrailer()
         root.animate().translationY(-extraBelow(target).toFloat()).setDuration(450)
             .setInterpolator(DecelerateInterpolator(2f)).start()
         hero.animate().alpha(if (target > 0) 0.15f else 1f).setDuration(D.MED).start()
@@ -2984,6 +3023,7 @@ class MainActivity : Activity() {
             resetIdle()
             return
         }
+        stopHeroTrailer()
         idle = true
         styleAmbient()
         // Screensaver plays films in cinemas and coming soon, one of each in turn.
@@ -3483,8 +3523,36 @@ class MainActivity : Activity() {
         showPick()
     }
 
+    /**
+     * After a few seconds on a film, its picture turns into its trailer without sound; the film
+     * stays until the trailer ends (Ayarlar › Görünüm). Not on weak TVs, nor in the screensaver.
+     */
+    private fun startHeroTrailer() {
+        val p = picks.getOrNull(pickIndex) ?: return
+        if (!prefs.heroTrailer || Fx.lite || idle || level != 0 || !hasWindowFocus() || menu != null) return
+        if (p.trailer.isBlank()) return
+        handler.removeCallbacks(rotate)
+        progressAnim?.cancel()
+        heroTrailer.start(p.trailer)
+    }
+
+    private fun queueHeroTrailer() {
+        handler.removeCallbacks(trailerDelay)
+        if (prefs.heroTrailer && !Fx.lite) handler.postDelayed(trailerDelay, HERO_TRAILER_DELAY_MS)
+    }
+
+    private fun stopHeroTrailer() {
+        handler.removeCallbacks(trailerDelay)
+        if (::heroTrailer.isInitialized && heroTrailer.active) {
+            heroTrailer.stop()
+            schedule()
+        }
+    }
+
     private fun showPick() {
         val p = picks.getOrNull(pickIndex) ?: return
+        if (::heroTrailer.isInitialized) heroTrailer.stop()
+        queueHeroTrailer()
         buildProgress()
         schedule()
         loadBackdrop(pickIndex)
@@ -3872,6 +3940,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (level == 0 && !idle) queueHeroTrailer()
         // Ayarlar › Görünüm › Büyük yazı changed: build the screen again with the new text size.
         if (prefs.bigText != builtBig) {
             recreate()
@@ -4008,6 +4077,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        stopHeroTrailer()
         handler.removeCallbacks(healthy)
         handler.removeCallbacks(liteCheck)
         handler.removeCallbacks(rotate)

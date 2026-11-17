@@ -66,6 +66,8 @@ class Prefs(ctx: Context) {
     var clock24: Boolean get() = bool("clock24", true); set(v) = putBool("clock24", v)
     var weather: Boolean get() = bool("weather", true); set(v) = putBool("weather", v)
     /** Faint rain or snow over the picture when it rains or snows outside. */
+    /** The home screen's film turns into its trailer, without sound, after a few seconds. */
+    var heroTrailer: Boolean get() = bool("heroTrailer", true); set(v) = putBool("heroTrailer", v)
     var ambience: Boolean get() = bool("ambience", true); set(v) = putBool("ambience", v)
     /** "Şu an sinemalarda" and "Yakında vizyonda" rows. */
     var cinema: Boolean get() = bool("cinema", true); set(v) = putBool("cinema", v)

@@ -57,17 +57,22 @@ internal class MediaPlaybackStore(context: Context) {
     fun progress(mediaKey: String): Float? {
         val position = resumePositionMs(mediaKey)
         if (position <= 0L) return null
-        val duration = preferences.getLong("${prefix(mediaKey)}_duration", 0L)
+        val key = prefix(mediaKey)
+        val duration = preferences.getLong("${key}_duration", 0L)
         return if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else null
     }
 
     /** Watched to the end (the credits count). */
-    fun isFinished(mediaKey: String): Boolean =
-        mediaKey.isNotBlank() && preferences.getBoolean("${prefix(mediaKey)}_done", false)
+    fun isFinished(mediaKey: String): Boolean {
+        if (mediaKey.isBlank()) return false
+        val key = prefix(mediaKey)
+        return preferences.getBoolean("${key}_done", false)
+    }
 
     fun markFinished(mediaKey: String) {
         if (mediaKey.isBlank()) return
-        preferences.edit().putBoolean("${prefix(mediaKey)}_done", true).apply()
+        val key = prefix(mediaKey)
+        preferences.edit().putBoolean("${key}_done", true).apply()
     }
 
     /**
@@ -76,11 +81,30 @@ internal class MediaPlaybackStore(context: Context) {
      */
     fun saveLast(watchKey: String, mediaKey: String) {
         if (watchKey.isBlank() || mediaKey.isBlank()) return
-        preferences.edit().putString("${prefix(watchKey)}_last", mediaKey).apply()
+        val key = prefix(watchKey)
+        preferences.edit().putString("${key}_last", mediaKey).apply()
     }
 
-    fun last(watchKey: String): String =
-        if (watchKey.isBlank()) "" else preferences.getString("${prefix(watchKey)}_last", null).orEmpty()
+    fun last(watchKey: String): String {
+        if (watchKey.isBlank()) return ""
+        val key = prefix(watchKey)
+        return preferences.getString("${key}_last", null).orEmpty()
+    }
+
+    /** Sources were found for this title ([watchKey], the title's own key): its poster says so. */
+    fun markAvailable(watchKey: String) {
+        if (watchKey.isBlank()) return
+        val key = prefix(watchKey)
+        preferences.edit().putLong("${key}_found", System.currentTimeMillis()).apply()
+    }
+
+    /** Sources were found within the last week (links on these sites do not last much longer). */
+    fun isAvailable(watchKey: String): Boolean {
+        if (watchKey.isBlank()) return false
+        val key = prefix(watchKey)
+        val at = preferences.getLong("${key}_found", 0L)
+        return at > 0L && System.currentTimeMillis() - at < TimeUnit.DAYS.toMillis(7)
+    }
 
     /** How much later (or earlier, when negative) the viewer set this film's subtitles. */
     fun subtitleDelayMs(mediaKey: String): Long {

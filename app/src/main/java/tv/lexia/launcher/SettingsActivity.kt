@@ -697,7 +697,7 @@ class SettingsActivity : Activity() {
     }
     private fun lookPage() = Page(
         "Görünüm", R.drawable.ic_brush,
-        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
+        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "heroTrailer", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
         preview = "home"
     ) {
         listOf(
@@ -750,6 +750,11 @@ class SettingsActivity : Activity() {
                 { prefs.clock24 }, { prefs.clock24 = it }
             ),
             toggle("Hava durumu", "Saatin yanında hava ikonu ve derece.", { prefs.weather }, { prefs.weather = it }),
+            toggle(
+                "Ana ekranda sessiz fragman",
+                "Bir film birkaç saniye ekranda kalınca arka plandaki görseli sessiz fragmanına döner; fragman bitince sıradaki filme geçer. Hafif modda kapalıdır.",
+                { prefs.heroTrailer }, { prefs.heroTrailer = it }
+            ),
             toggle(
                 "Hava ambiyansı", "Dışarıda yağmur ya da kar varsa ekranda çok hafif yağmur damlaları veya kar taneleri.",
                 { prefs.ambience }, { prefs.ambience = it }

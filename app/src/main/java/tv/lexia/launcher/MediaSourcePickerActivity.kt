@@ -802,6 +802,8 @@ class MediaSourcePickerActivity : Activity() {
         val fresh = part.filter { known.add("${it.addonName.lowercase()}|${it.url}") }
         if (fresh.isEmpty()) return
         val first = streams.isEmpty()
+        // The home screen marks this title as playable.
+        if (first) playback.markAvailable(film.key)
         streams = streams + fresh
         renderStreams()
         // The favourite provider answered: its best source starts now, nothing else is waited for.
