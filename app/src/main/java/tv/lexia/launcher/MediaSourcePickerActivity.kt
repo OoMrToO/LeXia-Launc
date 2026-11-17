@@ -125,7 +125,7 @@ class MediaSourcePickerActivity : Activity() {
         }
         imdb = film.imdbId
         sortByQuality = sourcePrefs.getBoolean("sort_quality", true)
-        groupByProvider = sourcePrefs.getBoolean("group_provider", true)
+        groupByProvider = sourcePrefs.getBoolean("group_provider", false)
         buildUi()
         updateSourceControls()
         loadContent()
@@ -149,7 +149,6 @@ class MediaSourcePickerActivity : Activity() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(44), dp(28), dp(44), dp(24))
-            setBackgroundColor(Color.rgb(7, 9, 15))
         }
 
         val top = LinearLayout(this).apply {
@@ -226,7 +225,7 @@ class MediaSourcePickerActivity : Activity() {
         }
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
+        setContentView(withBackdrop(root))
         // The remote starts on a button; a focused container would swallow every D-pad press.
         manage.requestFocus()
     }
@@ -867,39 +866,20 @@ class MediaSourcePickerActivity : Activity() {
         updateStatus()
         val inList = content.findFocus() != null
         clearContent(showSourceControls = true)
-        addSectionTitle("YAYIN KAYNAKLARI")
+        addSectionTitle("KAYNAKLAR  ·  ${streams.size}")
 
         val tr = Locale.forLanguageTag("tr-TR")
-        var number = 0
+        var number = 1
         var focus: View? = null
         var firstCard: View? = null
         groups.forEach { (provider, list) ->
             val ordered = if (sortByQuality) list.sortedByDescending { score(it) } else list.sortedBy { it.name.lowercase(tr) }
-            if (groupByProvider) addSectionTitle("${provider.uppercase(tr)}  ·  ${ordered.size} KAYNAK")
-            ordered.forEach { stream ->
-                number++
-                val broken = stream.url in failed
-                val details = listOf(
-                    stream.server,
-                    stream.description.takeIf { it != stream.name },
-                    stream.fileName
-                ).filterNotNull().map { it.replace('\n', ' ').trim() }.filter { it.isNotBlank() }.distinct().joinToString("  ·  ")
-                val badges = ArrayList(stream.tags.badges)
-                if (stream.subtitles.isNotEmpty()) badges.add("${stream.subtitles.size} altyazı")
-                val card = addCard(
-                    stream.name.replace('\n', ' ').trim().ifBlank { "Kaynak $number" },
-                    details,
-                    if (broken) "Oynatılamadı" else "Oynat",
-                    badges = badges,
-                    dim = broken
-                ) {
-                    remember("choices", signature(stream))
-                    play(stream)
-                }
-                card.setTag(stream.url)
+            if (groupByProvider && groups.size > 1) addSectionTitle("${provider.uppercase(tr)}  ·  ${ordered.size}")
+            addSourceGrid(ordered, number) { stream, card ->
                 if (firstCard == null) firstCard = card
                 if (stream.url == focusedUrl) focus = card
             }
+            number += ordered.size
         }
         if (film.isSeries) addBackToEpisodes()
         // A list that is still filling keeps the remote where it was (on its source, or on a button
@@ -974,6 +954,126 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun focusLater(view: View?) {
         view?.post { if (!isFinishing) view.requestFocus() }
+    }
+
+    /**
+     * The film's own picture behind the page, under a deep blue veil that keeps the cards and the
+     * text readable (darker on the left and at the bottom, where the list is).
+     */
+    private fun withBackdrop(page: View): View {
+        val frame = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.rgb(8, 10, 24)) }
+        val picture = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.55f
+        }
+        frame.addView(picture, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(View(this).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.argb(150, 12, 16, 48), Color.argb(205, 14, 18, 56), Color.argb(245, 8, 10, 30))
+            )
+        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(View(this).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.argb(170, 8, 10, 30), Color.argb(40, 30, 40, 120), Color.argb(120, 8, 10, 30))
+            )
+        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(page, android.widget.FrameLayout.LayoutParams(-1, -1))
+        Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false)
+        return frame
+    }
+
+    /** "Türkçe Dublaj · 1080p", "Orijinal + Altyazı · 4K HDR": what one hears and sees. */
+    private fun sourceLine(stream: MediaStream): String {
+        val tags = stream.tags
+        val sound = when {
+            tags.turkish == "Dublaj" -> "Türkçe Dublaj"
+            tags.turkish == "Altyazılı" || stream.subtitles.isNotEmpty() -> "Orijinal + Altyazı"
+            else -> "Orijinal"
+        }
+        val picture = listOf(tags.resolutionName, tags.hdr).filter { it.isNotBlank() }.joinToString(" ")
+        return listOf(sound, picture).filter { it.isNotBlank() }.joinToString("  ·  ")
+    }
+
+    /** Sources three to a row, as large tiles. */
+    private fun addSourceGrid(list: List<MediaStream>, firstNumber: Int, onCard: (MediaStream, View) -> Unit) {
+        list.chunked(3).forEachIndexed { rowIndex, chunk ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                clipChildren = false
+                clipToPadding = false
+            }
+            for (i in 0 until 3) {
+                val stream = chunk.getOrNull(i)
+                val params = LinearLayout.LayoutParams(0, dp(116), 1f).apply {
+                    if (i > 0) leftMargin = dp(16)
+                }
+                if (stream == null) {
+                    row.addView(View(this), params)
+                    continue
+                }
+                val card = sourceTile(stream, firstNumber + rowIndex * 3 + i)
+                row.addView(card, params)
+                onCard(stream, card)
+            }
+            content.addView(row, fullWidthParams(bottom = 16))
+        }
+    }
+
+    private fun sourceTile(stream: MediaStream, number: Int): View {
+        val broken = stream.url in failed
+        fun tileBackground(focused: Boolean) = GradientDrawable().apply {
+            cornerRadius = dp(18).toFloat()
+            if (focused) {
+                colors = intArrayOf(Color.rgb(92, 104, 246), Color.rgb(64, 76, 222))
+                orientation = GradientDrawable.Orientation.TL_BR
+                setStroke(dp(3), Color.WHITE)
+            } else {
+                setColor(Color.argb(186, 42, 48, 98))
+                setStroke(dp(1), Color.argb(40, 255, 255, 255))
+            }
+        }
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(26), dp(14), dp(22), dp(14))
+            background = tileBackground(false)
+            isFocusable = true
+            isClickable = true
+            alpha = if (broken) 0.5f else 1f
+            tag = stream.url
+        }
+        val title = TextView(this).apply {
+            text = stream.name.replace('\n', ' ').trim().ifBlank { stream.addonName.ifBlank { "Kaynak $number" } }
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        val line = TextView(this).apply {
+            text = if (broken) "Oynatılamadı" else sourceLine(stream)
+            textSize = 16f
+            setTextColor(Color.rgb(201, 208, 245))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(6), 0, 0)
+        }
+        tile.addView(title)
+        tile.addView(line)
+        tile.setOnClickListener {
+            remember("choices", signature(stream))
+            play(stream)
+        }
+        tile.setOnFocusChangeListener { view, focused ->
+            view.background = tileBackground(focused)
+            view.animate().scaleX(if (focused) 1.03f else 1f).scaleY(if (focused) 1.03f else 1f).setDuration(140).start()
+            line.setTextColor(if (focused) Color.WHITE else Color.rgb(201, 208, 245))
+            if (focused) focusedUrl = stream.url
+        }
+        return tile
     }
 
     private fun addSectionTitle(title: String) {
