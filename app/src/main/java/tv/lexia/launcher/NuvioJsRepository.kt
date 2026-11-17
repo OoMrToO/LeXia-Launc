@@ -2,20 +2,11 @@ package tv.lexia.launcher
 
 import android.content.Context
 import android.util.Log
-import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.LeXiaNuvio
 import com.nuvio.tv.core.plugin.PluginManager
-import com.nuvio.tv.core.plugin.PluginRuntime
-import com.nuvio.tv.core.plugin.cloudstream.ExternalExtensionLoader
-import com.nuvio.tv.core.plugin.cloudstream.ExternalExtensionRunner
-import com.nuvio.tv.core.plugin.cloudstream.ExternalRepoParser
-import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.core.sync.PluginSyncService
 import com.nuvio.tv.data.local.PluginDataStore
-import com.nuvio.tv.data.local.ProfileDataStoreFactory
 import com.nuvio.tv.domain.model.LocalScraperResult
 import com.nuvio.tv.domain.model.ScraperInfo
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -240,7 +231,6 @@ internal class NuvioJsRepository(context: Context) {
         private const val OLD_PREFS = "nuvio_js_repositories"
         private const val OLD_KEY = "repositories_v1"
 
-        @Volatile private var dataStore: PluginDataStore? = null
         @Volatile private var migration: Thread? = null
 
         /**
@@ -297,29 +287,9 @@ internal class NuvioJsRepository(context: Context) {
                 emptyList()
             }
         }
-        @Volatile private var pluginManager: PluginManager? = null
+        /** Nuvio's PluginDataStore and PluginManager, made once for the app (com.nuvio.tv.LeXiaNuvio). */
+        private fun store(context: Context): PluginDataStore = LeXiaNuvio.pluginDataStore(context)
 
-        /** Nuvio's PluginDataStore, made once for the app (Hilt makes it a singleton in Nuvio). */
-        private fun store(context: Context): PluginDataStore = dataStore ?: synchronized(this) {
-            dataStore ?: PluginDataStore(
-                context.applicationContext,
-                Moshi.Builder().add(KotlinJsonAdapterFactory()).build(),
-                ProfileDataStoreFactory(context.applicationContext),
-                ProfileManager()
-            ).also { dataStore = it }
-        }
-
-        /** Nuvio's PluginManager, made once for the app, with LeXia's stand-ins for accounts and CloudStream. */
-        private fun nuvio(context: Context): PluginManager = pluginManager ?: synchronized(this) {
-            pluginManager ?: PluginManager(
-                store(context),
-                PluginRuntime(),
-                PluginSyncService(),
-                AuthManager(),
-                ExternalRepoParser(),
-                ExternalExtensionLoader(),
-                ExternalExtensionRunner()
-            ).also { pluginManager = it }
-        }
+        private fun nuvio(context: Context): PluginManager = LeXiaNuvio.pluginManager(context)
     }
 }

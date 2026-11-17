@@ -2,6 +2,7 @@ package tv.lexia.launcher
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -13,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.nuvio.tv.LeXiaPluginsActivity
 import java.util.concurrent.Executors
 
 /** TV-remote-friendly manager for Stremio add-ons and Nuvio JavaScript scraper repositories. */
@@ -30,6 +32,12 @@ class MediaAddonsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUi()
+        renderAddons()
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        // Back from Nuvio's plugin screen: its repository and provider counts may have changed.
         renderAddons()
     }
 
@@ -134,105 +142,30 @@ class MediaAddonsActivity : Activity() {
         val nuvioCount = nuvioRepos.sumOf { it.scrapers.size }
         status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} Nuvio deposu  ·  $nuvioCount sağlayıcı"
 
-        if (addons.isEmpty() && nuvioRepos.isEmpty()) {
-            list.addView(
-                infoCard(
-                    "İlk kaynağını ekle",
-                    "Özel veya topluluk tarafından sunulan uyumlu eklentilerin adresini buraya ekleyebilirsin."
-                )
-            )
+        // Nuvio's plugin repositories are managed on Nuvio's own screen (the nuvio module).
+        val nuvioCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(17), dp(22), dp(17))
+            background = panelBackground()
         }
-
-        nuvioRepos.forEach { repo ->
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(22), dp(17), dp(22), dp(17))
-                background = panelBackground()
-            }
-            card.addView(TextView(this).apply {
-                text = repo.name
-                textSize = 21f
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-            })
-            card.addView(TextView(this).apply {
-                val on = repo.scrapers.count { it.enabled }
-                text = "NUVIO DEPOSU  ·  ${repo.scrapers.size} sağlayıcı, $on açık" + if (repo.enabled) "" else "  ·  KAPALI"
-                textSize = 14f
-                setTextColor(Color.rgb(125, 151, 255))
-                setPadding(0, dp(5), 0, dp(4))
-            })
-            val scraperHeading = TextView(this).apply {
-                text = "SAĞLAYICILAR"
-                textSize = 13f
-                setTextColor(Color.rgb(125, 151, 255))
-                typeface = Typeface.DEFAULT_BOLD
-                setPadding(0, dp(14), 0, dp(6))
-            }
-            card.addView(scraperHeading)
-            repo.scrapers.forEach { scraper ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(10), dp(8), dp(4), dp(8))
-                }
-                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                details.addView(TextView(this).apply {
-                    text = scraper.name
-                    textSize = 16f
-                    setTextColor(Color.WHITE)
-                    typeface = Typeface.DEFAULT_BOLD
-                })
-                val kinds = scraper.supportedTypes.map { if (it.equals("movie", true)) "Film" else "Dizi" }.distinct().joinToString(", ")
-                val langs = scraper.contentLanguage.joinToString(", ") { Lang.name(Lang.code(it)).ifBlank { it.uppercase() } }
-                // Many repositories describe a scraper only as "Film • Dizi", which repeats the kinds.
-                val onlyKinds = scraper.description.split(Regex("[^\\p{L}]+")).filter { it.isNotBlank() }
-                    .all { it.lowercase() in setOf("film", "dizi", "movie", "movies", "tv", "series", "show", "shows", "and", "ve") }
-                val about = if (onlyKinds) "" else scraper.description
-                val line = listOf(kinds, langs, about).filter { it.isNotBlank() }.joinToString("  ·  ")
-                if (line.isNotBlank()) details.addView(TextView(this).apply {
-                    text = line
-                    textSize = 12f
-                    setTextColor(Color.rgb(150, 160, 180))
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-                row.addView(details, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                if (scraper.hasSettings) {
-                    row.addView(action("Ayarlar").apply {
-                        tag = "settings:${repo.id}:${scraper.id}"
-                        setOnClickListener { showScraperSettings(repo.id, scraper) }
-                    })
-                }
-                val toggle = action(if (scraper.enabled) "Açık" else "Kapalı", primary = scraper.enabled).apply {
-                    tag = "toggle:${repo.id}:${scraper.id}"
-                    setOnClickListener {
-                        nuvioRepository.setScraperEnabled(repo.id, scraper.id, !scraper.enabled)
-                        renderAddons()
-                    }
-                }
-                row.addView(toggle)
-                card.addView(row)
-            }
-            val repoActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            val allEnabled = repo.scrapers.all { it.enabled }
-            repoActions.addView(action(if (allEnabled) "Tümünü kapat" else "Tümünü aç").apply {
-                tag = "all:${repo.id}"
-                setOnClickListener {
-                    nuvioRepository.setAllScrapersEnabled(repo.id, !allEnabled)
-                    renderAddons()
-                }
-            })
-            repoActions.addView(action("Depoyu güncelle").apply {
-                tag = "update:${repo.id}"
-                setOnClickListener { refreshNuvioRepository(repo.id, repo.name) }
-            })
-            repoActions.addView(action("Depoyu kaldır").apply {
-                setOnClickListener { confirmRemoveNuvio(repo.id, repo.name) }
-            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
-            card.addView(repoActions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
-            addCardToList(card)
-        }
+        nuvioCard.addView(TextView(this).apply {
+            text = "Nuvio eklentileri"
+            textSize = 21f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        nuvioCard.addView(TextView(this).apply {
+            text = if (nuvioRepos.isEmpty()) "Depo ekle, sağlayıcıları aç ya da kapat."
+            else "${nuvioRepos.size} depo  ·  $nuvioCount sağlayıcı. Depo ekle, güncelle, sağlayıcıları aç ya da kapat."
+            textSize = 15f
+            setTextColor(Color.rgb(174, 181, 199))
+            setPadding(0, dp(5), 0, 0)
+        })
+        nuvioCard.addView(action("Nuvio eklentilerini aç").apply {
+            tag = "nuvio:open"
+            setOnClickListener { startActivity(Intent(this@MediaAddonsActivity, LeXiaPluginsActivity::class.java)) }
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
+        addCardToList(nuvioCard)
 
         addons.forEachIndexed { index, addon ->
             val card = LinearLayout(this).apply {
@@ -401,143 +334,6 @@ class MediaAddonsActivity : Activity() {
             .setNegativeButton("Vazgeç", null)
             .setPositiveButton("Kaldır") { _, _ ->
                 repository.removeAddon(url)
-                renderAddons()
-            }
-            .show()
-    }
-
-    private fun showScraperSettings(repositoryId: String, scraper: NuvioScraperInfo) {
-        val current = runCatching {
-            org.json.JSONObject(nuvioRepository.scraperSettings(repositoryId, scraper.id))
-        }.getOrDefault(org.json.JSONObject())
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-        }
-        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply {
-            isFillViewport = false
-            addView(rows)
-        }
-        fun addSettingRow(key: String = "", value: String = "") {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(4), 0, dp(4))
-            }
-            val keyInput = EditText(this).apply {
-                hint = "Ayar adı"
-                setSingleLine(true)
-                setText(key)
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.GRAY)
-                textSize = 15f
-            }
-            val valueInput = EditText(this).apply {
-                hint = "Değer"
-                setSingleLine(true)
-                setText(value)
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.GRAY)
-                textSize = 15f
-            }
-            row.addView(keyInput, LinearLayout.LayoutParams(0, dp(52), 0.9f))
-            row.addView(valueInput, LinearLayout.LayoutParams(0, dp(52), 1.1f).apply {
-                leftMargin = dp(8)
-            })
-            row.addView(action("Sil").apply {
-                setOnClickListener { rows.removeView(row) }
-            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
-            rows.addView(row)
-        }
-        val keys = current.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val value = current.opt(key)
-            addSettingRow(key, when (value) {
-                null, org.json.JSONObject.NULL -> ""
-                is org.json.JSONObject, is org.json.JSONArray -> value.toString()
-                else -> value.toString()
-            })
-        }
-        container.addView(scroll, LinearLayout.LayoutParams(-1, dp(300)))
-        container.addView(action("+  Ayar ekle").apply {
-            setOnClickListener { addSettingRow() }
-        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("${scraper.name} · Ayarlar")
-            .setMessage("Ayarları anahtar/değer olarak düzenle. Boolean ve sayısal değerler uygun JSON türünde saklanır.")
-            .setView(container)
-            .setNegativeButton("Vazgeç", null)
-            .setPositiveButton("Kaydet", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                try {
-                    val output = org.json.JSONObject()
-                    for (i in 0 until rows.childCount) {
-                        val row = rows.getChildAt(i) as? LinearLayout ?: continue
-                        val keyInput = row.getChildAt(0) as? EditText ?: continue
-                        val valueInput = row.getChildAt(1) as? EditText ?: continue
-                        val key = keyInput.text.toString().trim()
-                        if (key.isBlank()) {
-                            keyInput.error = "Ayar adı gerekli"
-                            return@setOnClickListener
-                        }
-                        val raw = valueInput.text.toString()
-                        val value: Any = when {
-                            raw.equals("true", true) -> true
-                            raw.equals("false", true) -> false
-                            raw.toLongOrNull() != null -> raw.toLong()
-                            raw.toDoubleOrNull() != null -> raw.toDouble()
-                            raw.startsWith("{") -> org.json.JSONObject(raw)
-                            raw.startsWith("[") -> org.json.JSONArray(raw)
-                            else -> raw
-                        }
-                        output.put(key, value)
-                    }
-                    nuvioRepository.setScraperSettings(repositoryId, scraper.id, output.toString())
-                    dialog.dismiss()
-                    status.text = "${scraper.name} ayarları kaydedildi."
-                } catch (error: Exception) {
-                    status.text = "Ayarlar kaydedilemedi: ${error.message ?: "geçersiz değer"}"
-                }
-            }
-        }
-        dialog.show()
-        dialog.window?.setLayout(dp(760), LinearLayout.LayoutParams.WRAP_CONTENT)
-        if (rows.childCount > 0) rows.getChildAt(0).requestFocus()
-    }
-
-    private fun refreshNuvioRepository(repositoryId: String, name: String) {
-        if (busy) return
-        busy = true
-        status.text = "$name deposu güncelleniyor…"
-        worker.execute {
-            try {
-                val updated = nuvioRepository.refreshRepository(repositoryId)
-                runOnUiThread {
-                    busy = false
-                    status.text = "${updated.name} güncellendi · ${updated.scrapers.size} sağlayıcı"
-                    renderAddons()
-                }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    busy = false
-                    status.text = error.message ?: "Depo güncellenemedi."
-                }
-            }
-        }
-    }
-
-    private fun confirmRemoveNuvio(repositoryId: String, name: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Nuvio deposu kaldırılsın mı?")
-            .setMessage("$name deposu ve sağlayıcıları kaldırılacak.")
-            .setNegativeButton("Vazgeç", null)
-            .setPositiveButton("Kaldır") { _, _ ->
-                nuvioRepository.removeRepository(repositoryId)
                 renderAddons()
             }
             .show()

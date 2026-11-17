@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app/**"
+      - "nuvio/**"
       - "*.gradle.kts"
       - "gradle.properties"
       - "settings.gradle.kts"

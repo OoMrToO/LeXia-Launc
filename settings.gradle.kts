@@ -13,3 +13,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "LeXia"
 include(":app")
+include(":nuvio")
