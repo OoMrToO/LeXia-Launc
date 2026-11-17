@@ -59,20 +59,17 @@ class ScreensTest {
         }
 
         val groups = listOf(
-            AddonStreams("Hdfilmce", null, listOf(
-                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p altyazılı"),
-                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p Türkçe dublaj")
+            AddonStreams("Imu", null, listOf(
+                stream("Imu", "Vidmody - 1080p", "Kurtuluş Projesi Türkçe dublaj"),
+                stream("Imu", "HDFilmDelisi - 1080p", "Kurtuluş Projesi dublaj")
             )),
-            AddonStreams("Setfilmizle", null, listOf(stream("Setfilmizle", "Setfilmizleyin", "Kurtuluş Projesi 720p altyazı"))),
-            AddonStreams("Liderfilm", null, listOf(
-                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p altyazı"),
-                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p dublaj")
+            AddonStreams("JoyBoy", null, listOf(
+                stream("JoyBoy", "Kurtuluş Projesi - 1080p", "dublaj"),
+                stream("JoyBoy", "Kurtuluş Projesi - 1080p", "altyazılı")
             )),
-            AddonStreams("Sinemaizle", null, listOf(
-                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi 2160p HDR altyazılı"),
-                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi dublaj")
-            )),
-            AddonStreams("Filmekseni", null, listOf(stream("Filmekseni", "Filmekseni", "Kurtuluş Projesi 1080p altyazı")))
+            AddonStreams("Liderfilm", null, listOf(stream("Liderfilm", "DiziMom - 1080p", "altyazılı"))),
+            AddonStreams("Sinemaizle", null, listOf(stream("Sinemaizle", "Sinemaizle - 4K", "2160p HDR altyazılı"))),
+            AddonStreams("Filmekseni", null, listOf(stream("Filmekseni", "Filmekseni - 720p", "dublaj")))
         )
         LeXiaNuvio.streams = object : StreamRepository {
             override fun setLocalPluginSearchPaused(paused: Boolean) = Unit
