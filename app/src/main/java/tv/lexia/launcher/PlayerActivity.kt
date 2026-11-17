@@ -31,7 +31,6 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -325,11 +324,8 @@ class PlayerActivity : Activity() {
         val headers = intent.getBundleExtra(EXTRA_HEADERS)?.let { bundle ->
             bundle.keySet().mapNotNull { key -> bundle.getString(key)?.let { key to it } }.toMap()
         }.orEmpty()
-        val http = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-            .setDefaultRequestProperties(headers)
+        // As NuvioTV's player asks: a browser User-Agent and the source's headers on every request.
+        val http = PlaybackHttp.factory(headers)
 
         val subtitleHints = HashMap<String, SubtitleHint>()
         val item = buildMediaItem(uri, subtitleHints)
@@ -964,6 +960,8 @@ class PlayerActivity : Activity() {
         val http = generateSequence(error.cause) { it.cause }
             .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
         val reason = when {
+            http == 429 -> "Video sitesi şu an çok fazla istek aldığını söylüyor (hata 429). Biraz sonra yeniden dene ya da başka bir kaynak seç."
+            http == 403 || http == 401 -> "Video sitesi oynatmaya izin vermedi (hata $http). Başka bir kaynak seç."
             http != null -> "Kaynak videoyu vermedi (hata $http). Bağlantının süresi dolmuş olabilir."
             code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                 code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
