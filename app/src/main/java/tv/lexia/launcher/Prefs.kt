@@ -66,6 +66,8 @@ class Prefs(ctx: Context) {
     var clock24: Boolean get() = bool("clock24", true); set(v) = putBool("clock24", v)
     var weather: Boolean get() = bool("weather", true); set(v) = putBool("weather", v)
     /** Faint rain or snow over the picture when it rains or snows outside. */
+    /** The home screen's film turns into its trailer, without sound, after a few seconds. */
+    var heroTrailer: Boolean get() = bool("heroTrailer", true); set(v) = putBool("heroTrailer", v)
     var ambience: Boolean get() = bool("ambience", true); set(v) = putBool("ambience", v)
     /** "Şu an sinemalarda" and "Yakında vizyonda" rows. */
     var cinema: Boolean get() = bool("cinema", true); set(v) = putBool("cinema", v)
@@ -202,6 +204,9 @@ class Prefs(ctx: Context) {
     /** No subtitles when the sound is already in the subtitle language. */
     var playSubSmart: Boolean get() = bool("playSubSmart", true); set(v) = putBool("playSubSmart", v)
     /** "Oynat" starts the most fitting source by itself; the source list is one Back away. */
+    /** Ayarlar › Oynatma: the Nuvio provider asked first, and played without a list ("" = none). */
+    var favSource: String get() = str("favSource"); set(v) = putStr("favSource", v)
+    var favSourceName: String get() = str("favSourceName"); set(v) = putStr("favSourceName", v)
     var playAutoSource: Boolean get() = bool("playAutoSource", true); set(v) = putBool("playAutoSource", v)
     /** Subtitle size in the player: 0 small, 1 normal, 2 large, 3 very large. */
     var playSubSize: Int get() = int("playSubSize", 1); set(v) = putInt("playSubSize", v)

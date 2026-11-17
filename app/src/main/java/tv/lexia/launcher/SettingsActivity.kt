@@ -615,12 +615,38 @@ class SettingsActivity : Activity() {
         )
     }
 
+    /** The Nuvio providers that are switched on, to pick the one asked first. */
+    private fun favoriteSourceRow(): Row {
+        val scrapers = try {
+            NuvioJsRepository(this).installedRepositories()
+                .flatMap { repo -> repo.scrapers.filter { it.enabled } }
+                .distinctBy { it.id }
+                .sortedBy { it.name.lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val ids = listOf("") + scrapers.map { it.id }
+        val names = listOf("Yok") + scrapers.map { it.name }
+        return choice(
+            "Favori kaynak",
+            "Seçince Oynat önce yalnızca bu kaynakta arar ve bulduğunu liste göstermeden açar; dizide sonraki bölümler de buradan devam eder. " +
+                "Burada bulunamazsa diğer kaynaklar aranır ve liste açılır. Liste Ayarlar › Medya kaynakları'nda açık olan Nuvio sağlayıcılarıdır.",
+            ids, names,
+            { prefs.favSource.takeIf { it in ids } ?: "" },
+            { id ->
+                prefs.favSource = id
+                prefs.favSourceName = names.getOrElse(ids.indexOf(id)) { "" }.takeIf { id.isNotEmpty() }.orEmpty()
+            }
+        )
+    }
+
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
+            favoriteSourceRow(),
             toggle(
                 "En iyi kaynağı kendiliğinden aç",
                 "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +
@@ -671,7 +697,7 @@ class SettingsActivity : Activity() {
     }
     private fun lookPage() = Page(
         "Görünüm", R.drawable.ic_brush,
-        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
+        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "heroTrailer", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
         preview = "home"
     ) {
         listOf(
@@ -724,6 +750,11 @@ class SettingsActivity : Activity() {
                 { prefs.clock24 }, { prefs.clock24 = it }
             ),
             toggle("Hava durumu", "Saatin yanında hava ikonu ve derece.", { prefs.weather }, { prefs.weather = it }),
+            toggle(
+                "Ana ekranda sessiz fragman",
+                "Bir film birkaç saniye ekranda kalınca arka plandaki görseli sessiz fragmanına döner; fragman bitince sıradaki filme geçer. Hafif modda kapalıdır.",
+                { prefs.heroTrailer }, { prefs.heroTrailer = it }
+            ),
             toggle(
                 "Hava ambiyansı", "Dışarıda yağmur ya da kar varsa ekranda çok hafif yağmur damlaları veya kar taneleri.",
                 { prefs.ambience }, { prefs.ambience = it }

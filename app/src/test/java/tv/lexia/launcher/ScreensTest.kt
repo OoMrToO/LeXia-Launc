@@ -59,20 +59,17 @@ class ScreensTest {
         }
 
         val groups = listOf(
-            AddonStreams("Hdfilmce", null, listOf(
-                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p altyazılı"),
-                stream("Hdfilmce", "Hdfilmce", "Kurtuluş Projesi 1080p Türkçe dublaj")
+            AddonStreams("Imu", null, listOf(
+                stream("Imu", "Vidmody - 1080p", "Kurtuluş Projesi Türkçe dublaj"),
+                stream("Imu", "HDFilmDelisi - 1080p", "Kurtuluş Projesi dublaj")
             )),
-            AddonStreams("Setfilmizle", null, listOf(stream("Setfilmizle", "Setfilmizleyin", "Kurtuluş Projesi 720p altyazı"))),
-            AddonStreams("Liderfilm", null, listOf(
-                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p altyazı"),
-                stream("Liderfilm", "Liderfilm", "Kurtuluş Projesi 1080p dublaj")
+            AddonStreams("JoyBoy", null, listOf(
+                stream("JoyBoy", "Kurtuluş Projesi - 1080p", "dublaj"),
+                stream("JoyBoy", "Kurtuluş Projesi - 1080p", "altyazılı")
             )),
-            AddonStreams("Sinemaizle", null, listOf(
-                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi 2160p HDR altyazılı"),
-                stream("Sinemaizle", "Sinemaizle", "Kurtuluş Projesi dublaj")
-            )),
-            AddonStreams("Filmekseni", null, listOf(stream("Filmekseni", "Filmekseni", "Kurtuluş Projesi 1080p altyazı")))
+            AddonStreams("Liderfilm", null, listOf(stream("Liderfilm", "DiziMom - 1080p", "altyazılı"))),
+            AddonStreams("Sinemaizle", null, listOf(stream("Sinemaizle", "Sinemaizle - 4K", "2160p HDR altyazılı"))),
+            AddonStreams("Filmekseni", null, listOf(stream("Filmekseni", "Filmekseni - 720p", "dublaj")))
         )
         LeXiaNuvio.streams = object : StreamRepository {
             override fun setLocalPluginSearchPaused(paused: Boolean) = Unit
@@ -109,16 +106,50 @@ class ScreensTest {
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/kaynaklar.png") }
         }
 
+        // A favourite provider: the film starts on its best source, no list is waited for.
+        Prefs(app).favSource = "liderfilm-id"
+        Prefs(app).favSourceName = "Liderfilm"
+        ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
+            settle(3000)
+            scenario.onActivity { a ->
+                val started = shadowOf(a).nextStartedActivityForResult
+                val uri = started?.intent?.getStringExtra("media.uri").orEmpty()
+                println("FAVORITE started=${started?.intent?.component?.className} uri=$uri")
+                check(started != null && uri.contains("Liderfilm")) { "Favourite source did not start: $uri" }
+            }
+        }
+        Prefs(app).favSource = ""
+        Prefs(app).favSourceName = ""
+
         // A series: the episode list from Nuvio's details source (Cinemeta), with stills.
         val series = Pick(
-            title = "Breaking Bad", meta = "", overview = "", backdrop = "", reason = "", trailer = "", logo = "",
+            title = "Breaking Bad", meta = "", overview = "Kimya öğretmeni Walter White, ölümcül bir hastalık teşhisi koyulunca ailesinin geleceğini güvenceye almak için eski bir öğrencisiyle uyuşturucu üretmeye başlar.", backdrop = "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg", reason = "", trailer = "", logo = "",
             imdb = 9.5, year = "2008", genres = listOf("Dram"), runtime = 47, kind = "tv", seasons = 5,
             id = 1396, imdbId = "tt0903747"
         )
+        // The first episode half watched, the second watched to the end.
+        MediaPlaybackStore(app).apply {
+            save("tt0903747:1:1", 25 * 60_000L, 58 * 60_000L)
+            markFinished("tt0903747:1:2")
+        }
         val seriesIntent = Intent(app, MediaSourcePickerActivity::class.java).putExtra("media.pick", series.toJson().toString())
         ActivityScenario.launch<MediaSourcePickerActivity>(seriesIntent).use { scenario ->
             settle(15000)
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/bolumler.png") }
         }
-    }
+    
+        // The series page: seasons and episodes under the buttons, the remote on an episode.
+        MediaPlaybackStore(app).saveLast(series.key, "tt0903747:1:1")
+        val detail = Intent(app, DetailActivity::class.java).putExtra("film", series.toJson().toString())
+        ActivityScenario.launch<DetailActivity>(detail).use { scenario ->
+            settle(12000)
+            scenario.onActivity { a ->
+                val card = a.window.decorView.findViewWithTag<android.view.View>("episode:tt0903747:1:3")
+                println("EPISODE card=" + (card != null))
+                card?.let { it.isFocusableInTouchMode = true; it.requestFocus() }
+            }
+            settle(3000)
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/dizi-sayfasi.png") }
+        }
+}
 }

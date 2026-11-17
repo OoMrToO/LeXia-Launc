@@ -109,11 +109,17 @@ ${key}_duration long
 ${key}_position long
 ${key}_updated long
 ${key}_subdelay long
+${key}_done bool
+${key}_last text
+${key}_found long
 playAudioLang text
 playSubLang text
 playSubSmart bool
 playSubSize int
 playAutoSource bool
+favSource text
+favSourceName text
+heroTrailer bool
 choices text
 episodes text
 trailerNative bool

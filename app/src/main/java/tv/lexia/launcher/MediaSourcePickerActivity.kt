@@ -41,15 +41,20 @@ class MediaSourcePickerActivity : Activity() {
 
     companion object {
         private const val EXTRA_FILM = "media.pick"
+        private const val EXTRA_RESUME = "media.resume"
         private const val REQUEST_PLAY = 41
+        /** Source tiles in a row. */
+        private const val GRID_COLUMNS = 4
         /** Once the first sources are in, how long the rest get before the best so far is played. */
         private const val AUTO_WAIT_MS = 6_000L
         private const val MEMORY_SIZE = 60
 
-        fun open(activity: Activity, film: Pick) {
+        /** [resumeEpisode] ("tt…:2:5"): a series opens straight on that episode's sources. */
+        fun open(activity: Activity, film: Pick, resumeEpisode: String = "") {
             activity.startActivity(
                 Intent(activity, MediaSourcePickerActivity::class.java)
                     .putExtra(EXTRA_FILM, film.toJson().toString())
+                    .putExtra(EXTRA_RESUME, resumeEpisode)
             )
             activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
@@ -61,6 +66,7 @@ class MediaSourcePickerActivity : Activity() {
     private val repository by lazy { MediaAddonRepository(this) }
     private val nuvioRepository by lazy { NuvioJsRepository(this) }
     private val prefs by lazy { Prefs(this) }
+    private val playback by lazy { MediaPlaybackStore(this) }
     private val sourcePrefs by lazy { getSharedPreferences("media_source_picker", MODE_PRIVATE) }
     private val worker = Executors.newCachedThreadPool()
     private val handler = Handler(Looper.getMainLooper())
@@ -75,6 +81,7 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var sourceControls: LinearLayout
     private lateinit var sortButton: TextView
     private lateinit var groupButton: TextView
+    private lateinit var allButton: TextView
     private var sortByQuality = true
     private var groupByProvider = true
 
@@ -84,6 +91,18 @@ class MediaSourcePickerActivity : Activity() {
     private var searching = false
 
     private var episodes: List<MediaEpisode> = emptyList()
+
+    /** "Tüm kaynaklar" was pressed: this page searches everywhere, not only the favourite. */
+    private var skipFavorite = false
+    /** Runs the last search again (for "Tüm kaynaklar"). */
+    private var rerun: (() -> Unit)? = null
+
+    /** The favourite provider (Ayarlar › Oynatma) this search keeps to; "" for none. */
+    private val favoriteId: String get() = if (skipFavorite) "" else prefs.favSource
+    private val favoriteName: String get() = if (skipFavorite) "" else prefs.favSourceName
+
+    private fun isFavorite(stream: MediaStream) =
+        favoriteName.isNotBlank() && stream.addonName.trim().equals(favoriteName.trim(), ignoreCase = true)
     /** The season on screen; -1 until one is chosen (then the last watched, or the first real season). */
     private var season = -1
     /** The episode whose sources are on screen: its place in [episodes], or -1 (a film, or typed numbers). */
@@ -163,14 +182,32 @@ class MediaSourcePickerActivity : Activity() {
             setTextColor(Color.rgb(125, 151, 255))
             typeface = Typeface.DEFAULT_BOLD
         })
-        heading.addView(TextView(this).apply {
+        val titleText = TextView(this).apply {
             text = film.title
             textSize = 31f
             setTextColor(Color.WHITE)
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-        })
+        }
+        // The film's logo instead of its name, when it has one that shows on a dark page.
+        if (film.logo.isNotBlank()) {
+            val logo = ImageView(this).apply {
+                adjustViewBounds = true
+                maxHeight = dp(76)
+                maxWidth = dp(420)
+                scaleType = ImageView.ScaleType.FIT_START
+                visibility = View.GONE
+            }
+            heading.addView(logo, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+            Img.load(this, "w500", film.logo, dp(420), logo, opaque = false, skipDark = true) { ok ->
+                if (ok) {
+                    logo.visibility = View.VISIBLE
+                    titleText.visibility = View.GONE
+                }
+            }
+        }
+        heading.addView(titleText)
         top.addView(heading, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val manage = action("Kaynakları yönet").apply {
             setOnClickListener {
@@ -212,6 +249,15 @@ class MediaSourcePickerActivity : Activity() {
         }
         sourceControls.addView(sortButton)
         sourceControls.addView(groupButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        // Only the favourite provider was asked: this asks all of them, for this page.
+        allButton = action("Tüm kaynaklar").apply {
+            setOnClickListener {
+                skipFavorite = true
+                updateSourceControls()
+                rerun?.invoke()
+            }
+        }
+        sourceControls.addView(allButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
         root.addView(sourceControls)
 
         scroll = ScrollView(this).apply {
@@ -233,6 +279,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun updateSourceControls() {
         sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
         groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
+        allButton.visibility = if (favoriteName.isNotBlank()) View.VISIBLE else View.GONE
     }
 
     private fun clearContent(showSourceControls: Boolean = false) {
@@ -296,13 +343,15 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun loadMovieStreams() {
         episodeIndex = -1
+        rerun = { loadMovieStreams() }
         // Stremio add-ons commonly expect IMDb IDs; Nuvio turns it into the TMDB id its scrapers take.
         val stremioId = imdb.ifBlank { "tmdb:${film.id}" }
         search(
             message = "Film kaynakları aranıyor…",
             title = film.title,
             key = stremioId,
-            auto = if (prefs.playAutoSource) Auto.BEST else Auto.NO,
+            // With a favourite provider the film starts without a list, as the viewer asked.
+            auto = if (prefs.playAutoSource || favoriteId.isNotBlank()) Auto.BEST else Auto.NO,
             sources = { update -> nuvioSearch("movie", stremioId, null, null, update) },
             subtitles = { repository.fetchSubtitles("movie", stremioId) }
         )
@@ -326,9 +375,27 @@ class MediaSourcePickerActivity : Activity() {
             runOnUiThread {
                 if (mine != generation || isFinishing) return@runOnUiThread
                 episodes = found
+                if (found.isNotEmpty() && openResumeEpisode()) return@runOnUiThread
                 if (found.isEmpty()) showManualEpisodeSearch() else showEpisodes()
             }
         }
+    }
+
+    /**
+     * Opened from the film page's "Devam et": goes straight to that episode's sources (once).
+     * The episode is matched by its id, or by its season and number.
+     */
+    private fun openResumeEpisode(): Boolean {
+        val target = intent.getStringExtra(EXTRA_RESUME).orEmpty()
+        if (target.isBlank()) return false
+        intent.removeExtra(EXTRA_RESUME)
+        val numbers = Regex(":(\\d+):(\\d+)$").find(target)?.groupValues
+        val index = episodes.indexOfFirst { it.id == target }.takeIf { it >= 0 }
+            ?: numbers?.let { n -> episodes.indexOfFirst { it.season == n[1].toInt() && it.episode == n[2].toInt() } }
+            ?: -1
+        if (index < 0) return false
+        loadEpisodeStreams(index, if (prefs.playAutoSource || favoriteId.isNotBlank()) Auto.BEST else Auto.NO)
+        return true
     }
 
     private fun seasonName(number: Int) = if (number > 0) "$number. Sezon" else "Özel bölümler"
@@ -472,8 +539,11 @@ class MediaSourcePickerActivity : Activity() {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         })
+        val progress = playback.progress(episode.id)
+        val finished = progress == null && playback.isFinished(episode.id)
         val facts = listOfNotNull(
             if (episode.episode > 0) "${episode.episode}. Bölüm" else null,
+            "✓ İzlendi".takeIf { finished },
             releaseDay(episode).takeIf { it.isNotBlank() },
             episode.runtime.takeIf { it > 0 }?.let { "$it dk" },
             "Henüz yayınlanmadı".takeIf { isUnreleased(episode) }
@@ -494,6 +564,27 @@ class MediaSourcePickerActivity : Activity() {
             setLineSpacing(0f, 1.1f)
             setPadding(0, dp(6), 0, 0)
         })
+        // How much of it was watched, as a thin bar under the text.
+        if (progress != null) {
+            val track = android.widget.FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat()
+                    setColor(Color.argb(60, 255, 255, 255))
+                }
+            }
+            val fill = View(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat()
+                    setColor(Color.rgb(125, 151, 255))
+                }
+            }
+            track.addView(fill, android.widget.FrameLayout.LayoutParams(0, -1))
+            track.post {
+                fill.layoutParams = fill.layoutParams.apply { width = (track.width * progress.coerceAtLeast(0.03f)).toInt() }
+            }
+            texts.addView(track, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(10); rightMargin = dp(40) })
+        }
+        if (finished) still.alpha = 0.55f
         card.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         card.setOnFocusChangeListener { view, focused ->
             view.background = if (focused) focusedBackground() else panelBackground()
@@ -578,11 +669,12 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun searchEpisode(videoId: String, title: String, s: Int, e: Int, auto: Auto) {
+        rerun = { searchEpisode(videoId, title, s, e, Auto.NO) }
         search(
             message = "Kaynaklar aranıyor  ·  $title",
             title = "${film.title} · $title",
             key = videoId,
-            auto = auto,
+            auto = if (auto == Auto.NO && favoriteId.isNotBlank()) Auto.BEST else auto,
             sources = { update ->
                 nuvioSearch("series", videoId, s.takeIf { it > 0 && e > 0 }, e.takeIf { s > 0 && it > 0 }, update)
             },
@@ -611,7 +703,7 @@ class MediaSourcePickerActivity : Activity() {
         } catch (e: Exception) {
             Log.w("LeXiaSources", "Add-ons not handed to Nuvio: ${e.message}")
         }
-        return NuvioSearch.streams(app, type, videoId, season, episode, update)
+        return NuvioSearch.streams(app, type, videoId, season, episode, favoriteId, update)
     }
 
     /** The episode after the one on screen, as (what to show, how to load it); null at the end. */
@@ -712,8 +804,15 @@ class MediaSourcePickerActivity : Activity() {
         val fresh = part.filter { known.add("${it.addonName.lowercase()}|${it.url}") }
         if (fresh.isEmpty()) return
         val first = streams.isEmpty()
+        // The home screen marks this title as playable.
+        if (first) playback.markAvailable(film.key)
         streams = streams + fresh
         renderStreams()
+        // The favourite provider answered: its best source starts now, nothing else is waited for.
+        if (auto != Auto.NO && searching && fresh.any { isFavorite(it) }) {
+            playBestNow()
+            return
+        }
         if (first && auto != Auto.NO && searching) {
             handler.removeCallbacks(autoDeadline)
             handler.postDelayed(autoDeadline, AUTO_WAIT_MS)
@@ -768,7 +867,9 @@ class MediaSourcePickerActivity : Activity() {
      */
     private fun best(): MediaStream? {
         val wanted = remembered("choices")
-        return streams.filter { it.url !in failed }
+        val pool = streams.filter { it.url !in failed }
+        val favorite = pool.filter { isFavorite(it) }
+        return (if (favoriteName.isNotBlank()) favorite else pool)
             .withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
@@ -784,6 +885,9 @@ class MediaSourcePickerActivity : Activity() {
         auto = Auto.NO
         val choice = best()
         updateStatus()
+        if (choice == null && favoriteName.isNotBlank() && streams.isNotEmpty()) {
+            status.text = "$favoriteName bu yapımı bulamadı  ·  ${streams.size} kaynak başka sağlayıcılardan, birini seç."
+        }
         if (choice != null && !isFinishing) play(choice)
     }
 
@@ -811,7 +915,9 @@ class MediaSourcePickerActivity : Activity() {
                 watchKey = film.key,
                 markWatchedOnCompletion = !film.isSeries,
                 nextTitle = nextEpisode()?.first.orEmpty(),
-                fromSourceList = true
+                fromSourceList = true,
+                logo = film.logo,
+                filmTitle = film.title
             )
         } catch (e: Exception) {
             status.text = e.message ?: "Oynatıcı açılamadı."
@@ -984,6 +1090,21 @@ class MediaSourcePickerActivity : Activity() {
         return frame
     }
 
+    /**
+     * The site the source comes from: "Vidmody - 1080p" becomes "Vidmody" (the quality is on the
+     * line under it); a name that is only the film's own ("Kurtuluş Projesi - 1080p") gives way to
+     * the provider's name.
+     */
+    private fun sourceName(stream: MediaStream): String {
+        val tr = Locale.forLanguageTag("tr-TR")
+        val quality = Regex("""(?i)\s*[-–|·]?\s*(\d{3,4}p|4k|2160p|uhd|fhd|hd|sd|cam)\b.*$""")
+        val raw = stream.name.replace('\n', ' ').trim()
+        val base = raw.substringBefore(" - ").trim().replace(quality, "").trim().ifBlank { raw }
+        val filmName = film.title.trim().lowercase(tr)
+        val isFilm = filmName.isNotBlank() && base.lowercase(tr).let { it == filmName || it.startsWith(filmName) }
+        return if (isFilm || base.isBlank()) stream.addonName.trim().ifBlank { base } else base
+    }
+
     /** "Türkçe Dublaj · 1080p", "Orijinal + Altyazı · 4K HDR": what one hears and sees. */
     private fun sourceLine(stream: MediaStream): String {
         val tags = stream.tags
@@ -996,35 +1117,35 @@ class MediaSourcePickerActivity : Activity() {
         return listOf(sound, picture).filter { it.isNotBlank() }.joinToString("  ·  ")
     }
 
-    /** Sources three to a row, as large tiles. */
+    /** Sources four to a row, as tiles. */
     private fun addSourceGrid(list: List<MediaStream>, firstNumber: Int, onCard: (MediaStream, View) -> Unit) {
-        list.chunked(3).forEachIndexed { rowIndex, chunk ->
+        list.chunked(GRID_COLUMNS).forEachIndexed { rowIndex, chunk ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 clipChildren = false
                 clipToPadding = false
             }
-            for (i in 0 until 3) {
+            for (i in 0 until GRID_COLUMNS) {
                 val stream = chunk.getOrNull(i)
-                val params = LinearLayout.LayoutParams(0, dp(116), 1f).apply {
-                    if (i > 0) leftMargin = dp(16)
+                val params = LinearLayout.LayoutParams(0, dp(84), 1f).apply {
+                    if (i > 0) leftMargin = dp(14)
                 }
                 if (stream == null) {
                     row.addView(View(this), params)
                     continue
                 }
-                val card = sourceTile(stream, firstNumber + rowIndex * 3 + i)
+                val card = sourceTile(stream, firstNumber + rowIndex * GRID_COLUMNS + i)
                 row.addView(card, params)
                 onCard(stream, card)
             }
-            content.addView(row, fullWidthParams(bottom = 16))
+            content.addView(row, fullWidthParams(bottom = 14))
         }
     }
 
     private fun sourceTile(stream: MediaStream, number: Int): View {
         val broken = stream.url in failed
         fun tileBackground(focused: Boolean) = GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = dp(14).toFloat()
             if (focused) {
                 colors = intArrayOf(Color.rgb(92, 104, 246), Color.rgb(64, 76, 222))
                 orientation = GradientDrawable.Orientation.TL_BR
@@ -1037,7 +1158,7 @@ class MediaSourcePickerActivity : Activity() {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(26), dp(14), dp(22), dp(14))
+            setPadding(dp(20), dp(10), dp(16), dp(10))
             background = tileBackground(false)
             isFocusable = true
             isClickable = true
@@ -1045,8 +1166,8 @@ class MediaSourcePickerActivity : Activity() {
             tag = stream.url
         }
         val title = TextView(this).apply {
-            text = stream.name.replace('\n', ' ').trim().ifBlank { stream.addonName.ifBlank { "Kaynak $number" } }
-            textSize = 22f
+            text = sourceName(stream).ifBlank { "Kaynak $number" }
+            textSize = 18f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
@@ -1054,12 +1175,12 @@ class MediaSourcePickerActivity : Activity() {
         }
         val line = TextView(this).apply {
             text = if (broken) "Oynatılamadı" else sourceLine(stream)
-            textSize = 16f
+            textSize = 14f
             setTextColor(Color.rgb(201, 208, 245))
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         }
         tile.addView(title)
         tile.addView(line)
@@ -1069,7 +1190,7 @@ class MediaSourcePickerActivity : Activity() {
         }
         tile.setOnFocusChangeListener { view, focused ->
             view.background = tileBackground(focused)
-            view.animate().scaleX(if (focused) 1.03f else 1f).scaleY(if (focused) 1.03f else 1f).setDuration(140).start()
+            view.animate().scaleX(if (focused) 1.04f else 1f).scaleY(if (focused) 1.04f else 1f).setDuration(140).start()
             line.setTextColor(if (focused) Color.WHITE else Color.rgb(201, 208, 245))
             if (focused) focusedUrl = stream.url
         }

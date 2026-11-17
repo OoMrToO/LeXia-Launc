@@ -57,8 +57,19 @@ object Episodes {
         val backs = HashMap<String, Next>()
         val list = ArrayList<Show>()
         val image = Regex("^/[A-Za-z0-9_-]+\\.(jpg|jpeg|png)$")
+        val lastIds = HashMap<Int, Next>()
+        val lastBacks = HashMap<String, Next>()
         for (i in 0 until a.length()) {
             val e = a.optJSONObject(i) ?: continue
+            // The latest episode that has aired, for "Yeni bölüm çıktı".
+            e.optJSONObject("last")?.let { l ->
+                val date = l.optString("date")
+                if (day.matches(date)) {
+                    val last = Next(date, l.optInt("season"), l.optInt("episode"))
+                    e.optInt("id").takeIf { it > 0 }?.let { lastIds[it] = last }
+                    e.optString("backdrop").takeIf { it.isNotEmpty() }?.let { lastBacks[it] = last }
+                }
+            }
             val n = e.optJSONObject("next") ?: continue
             val date = n.optString("date")
             if (!day.matches(date)) continue
@@ -76,11 +87,24 @@ object Episodes {
             if (title.isNotEmpty()) list.add(Show(id, title, back, next, info))
         }
         synchronized(this) {
+            lastById.clear(); lastById.putAll(lastIds)
+            lastByBackdrop.clear(); lastByBackdrop.putAll(lastBacks)
             byId.clear(); byId.putAll(ids)
             byBackdrop.clear(); byBackdrop.putAll(backs)
             shows.clear(); shows.addAll(list)
             version++
         }
+    }
+
+    private val lastById = HashMap<Int, Next>()
+    private val lastByBackdrop = HashMap<String, Next>()
+
+    /** The episode of [p] that came out in the last [days] days, or null. */
+    fun recent(p: Pick, days: Int = 7): Next? {
+        if (!p.isSeries) return null
+        val n = synchronized(this) { (if (p.id > 0) lastById[p.id] else null) ?: lastByBackdrop[p.backdrop] } ?: return null
+        val d = daysUntil(n.date) ?: return null
+        return if (d in -days..0) n else null
     }
 
     /** The coming episode of [p], or null if none is announced or it is already out. */

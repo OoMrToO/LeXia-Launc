@@ -220,6 +220,7 @@ def details_of(c):
         # Stremio add-ons find films by their IMDb id.
         "imdb_id": ((d.get("external_ids") or {}).get("imdb_id") or d.get("imdb_id") or ""),
         "next_ep": next_episode(d) if c["type"] == "tv" else {},
+        "last_ep": last_episode(d) if c["type"] == "tv" else {},
         "release": release,
         "runtime": (d.get("runtime") or 0) if c["type"] == "movie" else 0,
         "seasons": d.get("number_of_seasons") or 0,
@@ -277,6 +278,14 @@ def next_episode(d):
     return out
 
 
+def last_episode(d):
+    """The latest episode that has aired: its date, season and number (for "Yeni bölüm çıktı")."""
+    n = d.get("last_episode_to_air") or {}
+    if not n.get("air_date"):
+        return {}
+    return {"date": n["air_date"][:10], "season": n.get("season_number") or 0, "episode": n.get("episode_number") or 0}
+
+
 def episodes(shows_now, today, names):
     """
     New-episode dates for this week's top series and for series seen in the top 10 within
@@ -294,7 +303,7 @@ def episodes(shows_now, today, names):
     out = {}
     for e in shows_now:
         out[e["id"]] = {"id": e["id"], "title": e["title"], "backdrop": e["backdrop"], "seen": today,
-                        "next": e.get("next_ep") or {}}
+                        "next": e.get("next_ep") or {}, "last": e.get("last_ep") or {}}
     cands = {}
     for e in old:
         if e.get("id") in out or (e.get("seen") or "") < limit:
@@ -307,6 +316,7 @@ def episodes(shows_now, today, names):
         if d.get("status") in ("Ended", "Canceled"):
             continue
         e["next"] = next_episode(d)
+        e["last"] = last_episode(d)
         out[e["id"]] = e
         # Only shows with an episode ahead are shown anywhere, so only they need the full record.
         if e["next"] and d.get("backdrop_path"):
@@ -595,6 +605,8 @@ def entry(c, names, full):
     e["cert"] = d.get("cert", "")
     if d.get("next_ep"):
         e["next_ep"] = d["next_ep"]
+    if d.get("last_ep"):
+        e["last_ep"] = d["last_ep"]
     if d.get("where"):
         e["where"] = d["where"]
     e["director"] = d.get("director", "")

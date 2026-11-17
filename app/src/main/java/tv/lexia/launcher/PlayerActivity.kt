@@ -74,6 +74,8 @@ class PlayerActivity : Activity() {
         private const val EXTRA_SUBTITLE_LABELS = "media.subtitle.labels"
         private const val EXTRA_NEXT_TITLE = "media.next.title"
         private const val EXTRA_FROM_LIST = "media.from.list"
+        private const val EXTRA_LOGO = "media.logo"
+        private const val EXTRA_FILM_TITLE = "media.film.title"
 
         /** The video could not be played and the viewer asked for another source. */
         const val RESULT_FAILED = RESULT_FIRST_USER
@@ -110,7 +112,11 @@ class PlayerActivity : Activity() {
             watchKey: String = mediaKey,
             markWatchedOnCompletion: Boolean = true,
             nextTitle: String = "",
-            fromSourceList: Boolean = false
+            fromSourceList: Boolean = false,
+            /** The title's logo (TMDB path), shown above the controls instead of its name. */
+            logo: String = "",
+            /** The film's name, when [title] starts with it ("Film · Episode"): the logo stands for it. */
+            filmTitle: String = ""
         ): Intent {
             require(isSupportedUri(Uri.parse(mediaUri))) {
                 "Yalnızca HTTP(S), content:// ve file:// video adresleri oynatılabilir."
@@ -123,6 +129,8 @@ class PlayerActivity : Activity() {
                 .putExtra(EXTRA_MARK_WATCHED, markWatchedOnCompletion)
                 .putExtra(EXTRA_NEXT_TITLE, nextTitle)
                 .putExtra(EXTRA_FROM_LIST, fromSourceList)
+                .putExtra(EXTRA_LOGO, logo)
+                .putExtra(EXTRA_FILM_TITLE, filmTitle)
                 .putExtra(EXTRA_HEADERS, Bundle().apply {
                     headers.forEach { (name, value) -> putString(name, value) }
                 })
@@ -430,6 +438,7 @@ class PlayerActivity : Activity() {
         if (mediaKey.isBlank()) return
         val duration = p.duration.takeIf { it > 0L } ?: 0L
         val finished = ended || store.save(mediaKey, p.currentPosition, duration)
+        store.saveLast(watchKey, mediaKey)
         if (finished) {
             store.clear(mediaKey)
             markAsWatched()
@@ -437,6 +446,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun markAsWatched() {
+        store.markFinished(mediaKey)
         if (!markWatched || watchKey.isBlank()) return
         if (watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
     }
@@ -594,10 +604,37 @@ class PlayerActivity : Activity() {
         val top = View(this)
         top.background = ui.gradient(GradientDrawable.Orientation.TOP_BOTTOM, 0xD9000000.toInt(), 0x00000000)
         chrome.addView(top, ui.fl(ui.match, ui.u(240), Gravity.TOP))
+        // The title's logo with the episode under it; its name when there is no logo.
+        val heading = ui.vbox()
+        val logoPath = intent.getStringExtra(EXTRA_LOGO).orEmpty()
+        val filmTitle = intent.getStringExtra(EXTRA_FILM_TITLE).orEmpty()
+        val rest = if (filmTitle.isNotBlank() && mediaTitle.startsWith(filmTitle)) {
+            mediaTitle.removePrefix(filmTitle).trimStart(' ', '·').trim()
+        } else ""
         val title = ui.text(mediaTitle, 36, C.TEXT, 600)
         title.maxLines = 1
         title.ellipsize = TextUtils.TruncateAt.END
-        chrome.addView(title, ui.fl(ui.match, ui.wrap, Gravity.TOP).apply {
+        if (logoPath.isNotBlank()) {
+            val logo = ImageView(this).apply {
+                adjustViewBounds = true
+                maxHeight = ui.u(120)
+                maxWidth = ui.u(560)
+                scaleType = ImageView.ScaleType.FIT_START
+                visibility = View.GONE
+            }
+            heading.addView(logo, ui.ll(ui.wrap, ui.wrap))
+            Img.load(this, "w500", logoPath, ui.u(560), logo, opaque = false, skipDark = true) { ok ->
+                if (!ok) return@load
+                logo.visibility = View.VISIBLE
+                // The logo is the film's name; only the episode stays as text.
+                if (rest.isBlank()) title.visibility = View.GONE else {
+                    title.text = rest
+                    title.textSize = 26f
+                }
+            }
+        }
+        heading.addView(title, ui.ll(ui.match, ui.wrap, top = 10))
+        chrome.addView(heading, ui.fl(ui.match, ui.wrap, Gravity.TOP).apply {
             setMargins(ui.u(72), ui.u(52), ui.u(72), 0)
         })
 
