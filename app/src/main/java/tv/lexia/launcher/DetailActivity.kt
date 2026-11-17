@@ -25,6 +25,10 @@ import java.util.Locale
 class DetailActivity : Activity() {
 
     companion object {
+        /** Keys on pick.json's "cinema" and "soon" lists, read once per run. */
+        @Volatile private var cinemaKeys: Pair<Set<String>, Set<String>>? = null
+        @Volatile private var cinemaKeysAt = 0L
+
         private const val EXTRA = "film"
         private const val SURPRISE = "surprise"
         private const val WHY = "why"
@@ -205,8 +209,20 @@ class DetailActivity : Activity() {
         val buttons = ui.hbox()
         buttons.clipChildren = false
         playBtn = ui.pill("▶   Oynat", 64, 23, primary = true)
+        playBtn.setOnFocusChangeListener { _, f ->
+            stylePlay(f)
+            ui.lift(playBtn, f, 1.08f, 18)
+        }
+        if (!film.isSeries && isUpcoming()) cinemaState = "soon"
         playBtn.setOnClickListener {
-            if (film.id <= 0) {
+            if (cinemaState.isNotEmpty() && MediaPlaybackStore(this).last(film.key).isBlank()) {
+                Glass.toast(
+                    this,
+                    if (cinemaState == "now") "Film şu an sinemalarda. Dijitale çıkınca burada Oynat görünecek"
+                    else "Henüz vizyona girmedi. Hatırlat'a basarsan o gün haber veririm",
+                    long = true
+                )
+            } else if (film.id <= 0) {
                 Glass.toast(this, "Bu içerik için TMDB kimliği bulunamadı")
             } else {
                 // A series continues on the episode it was left at (or the one after a finished one).
@@ -214,6 +230,7 @@ class DetailActivity : Activity() {
             }
         }
         updatePlayBtn()
+        if (!film.isSeries && cinemaState.isEmpty()) loadCinemaState()
         val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)
         trailer.setOnClickListener {
             if (film.trailer.isEmpty()) {
@@ -789,11 +806,81 @@ class DetailActivity : Activity() {
     /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */
     private var continueEpisode = ""
 
+    /** "now" while the film is in Turkish cinemas, "soon" before its release, "" otherwise. */
+    private var cinemaState = ""
+
+    /** Whether the film is on pick.json's "Sinemada" or "Yakında" list (read once, off the main thread). */
+    private fun loadCinemaState() {
+        Thread {
+            val file = java.io.File(filesDir, "pick.json")
+            if (cinemaKeysAt != file.lastModified()) cinemaKeys = null
+            val lists = cinemaKeys ?: try {
+                val o = JSONObject(file.readText())
+                fun keys(name: String): Set<String> {
+                    val a = o.optJSONArray(name) ?: return emptySet()
+                    return (0 until a.length()).map { Pick.from(a.getJSONObject(it)).key }.toSet()
+                }
+                (keys("cinema") to keys("soon")).also { cinemaKeys = it; cinemaKeysAt = file.lastModified() }
+            } catch (_: Exception) {
+                null
+            } ?: return@Thread
+            val state = when (film.key) {
+                in lists.first -> "now"
+                in lists.second -> "soon"
+                else -> ""
+            }
+            if (state.isEmpty()) return@Thread
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                cinemaState = state
+                updatePlayBtn()
+            }
+        }.start()
+    }
+
+    /** "14 Kasım'dan beri": the Turkish ablative suffix follows the month's last vowel and consonant. */
+    private fun sinceText(): String {
+        val day = releaseText()
+        if (day.isEmpty()) return ""
+        val suffix = when (day.substringAfterLast(' ')) {
+            "Ocak", "Şubat", "Mart", "Mayıs", "Temmuz", "Ağustos", "Aralık" -> "'tan"
+            "Eylül", "Ekim" -> "'den"
+            else -> "'dan"
+        }
+        return "$day$suffix beri"
+    }
+
+    /** The play pill: white as usual; warm (in cinemas) or blue (coming soon) when it shows the release. */
+    private fun stylePlay(focused: Boolean) {
+        val cinema = cinemaState.isNotEmpty() && MediaPlaybackStore(this).last(film.key).isBlank()
+        if (!cinema) {
+            playBtn.background = ui.round(if (focused) Color.WHITE else Color.parseColor("#E6FFFFFF"), 32)
+            playBtn.setTextColor(C.INK)
+            return
+        }
+        val colors = if (cinemaState == "now") intArrayOf(Color.parseColor("#FF9A3C"), Color.parseColor("#E8364F"))
+        else intArrayOf(Color.parseColor("#8F7BFF"), Color.parseColor("#3D8BFF"))
+        val plate = ui.gradient(GradientDrawable.Orientation.LEFT_RIGHT, *colors, radius = 32)
+        if (focused) plate.setStroke(ui.u(3), Color.WHITE)
+        playBtn.background = plate
+        playBtn.setTextColor(Color.WHITE)
+    }
+
     /** "Oynat", "Devam et · 42:10", "Devam et · 2. Sezon 5. Bölüm", "Sonraki · 2. Sezon 6. Bölüm". */
     private fun updatePlayBtn() {
         if (!::playBtn.isInitialized) return
         val store = MediaPlaybackStore(this)
         val last = store.last(film.key)
+        stylePlay(playBtn.isFocused)
+        if (cinemaState.isNotEmpty() && last.isBlank()) {
+            continueEpisode = ""
+            playBtn.text = if (cinemaState == "now") {
+                sinceText().let { if (it.isEmpty()) "Şu an sinemalarda" else "Vizyonda  ·  $it" }
+            } else {
+                releaseText().let { if (it.isEmpty()) "Yakında vizyonda" else "Yakında vizyonda  ·  $it" }
+            }
+            return
+        }
         val position = if (last.isNotBlank()) store.resumePositionMs(last) else 0L
         val episode = Regex(":(\\d+):(\\d+)$").find(last)
         continueEpisode = ""

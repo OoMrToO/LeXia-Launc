@@ -151,5 +151,21 @@ class ScreensTest {
             settle(3000)
             scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/dizi-sayfasi.png") }
         }
+
+        // A film in cinemas: the play pill shows its release, coloured.
+        val inCinema = Pick(
+            title = "Uzak Yıldız", meta = "", overview = "Bir okul öğretmeni, uzak bir yıldız sisteminde, Dünya'yı kurtarmak için tek başına uyanır.", backdrop = "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg", reason = "", trailer = "x", logo = "",
+            imdb = 8.4, year = "2026", genres = listOf("Bilim Kurgu"), runtime = 156, kind = "movie", id = 999001,
+            release = "2026-11-14"
+        )
+        java.io.File(app.filesDir, "pick.json").writeText(
+            org.json.JSONObject().put("cinema", org.json.JSONArray().put(inCinema.toJson())).toString()
+        )
+        ActivityScenario.launch<DetailActivity>(
+            Intent(app, DetailActivity::class.java).putExtra("film", inCinema.toJson().toString())
+        ).use { scenario ->
+            settle(4000)
+            scenario.onActivity { it.window.decorView.captureRoboImage("build/shots/sinemada.png") }
+        }
 }
 }
