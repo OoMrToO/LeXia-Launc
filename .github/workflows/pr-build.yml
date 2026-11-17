@@ -10,6 +10,7 @@ on:
       - "gradle.properties"
       - "settings.gradle.kts"
       - ".github/workflows/pr-build.yml"
+      - "scripts/**"
 
 permissions:
   contents: read
@@ -25,6 +26,8 @@ jobs:
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate settings keys
+        run: python3 scripts/check_prefs.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -32,6 +35,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.13
+      - name: Run unit and screen tests
+        run: gradle testFullDebugUnitTest --no-daemon
       - name: Assemble Android TV variants
         run: gradle assembleFullDebug assembleSetupDebug --no-daemon
       - name: Upload Android TV test APKs
