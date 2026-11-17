@@ -3,7 +3,7 @@
 Bu depo, LeXia Launcher'ın **yalnızca sahibinin kendi TV'si için** sürümüdür (eski proje `OoMrToO/TvLauncher`'dan 12 Kasım 2026'da kopyalandı).
 Yeni sohbet önce bu dosyayı okur. **Her değişiklikte bu dosya da güncellenir.** Eski projenin uzun notları burada yok; gerekirse eski deponun `CLAUDE.md`'sine bakılır.
 
-Son güncelleme: 17 Kasım 2026 (PR #50: Nuvio'nun eklenti ekranı ve kaynak listesi özgün koduyla LeXia'nın içinde; kaynak arama da Nuvio'nun kodu).
+Son güncelleme: 17 Kasım 2026 (PR #51: oynatıcı video sitelerine Nuvio gibi tarayıcı kimliğiyle sorar; sürüm 50'de hata 429).
 
 ## 1. Çalışma biçimi
 
@@ -66,6 +66,9 @@ Son güncelleme: 17 Kasım 2026 (PR #50: Nuvio'nun eklenti ekranı ve kaynak lis
   - **LeXia tarafı:** Ayarlar › Medya kaynakları'nda Nuvio bölümü artık tek kart: "Nuvio eklentilerini aç" → Nuvio'nun ekranı (depo ekle/güncelle/kaldır, sağlayıcı aç/kapat, Nuvio'nun "telefondan yönet" QR'ı da onun parçası). Stremio eklentileri yine LeXia'nın listesinde; "Oynat"tan önce `LeXiaNuvio.setStremioAddons` ile Nuvio'nun deposuna aktarılır. "Oynat" (`MediaSourcePickerActivity`) film için doğrudan, dizi için bölüm seçildikten sonra **`NuvioStreamsActivity`**'yi açar (Nuvio'nun kaynak ekranı; Stremio + Nuvio sağlayıcıları Nuvio'nun koduyla aranır, IMDb↔TMDB eşlemesi önceden verilir). Seçilen kaynak **LeXia'nın oynatıcısında** (`PlayerActivity`) oynar; altyazılar: kaynağın kendi altyazıları (`StreamSidecarSubtitles`) + Stremio altyazı eklentileri. Torrent/dış bağlantı kaynağına basılırsa "LeXia'da oynatılamıyor" uyarısı. Oynatıcı sonu/"Sonraki bölüm" eski akışla aynı (`REQUEST_STREAMS`). LeXia'nın eski kaynak listesi kodu (`renderStreams`, otomatik kaynak, rozetler) hâlâ dosyada ama artık açılmıyor.
   - **Bu ortamda ekran görüntüsü:** `nuvio/src/test` altında Robolectric + Roborazzi denemeleri (`ScreenshotTest`, `StreamScreenshotTest`, örnek kaynaklarla); `gradle -I <init.gradle> :nuvio:testDebugUnitTest` → `nuvio/build/shots/*.png`. `init.gradle` (yerel, depoda değil) Maven Central'ı `maven-central.storage-download.googleapis.com` yansısından ister (asıl adres bu ortamdan kapalı). Görüntüler doğru: Nuvio'nun koyu teması, Türkçe yazılar, sağlayıcı süzgeç düğmeleri.
   - Küçültme kurallarına Nuvio'nun Retrofit/serileştirme satırları eklendi; sürüm paketi 13,8 MB (önce 8,7), yeni sınıfların küçültülmüş pakette olduğu `dexdump` ile bakıldı. `pr-build.yml` artık `nuvio/**` değişince de çalışır. **TV'de denenmedi.**
+
+- **#51 (Claude, 17 Kasım; sürüm 50 TV'de: kaynak bulundu, "Yerime Geç" oynatıcıda "Kaynak videoyu vermedi (hata 429)"):** neden: LeXia'nın oynatıcısı video sitesine `DefaultHttpDataSource` ile, Media3'ün kendi kimliğiyle ("ExoPlayerLib") soruyordu; Nuvio'nun oynatıcısı ise sağlayıcı kimlik vermediyse tarayıcı kimliğiyle (`PlayerMediaSourceFactory.DEFAULT_USER_AGENT`, Chrome/Android TV) ve OkHttp ile sorar, sağlayıcının başlıklarını her isteğe (yönlendirmeler, HLS parçaları) ağ katmanında yeniden ekler, IPv4 önce, HTTP/1.1. Bu, **`PlaybackHttp.kt`** ile LeXia'nın oynatıcısına aynen uygulandı (`media3-datasource-okhttp` 1.11.1). 429 ve 403 için ayrı, doğru hata metni. Kullanıcı "player mı kurmalıyız" diye sordu: gerek yok, fark ağ isteğindeydi. **TV'de denenmedi.**
+- **Başka Nuvio depoları (17 Kasım, kullanıcıya verildi):** Anthology (`falsisdev/anthology`, 42 Türkçe sağlayıcı), Justelemir (`justemir84/nuvio-dexter-plugin`, Türkçe + yabancı), MoOnCrOwN (`mooncrown04/nuviotr`); hepsi `raw.githubusercontent.com/<depo>/main/manifest.json`. Denenmedi.
 
 ## 3. Nuvio medya altyapısı geçişi (14 Kasım 2026)
 
@@ -160,3 +163,4 @@ Son güncelleme: 17 Kasım 2026 (PR #50: Nuvio'nun eklenti ekranı ve kaynak lis
 | #46 | Claude | Nuvio'nun scraper çalıştırıcısı (`PluginRuntime`) ve QuickJS yapısı birebir kopyalandı; Nuvio'nun eklenti sistemi (`PluginManager`, `PluginDataStore`, modeller) `com/nuvio/tv` altında birebir; TV platform süzgeci ve test ekranı kaldırıldı |
 | #49 | Claude | Nuvio'nun Gson koruma kuralları: küçültülmüş sürümde sağlayıcı sonuçları okunamıyordu (kanıtlandı, düzeltildi) |
 | #50 | Claude | Nuvio'nun eklenti ekranı, kaynak listesi ve kaynak araması özgün koduyla `nuvio/` modülünde; seçilen kaynak LeXia'nın oynatıcısında |
+| #51 | Claude | Oynatıcı video sitelerine Nuvio'nun oynatıcısı gibi sorar (tarayıcı kimliği, başlıklar her istekte); hata 429 |
