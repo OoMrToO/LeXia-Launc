@@ -11,6 +11,8 @@ android {
         applicationId = "tv.lexia.launcher"
         minSdk = 24
         targetSdk = 36
+        // TVs run ARM; the x86 copies of the native parts (FFmpeg, QuickJS) only made the APK larger.
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         // 2000 above the build number: installs over the LeXia + Nuvio trial (code 1000+) of 16 November.
         versionCode = 2000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
         versionName = "0.4"
@@ -88,16 +90,40 @@ android {
     }
 }
 
+// As NuvioTV does: the stock modules that Nuvio's own Media3 build replaces never come in.
+configurations.all {
+    exclude(group = "androidx.media3", module = "media3-exoplayer")
+    exclude(group = "androidx.media3", module = "media3-common")
+    exclude(group = "androidx.media3", module = "media3-datasource")
+    exclude(group = "androidx.media3", module = "media3-datasource-okhttp")
+    exclude(group = "androidx.media3", module = "media3-exoplayer-hls")
+    exclude(group = "androidx.media3", module = "media3-extractor")
+}
+
 dependencies {
-    // Native Android TV playback foundation. Keep all Media3 artifacts on one version.
-    val media3Version = "1.11.1"
-    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    // NuvioTV's player library: Nuvio's own Media3 1.8.0 build (app/libs, from NuvioTV app/libs)
+    // in place of the stock common, datasource, datasource-okhttp, exoplayer, exoplayer-hls and
+    // extractor modules (excluded below, as NuvioTV does), the other modules at 1.8.0 from Maven,
+    // and Nuvio's FFmpeg audio decoder (AC3, E-AC3, DTS, TrueHD... that many TVs cannot decode).
+    implementation(files(
+        "libs/lib-common-release.aar",
+        "libs/lib-datasource-release.aar",
+        "libs/lib-datasource-okhttp-release.aar",
+        "libs/lib-exoplayer-release.aar",
+        "libs/lib-exoplayer-hls-release.aar",
+        "libs/lib-extractor-release.aar",
+        "libs/lib-decoder-ffmpeg-release.aar"
+    ))
+    val media3Version = "1.8.0"
     implementation("androidx.media3:media3-ui:$media3Version")
-    // NuvioTV's player asks video hosts through OkHttp (PlaybackHttp).
-    implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")
+    implementation("androidx.media3:media3-decoder:$media3Version")
+    implementation("androidx.media3:media3-container:$media3Version")
+    implementation("androidx.media3:media3-database:$media3Version")
+    // What the forked AARs need but do not carry (as in NuvioTV's build).
+    implementation("com.google.guava:guava:33.3.1-android")
+    implementation("androidx.annotation:annotation-experimental:1.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Sandboxed Nuvio JS scraper runtime.
     // Nuvio's own build of the JavaScript engine its scrapers are written against (from NuvioTV's app/libs).
