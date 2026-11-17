@@ -961,7 +961,9 @@ class PlayerActivity : Activity() {
             .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
         val reason = when {
             http == 429 -> "Video sitesi şu an çok fazla istek aldığını söylüyor (hata 429). Biraz sonra yeniden dene ya da başka bir kaynak seç."
-            http == 403 || http == 401 -> "Video sitesi oynatmaya izin vermedi (hata $http). Başka bir kaynak seç."
+            // As Nuvio's player reads these: the host blocks or restricts this source.
+            http == 403 || http == 401 || http == 428 || http == 451 ->
+                "Video sitesi bu kaynağı engelledi (hata $http). Bu kaynak şu an oynamaz; başka bir kaynak seç."
             http != null -> "Kaynak videoyu vermedi (hata $http). Bağlantının süresi dolmuş olabilir."
             code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                 code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
