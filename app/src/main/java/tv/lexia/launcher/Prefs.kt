@@ -32,6 +32,7 @@ class Prefs(ctx: Context) {
             "g3" to "Sana göre 3. tür",
             "local" to "Yerli yapımlar",
             "like" to "Beğendiklerine benzer",
+            "cont" to "Yarım kalanlar",
             "recent" to "Son baktıkların",
             "list" to "Listem"
         )
@@ -149,7 +150,15 @@ class Prefs(ctx: Context) {
         set(v) = putStr("rowOrder", v.joinToString(","))
 
     var hiddenRows: Set<String>
-        get() = HashSet(p.getStringSet("hiddenRows", emptySet()) ?: emptySet())
+        get() {
+            val set = HashSet(p.getStringSet("hiddenRows", emptySet()) ?: emptySet())
+            // "Yarım kalanlar" came later and starts hidden (Ayarlar › Satırlar turns it on), once.
+            if (!bool("contRowAdded", false)) {
+                set.add("cont")
+                p.edit().putStringSet("hiddenRows", HashSet(set)).putBoolean("contRowAdded", true).apply()
+            }
+            return set
+        }
         set(v) = p.edit().putStringSet("hiddenRows", HashSet(v)).apply()
 
     fun toggleRow(id: String) {

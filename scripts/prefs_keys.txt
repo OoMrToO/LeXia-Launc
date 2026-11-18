@@ -126,3 +126,6 @@ choices text
 episodes text
 trailerNative bool
 imdb:$type:$tmdbId text
+contRowAdded bool
+titles text
+finishes text

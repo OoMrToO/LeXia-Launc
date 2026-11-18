@@ -238,6 +238,9 @@ class ExploreActivity : Activity() {
             }
             filterBar.addView(clear)
         }
+        val mine = ui.iconPill("İzlediklerim", R.drawable.ic_history)
+        mine.setOnClickListener { WatchHistoryActivity.open(this) }
+        filterBar.addView(mine)
         // Trailers of what is shown, one after another, in LeXia's own player.
         if (prefs.trailerInApp) {
             val run = ui.iconPill("Fragman maratonu", R.drawable.ic_film)

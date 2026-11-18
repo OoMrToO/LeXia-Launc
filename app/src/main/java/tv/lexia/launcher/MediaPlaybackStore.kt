@@ -138,6 +138,7 @@ internal class MediaPlaybackStore(context: Context) {
 
     fun clear(mediaKey: String) {
         if (mediaKey.isBlank()) return
+        changes++
         val key = prefix(mediaKey)
         preferences.edit()
             .remove("${key}_position")
