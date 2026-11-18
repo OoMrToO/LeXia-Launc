@@ -33,6 +33,7 @@ internal class MediaPlaybackStore(context: Context) {
      */
     fun save(mediaKey: String, positionMs: Long, durationMs: Long): Boolean {
         if (mediaKey.isBlank()) return false
+        changes++
         val position = positionMs.coerceAtLeast(0L)
         val duration = durationMs.coerceAtLeast(0L)
         if (duration > 0L && position >= duration - maxOf(COMPLETION_MARGIN_MS, duration * CREDITS_PERCENT / 100)) {
@@ -62,7 +63,13 @@ internal class MediaPlaybackStore(context: Context) {
         return if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else null
     }
 
-    /** Watched to the end (the credits count). */
+    /** When [mediaKey] was last played (epoch ms); 0 when never. */
+    fun updatedAt(mediaKey: String): Long {
+        if (mediaKey.isBlank()) return 0L
+        val key = prefix(mediaKey)
+        return preferences.getLong("${key}_updated", 0L)
+    }
+
     /** The length the player last reported for [mediaKey]; 0 when unknown. */
     fun durationMs(mediaKey: String): Long {
         if (mediaKey.isBlank()) return 0L
@@ -70,6 +77,7 @@ internal class MediaPlaybackStore(context: Context) {
         return preferences.getLong("${key}_duration", 0L)
     }
 
+    /** Watched to the end (the credits count). */
     fun isFinished(mediaKey: String): Boolean {
         if (mediaKey.isBlank()) return false
         val key = prefix(mediaKey)
@@ -77,6 +85,7 @@ internal class MediaPlaybackStore(context: Context) {
     }
 
     fun markFinished(mediaKey: String) {
+        changes++
         if (mediaKey.isBlank()) return
         val key = prefix(mediaKey)
         preferences.edit().putBoolean("${key}_done", true).apply()
@@ -129,6 +138,7 @@ internal class MediaPlaybackStore(context: Context) {
 
     fun clear(mediaKey: String) {
         if (mediaKey.isBlank()) return
+        changes++
         val key = prefix(mediaKey)
         preferences.edit()
             .remove("${key}_position")
@@ -143,7 +153,12 @@ internal class MediaPlaybackStore(context: Context) {
         return "item_" + digest.take(12).joinToString("") { "%02x".format(it) }
     }
 
-    private companion object {
+    companion object {
+        /** Goes up whenever a place or a finish is written: posters showing progress redraw then. */
+        @Volatile
+        var changes = 0
+            private set
+
         const val FILE_NAME = "media_playback"
         const val MIN_RESUME_MS = 5_000L
         const val COMPLETION_MARGIN_MS = 15_000L

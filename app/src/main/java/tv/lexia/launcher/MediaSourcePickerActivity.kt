@@ -907,6 +907,9 @@ class MediaSourcePickerActivity : Activity() {
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
+        // İzlediklerim: the title, kept with its page data.
+        val keep = film
+        Thread { WatchHistory(applicationContext).played(keep) }.start()
         if (prefs.nuvioPlayer) {
             playInNuvio(stream)
             return
@@ -948,6 +951,7 @@ class MediaSourcePickerActivity : Activity() {
             store.markFinished(key)
             store.saveLast(watchKey, key)
             if (markWatched && watchKey.isNotBlank() && watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
+            WatchHistory(applicationContext).finished(film, key)
         }
         LeXiaPlayerActivity.progress = object : LeXiaProgress {
             override fun positionMs(key: String): Long = store.resumePositionMs(key)
@@ -1003,6 +1007,10 @@ class MediaSourcePickerActivity : Activity() {
         if (requestCode != REQUEST_PLAY) return
         val stream = playing
         playing = null
+        // LeXia's own player marks a finished film or episode; İzlediklerim counts it.
+        if (mediaKey.isNotBlank() && MediaPlaybackStore(this).isFinished(mediaKey)) {
+            WatchHistory(applicationContext).finished(film, mediaKey)
+        }
         when (resultCode) {
             PlayerActivity.RESULT_FAILED -> {
                 if (stream != null) {

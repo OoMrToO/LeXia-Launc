@@ -173,6 +173,9 @@ class MainActivity : Activity() {
     }
 
     /** "Son baktıkların": film pages opened lately and not yet in Listem. */
+    private lateinit var contShelf: LinearLayout
+    private lateinit var contRow: LinearLayout
+    private var contSig = "-"
     private lateinit var recentShelf: LinearLayout
     private lateinit var recentRow: LinearLayout
     private var recentSig = "-"
@@ -463,6 +466,10 @@ class MainActivity : Activity() {
         likeShelf = like.first
         likeRow = like.second
         root.addView(likeShelf, ui.ll(m, ui.u(POSTER_H)))
+        val cont = topBlock("YARIM KALANLAR")
+        contShelf = cont.first
+        contRow = cont.second
+        root.addView(contShelf, ui.ll(m, ui.u(POSTER_H)))
         val seen = topBlock("SON BAKTIKLARIN")
         recentShelf = seen.first
         recentRow = seen.second
@@ -673,6 +680,12 @@ class MainActivity : Activity() {
         explore.setOnClickListener { openExplore() }
         bar.addView(explore)
 
+        // İzlediklerim: what was left half way, the series and where they are, what was finished.
+        val watched = ui.iconButton(R.drawable.ic_history, 60)
+        (watched.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
+        watched.setOnClickListener { openHistory() }
+        bar.addView(watched)
+
         val net = ui.iconButton(R.drawable.ic_wifi, 60)
         (net.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         netImg = net.getChildAt(0) as ImageView
@@ -817,7 +830,9 @@ class MainActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
+        val strip = episodeBadge(p)
+        strip?.let { addBadge(poster, it, episode = true) }
+        WatchMarks.add(ui, poster, WatchMarks.of(playback, p), aboveStrip = strip != null)
         if (p.key in watchedNow) addWatchedMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
         Img.load(this, "w342", p.poster, ui.u(180), img)
@@ -870,6 +885,7 @@ class MainActivity : Activity() {
         shelf.visibility = vis("list", prefs.watchlist.isNotEmpty() || (on && top10.isNotEmpty()))
         localShelf.visibility = vis("local", localList.isNotEmpty() && on)
         likeShelf.visibility = vis("like", likeList.size >= 4 && on)
+        contShelf.visibility = vis("cont", contRow.childCount > 0)
         recentShelf.visibility = vis("recent", recentRow.childCount > 0)
         updateRootHeight()
         fadeRows()
@@ -885,6 +901,7 @@ class MainActivity : Activity() {
         "g3" -> genreShelves[2] to ui.u(POSTER_H)
         "local" -> localShelf to ui.u(POSTER_H)
         "like" -> likeShelf to ui.u(POSTER_H)
+        "cont" -> contShelf to ui.u(POSTER_H)
         "recent" -> recentShelf to ui.u(POSTER_H)
         else -> shelf to ui.u(SHELF_H)
     }
@@ -940,7 +957,9 @@ class MainActivity : Activity() {
         Img.load(this, "w342", p.poster, ui.u(180), img)
         if (badge.isNotEmpty()) addBadge(poster, badge)
         else addMoneyTag(poster, p)
-        if (badge.isEmpty()) episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
+        val strip = if (badge.isEmpty()) episodeBadge(p) else null
+        strip?.let { addBadge(poster, it, episode = true) }
+        WatchMarks.add(ui, poster, WatchMarks.of(playback, p), aboveStrip = strip != null)
         if (p.key in watchedNow) addWatchedMark(poster)
         else if (playback.isAvailable(p.key)) addPlayableMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
@@ -1563,6 +1582,21 @@ class MainActivity : Activity() {
         showTopRows()
     }
 
+    /** "Yarım kalanlar": films and series left half way (İzlediklerim's first tab), last played first. */
+    private fun refreshContinue() {
+        val list = WatchHistory(this).entries()
+            .filter { e -> WatchMarks.of(playback, e.pick)?.let { it.fraction != null || it.episode != null } == true }
+            .map { it.pick }
+            .filter { !Remote.isHidden(it) && it.poster.isNotEmpty() }
+            .take(12)
+        val sig = list.joinToString("|") { it.key } + "#" + MediaPlaybackStore.changes
+        if (sig == contSig) return
+        contSig = sig
+        contRow.removeAllViews()
+        for (p in list) contRow.addView(posterCard(p, "cont", "", scoreLine(p)))
+        showTopRows()
+    }
+
     /** After "İzledim"/"Beğendim" changed on a film page, redraw what depends on them. */
     /** "Son baktıkların": pages you opened that are not in Listem and not watched, newest first. */
     private fun refreshRecent() {
@@ -1579,7 +1613,8 @@ class MainActivity : Activity() {
     private fun refreshMarks() {
         watchedNow = prefs.watched
         skipNow = watchedNow + prefs.disliked.keys
-        val sig = skipNow.sorted().joinToString("|") + "#" + prefs.liked.keys.sorted().joinToString("|")
+        val sig = skipNow.sorted().joinToString("|") + "#" + prefs.liked.keys.sorted().joinToString("|") +
+            "#" + MediaPlaybackStore.changes
         if (sig == markSig) return
         val first = markSig.isEmpty()
         markSig = sig
@@ -2000,6 +2035,14 @@ class MainActivity : Activity() {
         col.addView(label, ui.ll(ui.u(cw), ui.wrap, top = 18))
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 34)
         return col
+    }
+
+    private fun openHistory() {
+        closeMenu(false)
+        idleOff()
+        Fx.backdrop = Fx.snapshotBlur(frame, scale = 28, passes = 4)
+            ?: ((if (backA.alpha >= backB.alpha) backA else backB).drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+        WatchHistoryActivity.open(this)
     }
 
     private fun openExplore() {
@@ -3955,6 +3998,7 @@ class MainActivity : Activity() {
         NightSleep.schedule(this)
         Fx.zoomReset(frame)
         refreshMarks()
+        refreshContinue()
         refreshRecent()
         refreshShelf()
         // Films put in Listem by older versions get a date now, for "Listende 3 haftadır bekliyor".

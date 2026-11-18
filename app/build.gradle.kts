@@ -11,8 +11,9 @@ android {
         applicationId = "tv.lexia.launcher"
         minSdk = 24
         targetSdk = 36
-        // TVs run ARM; the x86 copies of the native parts (FFmpeg, QuickJS) only made the APK larger.
-        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+        // TVs run ARM, and every Android TV runs 32-bit ARM code (many, like most Google TVs, only that).
+        // One ABI keeps the APK (MPV, FFmpeg, libass) under GitHub's 100 MB file limit for the copy.
+        ndk { abiFilters += listOf("armeabi-v7a") }
         // 2000 above the build number: installs over the LeXia + Nuvio trial (code 1000+) of 16 November.
         versionCode = 2000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "4").toInt()
         versionName = "0.4"

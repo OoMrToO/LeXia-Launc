@@ -56,6 +56,16 @@ jobs:
           H
           printf 'User-agent: *\nDisallow: /\n' > out/robots.txt
           du -sh out
+          # Cloudflare Pages takes no file over 25 MiB. A larger APK (the NuvioTV player made it so)
+          # goes to the GitHub copy only; the app asks the site first and the copy when the site
+          # has no such file (Updater.download).
+          mkdir -p big
+          for f in apk/app.apk apk/test.apk kur.apk; do
+            if [ -f out/$f ] && [ $(stat -c %s out/$f) -gt 26000000 ]; then
+              mkdir -p big/$(dirname $f); mv out/$f big/$f
+              echo "$f is $(du -h big/$f | cut -f1): copy only"
+            fi
+          done
       - name: Deploy
         run: |
           npx -y $WRANGLER pages project create $PROJECT --production-branch main 2>/dev/null || true
@@ -72,7 +82,7 @@ jobs:
           M=$(mktemp -d)
           mkdir -p $M/apk
           for f in pick.json version.txt test.txt kur.apk apk/app.apk apk/test.apk; do
-            if [ -f out/$f ]; then cp out/$f $M/$f; fi
+            if [ -f out/$f ]; then cp out/$f $M/$f; elif [ -f big/$f ]; then cp big/$f $M/$f; fi
           done
           cd $M
           git init -q -b "$DIST_BRANCH"
