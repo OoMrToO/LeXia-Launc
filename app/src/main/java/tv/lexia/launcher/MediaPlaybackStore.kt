@@ -63,7 +63,6 @@ internal class MediaPlaybackStore(context: Context) {
         return if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else null
     }
 
-    /** Watched to the end (the credits count). */
     /** When [mediaKey] was last played (epoch ms); 0 when never. */
     fun updatedAt(mediaKey: String): Long {
         if (mediaKey.isBlank()) return 0L
@@ -71,6 +70,14 @@ internal class MediaPlaybackStore(context: Context) {
         return preferences.getLong("${key}_updated", 0L)
     }
 
+    /** The length the player last reported for [mediaKey]; 0 when unknown. */
+    fun durationMs(mediaKey: String): Long {
+        if (mediaKey.isBlank()) return 0L
+        val key = prefix(mediaKey)
+        return preferences.getLong("${key}_duration", 0L)
+    }
+
+    /** Watched to the end (the credits count). */
     fun isFinished(mediaKey: String): Boolean {
         if (mediaKey.isBlank()) return false
         val key = prefix(mediaKey)

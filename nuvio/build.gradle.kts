@@ -17,6 +17,18 @@ android {
         // Nuvio scrapers use TMDB to resolve the selected title before searching providers.
         val tmdbApiKey = System.getenv("TMDB_API_KEY").orEmpty()
         buildConfigField("String", "TMDB_API_KEY", "\"${tmdbApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        // NuvioTV's build settings its player reads (public build values; LeXia has no reports or Dolby Vision bridge).
+        buildConfigField("String", "INTRODB_API_URL", "\"\"")
+        buildConfigField("String", "SIMKL_CLIENT_ID", "\"\"")
+        buildConfigField("String", "SIMKL_APP_NAME", "\"nuvio\"")
+        buildConfigField("String", "PLAYBACK_REPORTS_BASE_URL", "\"\"")
+        buildConfigField("boolean", "DOVI_NATIVE_ENABLED", "false")
+        buildConfigField("boolean", "DOVI_EXTRACTOR_HOOK_READY", "false")
+        buildConfigField("boolean", "IS_DEBUG_BUILD", "false")
+        buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "false")
+        buildConfigField("String", "APPLICATION_ID", "\"tv.lexia.launcher\"")
+        buildConfigField("String", "VERSION_NAME", "\"1\"")
+        buildConfigField("int", "VERSION_CODE", "1")
     }
 
     buildFeatures {
@@ -92,6 +104,11 @@ dependencies {
     compileOnly("androidx.media3:media3-database:1.8.0")
     compileOnly("androidx.media3:media3-exoplayer-dash:1.8.0")
     compileOnly("com.google.guava:guava:33.3.1-android")
+    compileOnly("androidx.media3:media3-session:1.8.0")
+    compileOnly("androidx.media3:media3-container:1.8.0")
+    compileOnly("androidx.media3:media3-effect:1.8.0")
+    compileOnly(files("../app/libs/nuvio-libass-release.aar", "../app/libs/nextlib-mediainfo-local.aar"))
+    compileOnly("io.github.abdallahmehiz:mpv-android-lib:0.1.12")
     implementation("com.google.zxing:core:3.5.3")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 }

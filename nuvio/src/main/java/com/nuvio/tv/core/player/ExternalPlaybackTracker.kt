@@ -2,6 +2,9 @@
 // have (accounts, sync, profiles, CloudStream extensions, Hilt). Not Nuvio code: keep it minimal.
 package com.nuvio.tv.core.player
 
+import com.nuvio.tv.domain.model.Video
+import com.nuvio.tv.ui.screens.player.PlayerNextEpisodeRules
+
 /** As in Nuvio's ExternalPlaybackTracker.kt (the fields only). */
 data class ExternalPlaybackMetadata(
     val contentId: String,
@@ -20,7 +23,53 @@ data class ExternalPlaybackMetadata(
     fun buildPlayerTitle(includeEpisodeTitle: Boolean = false): String = contentName
 }
 
-class ExternalNextEpisodeSnapshot
+// Copied unchanged from Nuvio's ExternalPlaybackTracker.kt:
+data class ExternalNextEpisodeSnapshot(
+    val metadataResolved: Boolean,
+    val nextVideoId: String? = null,
+    val nextSeason: Int? = null,
+    val nextEpisode: Int? = null,
+    val shufflePlayback: Boolean = false
+) {
+    val hasNextEpisode: Boolean?
+        get() = if (!metadataResolved) null else nextVideoId != null && nextEpisode != null
+
+    companion object {
+        val Unknown = ExternalNextEpisodeSnapshot(metadataResolved = false)
+        val NoPlayableNextEpisode = ExternalNextEpisodeSnapshot(metadataResolved = true)
+    }
+}
+
+internal fun resolveExternalNextEpisodeSnapshot(
+    videos: List<Video>,
+    currentSeason: Int?,
+    currentEpisode: Int?
+): ExternalNextEpisodeSnapshot {
+    if (currentEpisode == null) return ExternalNextEpisodeSnapshot.Unknown
+    val currentExists = videos.any { video ->
+        video.episode == currentEpisode && (currentSeason == null || video.season == currentSeason)
+    }
+    if (!currentExists) return ExternalNextEpisodeSnapshot.Unknown
+
+    val nextVideo = PlayerNextEpisodeRules.resolveNextEpisode(
+        videos = videos,
+        currentSeason = currentSeason,
+        currentEpisode = currentEpisode
+    ) ?: return ExternalNextEpisodeSnapshot.NoPlayableNextEpisode
+    val nextEpisode = nextVideo.episode ?: return ExternalNextEpisodeSnapshot.Unknown
+    val isPlayable = ExternalAutoNextPolicy.isPlayableNextEpisode(
+        available = nextVideo.available,
+        hasAired = PlayerNextEpisodeRules.hasEpisodeAired(nextVideo.released)
+    )
+    if (!isPlayable) return ExternalNextEpisodeSnapshot.NoPlayableNextEpisode
+
+    return ExternalNextEpisodeSnapshot(
+        metadataResolved = true,
+        nextVideoId = nextVideo.id,
+        nextSeason = nextVideo.season,
+        nextEpisode = nextEpisode
+    )
+}
 
 /** LeXia plays in its own player: no outside player is ever started or followed. */
 class ExternalPlaybackTracker {
@@ -53,7 +102,7 @@ class ExternalPlaybackTracker {
         metadata: ExternalPlaybackMetadata,
         videos: List<com.nuvio.tv.domain.model.Video>,
         preferredVideoId: String? = null
-    ): ExternalNextEpisodeSnapshot = ExternalNextEpisodeSnapshot()
+    ): ExternalNextEpisodeSnapshot = ExternalNextEpisodeSnapshot.Unknown
 }
 
 object ZidooPlayerMonitor {
