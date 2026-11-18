@@ -346,9 +346,15 @@ object LeXiaNuvio {
     fun applyPlayerDefaults(context: Context) {
         val app = context.applicationContext
         val marks = app.getSharedPreferences("lexia_nuvio", Context.MODE_PRIVATE)
-        if (marks.getInt("player_defaults", 0) >= PLAYER_DEFAULTS) return
+        val done = marks.getInt("player_defaults", 0)
+        if (done >= PLAYER_DEFAULTS) return
         val settings = PlayerSettingsDataStore(dataStoreFactory(app), profileManager, app)
         kotlinx.coroutines.runBlocking {
+            if (done < 2) {
+                // A video that will not start in ExoPlayer is tried once more in MPV (Nuvio's setting, off by default there).
+                settings.setAutoSwitchInternalPlayerOnError(true)
+            }
+            if (done >= 1) return@runBlocking
             settings.setPreloadNextEpisodeSources(true)
             settings.setStreamAutoPlayNextEpisodeEnabled(true)
             settings.setStreamAutoPlayPreferBingeGroupForNextEpisode(true)
@@ -360,7 +366,7 @@ object LeXiaNuvio {
         marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
     }
 
-    private const val PLAYER_DEFAULTS = 1
+    private const val PLAYER_DEFAULTS = 2
 
     private fun playerSettingsStore(context: Context) =
         PlayerSettingsDataStore(dataStoreFactory(context.applicationContext), profileManager, context.applicationContext)

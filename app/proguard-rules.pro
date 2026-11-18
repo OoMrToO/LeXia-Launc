@@ -82,3 +82,7 @@
     <init>(java.nio.ByteBuffer, int, long);
     public long nativeHandle;
 }
+
+# MPV (Nuvio's second player engine). Its native code looks up classes and
+# methods under is.xyz.mpv by name, so R8 must keep the whole package (as Nuvio does).
+-keep class is.xyz.mpv.** { *; }
