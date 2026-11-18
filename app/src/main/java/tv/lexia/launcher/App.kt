@@ -13,6 +13,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         Guard.started(this)
+        com.nuvio.tv.LeXiaImages.install(this)
         Net.diskCache = File(cacheDir, "img")
         // Off the main thread: a crash from last time, and the setup build's "I was opened".
         Thread {

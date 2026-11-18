@@ -85,6 +85,9 @@ dependencies {
     api("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     api("io.coil-kt.coil3:coil-compose:3.3.0")
     api("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
+    // Nuvio's player buttons are SVG files (res/raw/ic_player_*), drawn by Coil's SVG decoder.
+    api("io.coil-kt.coil3:coil-svg:3.3.0")
+    api("io.coil-kt.coil3:coil-gif:3.3.0")
     api("dev.chrisbanes.haze:haze-android:1.7.2") {
         exclude(group = "org.jetbrains.compose.ui")
         exclude(group = "org.jetbrains.compose.foundation")

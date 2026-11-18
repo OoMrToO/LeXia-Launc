@@ -125,26 +125,8 @@ object MovieNight {
         val buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.clipToPadding = false
-        val platforms = (listOfNotNull(film.provider.takeIf { it.isNotEmpty() }) + film.where).distinct()
-        val appName = platforms.firstOrNull { Apps.forPlatform(a, it) != null }
-        val app = appName?.let { Apps.forPlatform(a, it) }
-        if (app != null) {
-            val open = ui.iconPill(TrailerActivity.accusative(appName) + " aç", R.drawable.ic_tv)
-            open.setOnClickListener {
-                prefs.markUsed(app.key)
-                HomeButtonService.opened(app.pkg)
-                clear(prefs)
-                d.dismiss()
-                try {
-                    a.startActivity(Apps.launchIntent(app))
-                } catch (e: Exception) {
-                    Glass.toast(a, "Açılamadı")
-                }
-            }
-            buttons.addView(open)
-        }
         if (film.trailer.isNotEmpty()) {
-            val tr = ui.pill("▶   Fragman", 64, 23, primary = app == null)
+            val tr = ui.pill("▶   Fragman", 64, 23, primary = true)
             tr.setOnClickListener { TrailerActivity.open(a, film) }
             buttons.addView(tr)
         }
