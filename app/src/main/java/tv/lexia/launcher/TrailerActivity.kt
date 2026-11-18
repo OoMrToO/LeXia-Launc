@@ -753,7 +753,6 @@ class TrailerActivity : Activity() {
             val more = ui.iconPill("Detaylar", R.drawable.ic_info)
             more.setOnClickListener { details(p) }
             buttons.addView(more)
-            platformButton(p)?.let { buttons.addView(it) }
             if (p.trailers.size > 1) {
                 val pick = ui.iconPill("Fragmanlar · ${p.trailers.size}", R.drawable.ic_film)
                 pick.setOnClickListener { chooseTrailer(p) }
@@ -800,31 +799,6 @@ class TrailerActivity : Activity() {
         }
         val sfx = arrayOf("'ta", "'ta", "'ta", "'da", "'ta", "'da", "'da", "'ta", "'de", "'de", "'da", "'ta")
         return java.text.SimpleDateFormat("d MMMM", java.util.Locale("tr", "TR")).format(c.time) + sfx[c.get(java.util.Calendar.MONTH)] + " vizyonda"
-    }
-
-    /** The platform's app ("Netflix'i aç"), or, when it is not on this TV, the store ("Netflix uygulamasını bul"). */
-    private fun platformButton(p: Pick): TextView? {
-        val platforms = (listOfNotNull(p.provider.takeIf { it.isNotEmpty() }) + p.where).distinct()
-        val appName = platforms.firstOrNull { Apps.forPlatform(this, it) != null }
-        val app = appName?.let { Apps.forPlatform(this, it) }
-        if (app != null) {
-            val b = ui.iconPill(accusative(appName) + " aç", R.drawable.ic_tv)
-            b.setOnClickListener {
-                prefs.markUsed(app.key)
-                HomeButtonService.opened(app.pkg)
-                try { startActivity(Apps.launchIntent(app)) } catch (e: Exception) { }
-                close()
-            }
-            return b
-        }
-        val name = platforms.firstOrNull() ?: return null
-        val b = ui.iconPill("$name uygulamasını bul", R.drawable.ic_tv)
-        b.setOnClickListener {
-            pausePlayer()
-            HomeButtonService.pause()
-            Apps.findInStore(this, name)
-        }
-        return b
     }
 
     private fun onPlaying() {
@@ -1084,7 +1058,6 @@ class TrailerActivity : Activity() {
         row.clipToPadding = false
         if (p != null) {
             row.addView(listButton(p, false))
-            platformButton(p)?.let { row.addView(it) }
         }
         val again = ui.pill("Tekrar izle", 64, 23)
         again.setOnClickListener { replay() }
