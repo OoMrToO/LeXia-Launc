@@ -121,6 +121,11 @@ dependencies {
     implementation("androidx.media3:media3-decoder:$media3Version")
     implementation("androidx.media3:media3-container:$media3Version")
     implementation("androidx.media3:media3-database:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("androidx.media3:media3-effect:$media3Version")
+    // NuvioTV's player screen: libass subtitles, media info probe, MPV (as in NuvioTV's app module).
+    implementation(files("libs/nuvio-libass-release.aar", "libs/nextlib-mediainfo-local.aar"))
+    implementation("io.github.abdallahmehiz:mpv-android-lib:0.1.12")
     // What the forked AARs need but do not carry (as in NuvioTV's build).
     implementation("com.google.guava:guava:33.3.1-android")
     implementation("androidx.annotation:annotation-experimental:1.3.1")

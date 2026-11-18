@@ -63,6 +63,13 @@ internal class MediaPlaybackStore(context: Context) {
     }
 
     /** Watched to the end (the credits count). */
+    /** The length the player last reported for [mediaKey]; 0 when unknown. */
+    fun durationMs(mediaKey: String): Long {
+        if (mediaKey.isBlank()) return 0L
+        val key = prefix(mediaKey)
+        return preferences.getLong("${key}_duration", 0L)
+    }
+
     fun isFinished(mediaKey: String): Boolean {
         if (mediaKey.isBlank()) return false
         val key = prefix(mediaKey)

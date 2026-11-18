@@ -642,7 +642,7 @@ class SettingsActivity : Activity() {
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("favSource", "playAutoSource", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -654,8 +654,14 @@ class SettingsActivity : Activity() {
                 { prefs.playAutoSource }, { prefs.playAutoSource = it }
             ),
             toggle(
+                "Nuvio'nun oynatıcısı",
+                "Filmler NuvioTV'nin kendi oynatıcı ekranında açılır: onun düğmeleri, ses ve altyazı menüleri, girişi atlama, sonraki bölüm. " +
+                    "Kapatırsan LeXia'nın önceki oynatıcısı açılır.",
+                { prefs.nuvioPlayer }, { prefs.nuvioPlayer = it }
+            ),
+            toggle(
                 "Nuvio oynatma motoru",
-                "Videolar Nuvio'nun oynatıcısının koduyla açılır: adresinden türü anlaşılmayan yayınlar da açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
+                "LeXia'nın önceki oynatıcısında da videolar Nuvio'nun koduyla açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
                     "Bir videoda sorun olursa kapatıp eski yolla deneyebilirsin.",
                 { prefs.nuvioEngine }, { prefs.nuvioEngine = it }
             ),

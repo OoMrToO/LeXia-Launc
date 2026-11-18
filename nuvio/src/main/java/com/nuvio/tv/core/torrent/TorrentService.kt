@@ -11,4 +11,5 @@ class TorrentService {
     suspend fun startStream(infoHash: String, fileIdx: Int?, filename: String?, trackers: List<String>): String =
         throw UnsupportedOperationException("Torrent playback is not part of LeXia")
     fun stopStream() = Unit
+    fun shutdown() = Unit
 }

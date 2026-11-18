@@ -11,6 +11,23 @@ class DirectDebridResolver {
     fun shouldResolveToPlayableStream(stream: Stream): Boolean = false
     suspend fun resolve(stream: Stream, season: Int?, episode: Int?): DirectDebridResolveResult =
         DirectDebridResolveResult.Error
+
+    /** As in Nuvio when a stream needs no debrid service: it plays as it came. */
+    suspend fun resolveToPlayableStream(
+        stream: Stream,
+        season: Int?,
+        episode: Int?,
+        forceRefresh: Boolean = false
+    ): DirectDebridPlayableResult = DirectDebridPlayableResult.Success(stream)
+}
+
+/** As in Nuvio's DirectDebridResolver.kt. */
+sealed class DirectDebridPlayableResult {
+    data class Success(val stream: Stream) : DirectDebridPlayableResult()
+    data object MissingApiKey : DirectDebridPlayableResult()
+    data object NotCached : DirectDebridPlayableResult()
+    data object Stale : DirectDebridPlayableResult()
+    data object Error : DirectDebridPlayableResult()
 }
 
 class DirectDebridStreamPreparer {

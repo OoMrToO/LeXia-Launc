@@ -2,6 +2,46 @@
 // have (accounts, sync, profiles, CloudStream extensions, Hilt). Not Nuvio code: keep it minimal.
 package com.nuvio.tv
 
+import com.nuvio.tv.core.cloud.CloudLibraryPlaybackProgressStore
+import com.nuvio.tv.core.cloud.CloudLibraryPlaybackSessionStore
+import com.nuvio.tv.core.cloud.CloudLibraryRepository
+import com.nuvio.tv.core.player.EpisodeShufflePlayback
+import com.nuvio.tv.core.player.TrailerPlayerPool
+import com.nuvio.tv.core.recommendations.TvRecommendationManager
+import com.nuvio.tv.core.tmdb.TmdbMetadataService
+import com.nuvio.tv.data.local.AnimeSkipSettingsDataStore
+import com.nuvio.tv.data.local.AudioDelayRouteDataStore
+import com.nuvio.tv.data.local.DeviceLocalPlayerPreferences
+import com.nuvio.tv.data.local.EpisodeShuffleStore
+import com.nuvio.tv.data.local.LayoutPreferenceDataStore
+import com.nuvio.tv.data.local.MDBListSettingsDataStore
+import com.nuvio.tv.data.local.TmdbSettingsDataStore
+import com.nuvio.tv.data.local.TrackPreferenceDataStore
+import com.nuvio.tv.data.local.TrailerSettingsDataStore
+import com.nuvio.tv.data.local.TraktAuthDataStore
+import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.data.local.WatchedItemsPreferences
+import com.nuvio.tv.data.local.WatchedSeriesStateHolder
+import com.nuvio.tv.data.remote.api.AniSkipApi
+import com.nuvio.tv.data.remote.api.AnimeSkipApi
+import com.nuvio.tv.data.remote.api.IntroDbApi
+import com.nuvio.tv.data.remote.api.ParentalGuideApi
+import com.nuvio.tv.data.remote.api.PlaybackIssueReportApi
+import com.nuvio.tv.data.repository.LeXiaProgress
+import com.nuvio.tv.data.repository.MDBListRepository
+import com.nuvio.tv.data.repository.ParentalGuideRepository
+import com.nuvio.tv.data.repository.PlaybackIssueReportRepository
+import com.nuvio.tv.data.repository.SimklIdResolver
+import com.nuvio.tv.data.repository.SkipIntroRepository
+import com.nuvio.tv.data.repository.TraktEpisodeMappingService
+import com.nuvio.tv.data.repository.TraktRelatedService
+import com.nuvio.tv.data.simkl.SimklAuthRepository
+import com.nuvio.tv.data.simkl.SimklRelatedService
+import com.nuvio.tv.data.simkl.defaultSimklApiConfiguration
+import com.nuvio.tv.data.trailer.TrailerService
+import com.nuvio.tv.domain.model.EpisodeShuffle
+import com.nuvio.tv.ui.screens.player.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
 import android.app.Activity
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
@@ -265,6 +305,113 @@ object LeXiaNuvio {
             PartyRepository(),
             profileManager,
             SavedStateHandle(args)
+        )
+    }
+
+    private val playerClient: OkHttpClient by lazy { OkHttpClient.Builder().dns(IPv4FirstDns()).build() }
+
+    private fun playerRetrofit(baseUrl: String): Retrofit = Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .client(playerClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .build()
+
+    /** Nuvio's skip-intro lookups (IntroDB, AniSkip, Anime Skip), with NuvioTV's addresses. */
+    private val skipIntroRepository: (Context) -> SkipIntroRepository = { context ->
+        SkipIntroRepository(
+            playerRetrofit(BuildConfig.INTRODB_API_URL.ifEmpty { "https://localhost/" }).create(IntroDbApi::class.java),
+            playerRetrofit("https://api.aniskip.com/v2/").create(AniSkipApi::class.java),
+            playerRetrofit("https://api.anime-skip.com/").create(AnimeSkipApi::class.java),
+            SimklIdResolver(playerClient, defaultSimklApiConfiguration()),
+            AnimeSkipSettingsDataStore(dataStoreFactory(context), profileManager),
+            tmdbService
+        )
+    }
+
+    private val tmdbApi: TmdbApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://api.themoviedb.org/3/")
+            .client(OkHttpClient.Builder().dns(IPv4FirstDns()).build())
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(TmdbApi::class.java)
+    }
+
+    /**
+     * Nuvio's player view model (ui/screens/player/PlayerViewModel.kt), built as Hilt builds it in
+     * NuvioTV. [arguments] are its route arguments; [progress] is LeXia's record of where films stop.
+     */
+    fun playerViewModel(context: Context, arguments: Map<String, String?>, progress: LeXiaProgress?): PlayerViewModel {
+        val app = context.applicationContext
+        val stores = dataStoreFactory(app)
+        val badgeSettings = StreamBadgeSettingsDataStore(stores, profileManager)
+        val watchProgress = LeXiaWatchProgressRepository(progress)
+        val watchedItems = WatchedItemsPreferences(stores, profileManager)
+        val layout = LayoutPreferenceDataStore()
+        return PlayerViewModel(
+            context = app,
+            watchProgressRepository = watchProgress,
+            metaRepository = metaRepository(app),
+            streamRepository = streamRepository(app),
+            addonRepository = addonRepository(app),
+            pluginManager = pluginManager(app),
+            subtitleRepository = LeXiaSubtitleRepository(),
+            parentalGuideRepository = ParentalGuideRepository(
+                playerRetrofit("https://api.tiffara.com/").create(ParentalGuideApi::class.java)
+            ),
+            trackingScrobbleCoordinator = TrackingScrobbleCoordinator(TrackingProviderRegistry(emptyList<TrackingProvider>())),
+            traktEpisodeMappingService = TraktEpisodeMappingService(),
+            skipIntroRepository = skipIntroRepository(app),
+            playerSettingsDataStore = PlayerSettingsDataStore(stores, profileManager, app),
+            deviceLocalPlayerPreferences = DeviceLocalPlayerPreferences(app),
+            streamLinkCacheDataStore = StreamLinkCacheDataStore(stores, profileManager),
+            streamBadgeSettingsDataStore = badgeSettings,
+            bingeGroupCacheDataStore = BingeGroupCacheDataStore(stores, profileManager),
+            layoutPreferenceDataStore = layout,
+            episodeShufflePlayback = EpisodeShufflePlayback(
+                EpisodeShuffleStore(stores, profileManager, layout),
+                EpisodeShuffle(),
+                watchProgress,
+                watchedItems,
+                profileManager
+            ),
+            watchedItemsPreferences = watchedItems,
+            watchedSeriesStateHolder = WatchedSeriesStateHolder(stores, profileManager),
+            trackPreferenceDataStore = TrackPreferenceDataStore(stores, profileManager),
+            audioDelayRouteDataStore = AudioDelayRouteDataStore(stores, profileManager),
+            torrentService = TorrentService(),
+            torrentSettings = TorrentSettings(app),
+            tmdbService = tmdbService,
+            tmdbMetadataService = TmdbMetadataService(tmdbApi, Dispatchers.IO),
+            tmdbSettingsDataStore = TmdbSettingsDataStore(stores, profileManager),
+            mdbListRepository = MDBListRepository(),
+            mdbListSettingsDataStore = MDBListSettingsDataStore(stores, profileManager),
+            trailerPlayerPool = TrailerPlayerPool(),
+            trailerService = TrailerService(),
+            trailerSettingsDataStore = TrailerSettingsDataStore(app, stores, profileManager),
+            traktRelatedService = TraktRelatedService(),
+            traktAuthDataStore = TraktAuthDataStore(),
+            traktSettingsDataStore = TraktSettingsDataStore(stores, profileManager),
+            simklRelatedService = SimklRelatedService(),
+            simklAuthRepository = SimklAuthRepository(),
+            directDebridResolver = DirectDebridResolver(),
+            youTubeStreamResolver = YouTubeStreamResolver(InAppYouTubeExtractor()),
+            directDebridStreamPreparer = DirectDebridStreamPreparer(),
+            cloudLibraryRepository = CloudLibraryRepository(),
+            cloudPlaybackProgressStore = CloudLibraryPlaybackProgressStore(app),
+            cloudPlaybackSessionStore = CloudLibraryPlaybackSessionStore(app),
+            streamBadgePresentation = StreamBadgePresentation(badgeSettings),
+            playbackIssueReportRepository = PlaybackIssueReportRepository(
+                playerRetrofit("https://localhost/").create(PlaybackIssueReportApi::class.java)
+            ),
+            externalPlaybackTracker = ExternalPlaybackTracker(),
+            subtitleFileCache = SubtitleFileCache(app, addonClient(app)),
+            tvRecommendationManager = TvRecommendationManager(),
+            serverPlayback = ServerPlayback(),
+            serverStreams = serverStreams,
+            partyRepository = PartyRepository(),
+            profileManager = profileManager,
+            savedStateHandle = SavedStateHandle(arguments)
         )
     }
 
