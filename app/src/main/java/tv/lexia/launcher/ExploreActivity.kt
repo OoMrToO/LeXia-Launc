@@ -17,8 +17,9 @@ import org.json.JSONObject
 import java.util.Locale
 
 /**
- * Keşfet: every film and series in today's list on one page, with filters (genre, film or series,
- * score, length, platform). "Bu akşam 2 saatten kısa, Netflix'te bir gerilim" in a few presses.
+ * Keşfet: films and series in two tabs, as rows to scroll (where you left off, new, most watched,
+ * best scored, Turkish, one row per genre; a row's end brings more from TMDB). "Süz" narrows them
+ * to a grid by genre, years, score and order.
  */
 class ExploreActivity : Activity() {
 
@@ -30,22 +31,17 @@ class ExploreActivity : Activity() {
     private val tr = Locale("tr", "TR")
     private var all: List<Pick> = emptyList()
 
-    // Filters: "" = all.
+    /** The tab: "movie" or "tv". */
+    private var kind = "movie"
+    // "Süz": "" = all.
     private var genre = ""
-    private var kind = ""
     private var minScore = 0.0
-    private var maxMinutes = 0
-    private var platform = ""
-    /** Where: "" all, "cinema" in cinemas now, "soon" coming to cinemas, "stream" on the platforms, "local" Turkish. */
-    private var where = ""
-    /** When it came out: "" any, "week" last 7 days, "month" last 30 days, "year" this year, "soon" still to come. */
-    private var date = ""
-    /** How to watch: "" any, "mine" on a platform whose app is on this TV. */
-    private var how = ""
-    /** Platforms (by name) whose app is on this TV. */
-    private var mine: Set<String> = emptySet()
+    /** Years: "" any, "2020" the 2020s, "2010", "2000", "old" before 2000. */
+    private var years = ""
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
+    private lateinit var tabBar: LinearLayout
+    private val playback by lazy { MediaPlaybackStore(this) }
     /** Posters come in four at a time, not all at once. */
     private val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
     @Volatile private var gen = 0
@@ -88,21 +84,21 @@ class ExploreActivity : Activity() {
         head.addView(countText, ui.ll(w, w, bottom = 8))
         page.addView(head, ui.ll(m, w))
 
+        // Filmler · Diziler, then Süz and the trailer marathon.
+        tabBar = ui.hbox()
+        tabBar.clipChildren = false
+        tabBar.clipToPadding = false
+        tabBar.setPadding(ui.u(6), ui.u(10), ui.u(6), ui.u(10))
         filterBar = ui.hbox()
         filterBar.clipChildren = false
         filterBar.clipToPadding = false
-        filterBar.setPadding(ui.u(6), ui.u(10), ui.u(6), ui.u(10))
-        val bar = android.widget.HorizontalScrollView(this)
-        bar.isHorizontalScrollBarEnabled = false
-        bar.clipChildren = false
-        bar.clipToPadding = false
-        bar.addView(filterBar)
-        page.addView(bar, ui.ll(m, w, top = 18, bottom = 18, left = -6))
+        tabBar.addView(filterBar)
+        page.addView(tabBar, ui.ll(m, w, top = 18, bottom = 10, left = -6))
 
         grid = ui.vbox()
         grid.clipChildren = false
         grid.clipToPadding = false
-        grid.setPadding(ui.u(20), ui.u(20), ui.u(20), ui.u(80))
+        grid.setPadding(ui.u(20), ui.u(10), ui.u(20), ui.u(80))
         val scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
@@ -118,17 +114,30 @@ class ExploreActivity : Activity() {
         countText.text = "Hazırlanıyor…"
         Thread {
             val list = load()
-            val apps = list.flatMap { platformsOf(it) }.toSet().filter { Apps.forPlatform(this, it) != null }.toSet()
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 all = list
-                mine = apps
                 buildFilters()
                 show()
             }
         }.start()
         frame.alpha = 0f
         frame.animate().alpha(1f).setDuration(D.MED).start()
+    }
+
+    private var seenChanges = MediaPlaybackStore.changes
+
+    override fun onResume() {
+        super.onResume()
+        // Back from the player: "Kaldığın yerden" and the bars show the new place.
+        if (MediaPlaybackStore.changes != seenChanges && all.isNotEmpty()) {
+            seenChanges = MediaPlaybackStore.changes
+            val focus = currentFocus
+            if (!filtering()) {
+                show()
+                if (focus != null) filterBar.getChildAt(if (kind == "movie") 0 else 1)?.requestFocus()
+            }
+        }
     }
 
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
@@ -172,78 +181,124 @@ class ExploreActivity : Activity() {
     /** Days from today to the film's date (its Turkish release, else its digital release); null when unknown. */
     private fun days(p: Pick): Int? = Episodes.daysUntil(p.release) ?: Episodes.daysUntil(p.digital)
 
-    private fun matchesWhere(p: Pick): Boolean = when (where) {
-        "cinema" -> from(p, "cinema")
-        "soon" -> from(p, "soon") || (days(p) ?: 0) > 0 && !from(p, "platforms")
-        "stream" -> platformsOf(p).isNotEmpty()
-        "local" -> from(p, "local")
-        else -> true
-    }
+    private fun yearOf(p: Pick): Int = p.year.take(4).toIntOrNull() ?: 0
 
-    private fun matchesDate(p: Pick): Boolean {
-        if (date.isEmpty()) return true
-        val d = days(p)
-        return when (date) {
-            "soon" -> d != null && d > 0
-            "week" -> d != null && d in -7..0
-            "month" -> d != null && d in -30..0
-            "year" -> p.year == java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString() && (d == null || d <= 0)
-            else -> true
+    private fun matchesYears(p: Pick): Boolean {
+        val y = yearOf(p)
+        return when (years) {
+            "" -> true
+            "old" -> y in 1..1999
+            else -> years.toIntOrNull()?.let { y in it..it + 9 } == true
         }
     }
 
-    private fun matches(p: Pick): Boolean =
-        matchesWhere(p) && matchesDate(p) &&
-            (how.isEmpty() || (how == "mine" && platformsOf(p).any { it in mine })) &&
-        (genre.isEmpty() || genre in p.genres) &&
-            (kind.isEmpty() || (kind == "tv") == p.isSeries) &&
-            (minScore <= 0 || p.imdb >= minScore) &&
-            (maxMinutes <= 0 || (p.runtime in 1..maxMinutes)) &&
-            (platform.isEmpty() || platform in platformsOf(p))
+    /** Anything chosen under "Süz": the page is a grid then, not rows. */
+    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty()
 
-    /** The filter buttons; each opens its choices and shows the current one. */
+    private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
+
+    private fun matches(p: Pick): Boolean =
+        ofKind(p) &&
+            (genre.isEmpty() || genre in p.genres) &&
+            (minScore <= 0 || p.imdb >= minScore) &&
+            matchesYears(p)
+
+    /** The tabs, "Süz" (with what is chosen) and the marathon. */
     private fun buildFilters() {
         filterBar.removeAllViews()
-        val genres = all.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
-        val plats = all.flatMap { platformsOf(it) }.distinct().sortedBy { it.lowercase(tr) }
-        fun chip(label: String, values: List<String>, names: List<String>, current: () -> String, set: (String) -> Unit) {
-            val b = ui.pill("", 58, 21)
-            fun refresh() {
-                val i = values.indexOf(current())
-                b.text = if (i <= 0) label else names[i]
-            }
-            refresh()
+        fun tab(label: String, value: String) {
+            val b = ui.pill(label, 58, 22, primary = kind == value)
             b.setOnClickListener {
-                Dialogs.chooseOne(this, label, names, values.indexOf(current()).coerceAtLeast(0)) {
-                    set(values[it])
-                    refresh()
-                    show()
-                }
+                if (kind == value) return@setOnClickListener
+                kind = value
+                buildFilters()
+                show()
+                filterBar.getChildAt(if (value == "movie") 0 else 1)?.requestFocus()
             }
             filterBar.addView(b)
         }
-        chip("Sırala", listOf("", "new", "soon", "az"),
-            listOf("En yüksek puan", "En yeni çıkanlar", "En yakında çıkacaklar", "Ada göre (A–Z)"), { sort }) { sort = it }
-        chip("Nerede", listOf("", "cinema", "soon", "stream", "local"),
-            listOf("Her yerde", "Sinemada şimdi", "Yakında vizyonda", "Platformlarda", "Yerli yapımlar"), { where }) { where = it }
-        chip("Nasıl izlerim", listOf("", "mine"),
-            listOf("Her yol", "Sende var (yeni abonelik gerekmez)"), { how }) { how = it }
-        chip("Tarih", listOf("", "week", "month", "year", "soon"),
-            listOf("Bütün tarihler", "Son bir hafta", "Son bir ay", "Bu yıl", "Henüz çıkmadı"), { date }) { date = it }
-        chip("Tür", listOf("") + genres, listOf("Bütün türler") + genres, { genre }) { genre = it }
-        chip("Film ya da dizi", listOf("", "movie", "tv"), listOf("Film ve dizi", "Yalnızca film", "Yalnızca dizi"), { kind }) { kind = it }
-        chip("Puan", listOf("", "7", "8"), listOf("Bütün puanlar", "IMDb 7 ve üstü", "IMDb 8 ve üstü"), { if (minScore > 0) minScore.toInt().toString() else "" }) {
-            minScore = it.toDoubleOrNull() ?: 0.0
+        tab("Filmler", "movie")
+        tab("Diziler", "tv")
+        val chosen = listOfNotNull(
+            genre.takeIf { it.isNotEmpty() },
+            yearsName().takeIf { years.isNotEmpty() },
+            "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
+            sortName().takeIf { sort.isNotEmpty() }
+        )
+        val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
+        filter.setOnClickListener { openFilters() }
+        filterBar.addView(filter, ui.ll(ui.wrap, ui.u(64), left = 22, right = 18))
+        if (chosen.isNotEmpty()) {
+            val clear = ui.pill("Temizle", 58, 21)
+            clear.setOnClickListener {
+                genre = ""; minScore = 0.0; years = ""; sort = ""
+                buildFilters()
+                show()
+                filterBar.getChildAt(2)?.requestFocus()
+            }
+            filterBar.addView(clear)
         }
-        chip("Süre", listOf("", "100", "130"), listOf("Bütün süreler", "1 sa 40 dk'dan kısa", "2 sa 10 dk'dan kısa"), { if (maxMinutes > 0) maxMinutes.toString() else "" }) {
-            maxMinutes = it.toIntOrNull() ?: 0
-        }
-        if (plats.isNotEmpty()) chip("Platform", listOf("") + plats, listOf("Bütün platformlar") + plats, { platform }) { platform = it }
         // Trailers of what is shown, one after another, in LeXia's own player.
         if (prefs.trailerInApp) {
             val run = ui.iconPill("Fragman maratonu", R.drawable.ic_film)
             run.setOnClickListener { chooseMarathon() }
             filterBar.addView(run)
+        }
+    }
+
+    private fun yearsName() = when (years) {
+        "2020" -> "2020'ler"
+        "2010" -> "2010'lar"
+        "2000" -> "2000'ler"
+        "old" -> "2000'den önce"
+        else -> "Bütün yıllar"
+    }
+
+    private fun sortName() = when (sort) {
+        "new" -> "En yeni"
+        "az" -> "A–Z"
+        "score" -> "En yüksek puan"
+        else -> "Önerilen"
+    }
+
+    /** "Süz": genre, years, score, order; each opens its choices, the page follows at once. */
+    private fun openFilters() {
+        val genres = all.filter { ofKind(it) }.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
+        val rows = listOf(
+            "Tür" to genre.ifEmpty { "Bütün türler" },
+            "Yıl" to yearsName(),
+            "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
+            "Sırala" to sortName()
+        )
+        Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
+            fun apply() {
+                buildFilters()
+                show()
+                openFilters()
+            }
+            when (i) {
+                0 -> Dialogs.chooseOne(this, "Tür", listOf("Bütün türler") + genres, (genres.indexOf(genre) + 1).coerceAtLeast(0)) {
+                    genre = if (it == 0) "" else genres[it - 1]; apply()
+                }
+                1 -> {
+                    val v = listOf("", "2020", "2010", "2000", "old")
+                    Dialogs.chooseOne(this, "Yıl", listOf("Bütün yıllar", "2020'ler", "2010'lar", "2000'ler", "2000'den önce"), v.indexOf(years).coerceAtLeast(0)) {
+                        years = v[it]; apply()
+                    }
+                }
+                2 -> {
+                    val v = listOf(0.0, 6.0, 7.0, 8.0)
+                    Dialogs.chooseOne(this, "Puan", listOf("Bütün puanlar", "IMDb 6 ve üstü", "IMDb 7 ve üstü", "IMDb 8 ve üstü"), v.indexOf(minScore).coerceAtLeast(0)) {
+                        minScore = v[it]; apply()
+                    }
+                }
+                else -> {
+                    val v = listOf("", "score", "new", "az")
+                    Dialogs.chooseOne(this, "Sırala", listOf("Önerilen", "En yüksek puan", "En yeni", "Ada göre (A–Z)"), v.indexOf(sort).coerceAtLeast(0)) {
+                        sort = v[it]; apply()
+                    }
+                }
+            }
         }
     }
 
@@ -254,7 +309,8 @@ class ExploreActivity : Activity() {
     private fun chooseMarathon() {
         fun withTrailer(l: List<Pick>) = l.filter { it.trailer.isNotEmpty() }.take(20)
         val themes = ArrayList<Pair<String, List<Pick>>>()
-        themes.add("Bu seçimdeki yapımlar" to withTrailer(all.filter { matches(it) }))
+        val here = if (filtering()) "Bu seçimdeki yapımlar" else if (kind == "tv") "Diziler" else "Filmler"
+        themes.add(here to withTrailer(all.filter { matches(it) }))
         themes.add("Bu hafta sinemada" to withTrailer(all.filter { from(it, "cinema") }))
         themes.add("Yakında vizyonda" to withTrailer(all.filter { from(it, "soon") }.sortedBy { days(it) ?: 999 }))
         themes.add("Korku gecesi" to withTrailer(all.filter { "Korku" in it.genres }))
@@ -275,8 +331,7 @@ class ExploreActivity : Activity() {
         }
     }
 
-    /** The matching titles as a grid of posters, best scored first. */
-    /** Order of the page: "" best scored, "new" newest out, "soon" coming soonest, "az" by name. */
+    /** Order under "Süz": "" recommended (best scored first), "score", "new" newest out, "az" by name. */
     private var sort = ""
     /** What the filters found, in [sort] order, and how much of it is on the page. */
     private var found: List<Pick> = emptyList()
@@ -285,27 +340,122 @@ class ExploreActivity : Activity() {
     private var more: View? = null
 
     private fun ordered(list: List<Pick>): List<Pick> = when (sort) {
-        "new" -> list.sortedWith(compareBy<Pick> { val d = days(it); if (d == null || d > 0) Int.MAX_VALUE else -d }.thenByDescending { it.imdb })
-        "soon" -> list.sortedWith(compareBy<Pick> { val d = days(it); if (d == null || d <= 0) Int.MAX_VALUE else d }.thenByDescending { it.imdb })
+        "new" -> list.sortedWith(compareBy<Pick> { val d = days(it); if (d == null || d > 0) Int.MAX_VALUE else -d }
+            .thenByDescending { yearOf(it) }.thenByDescending { it.imdb })
         "az" -> java.text.Collator.getInstance(tr).let { c -> list.sortedWith { x, y -> c.compare(x.title, y.title) } }
-        else -> list
+        else -> list.sortedByDescending { it.imdb }
     }
 
     private fun show() {
         gen++
-        found = ordered(all.filter { matches(it) })
         shown = 0
         row = null
         more = null
         grid.removeAllViews()
+        if (!filtering()) {
+            showRows()
+            return
+        }
+        found = ordered(all.filter { matches(it) })
         if (found.isEmpty()) {
             countText.text = "Bu seçimde yapım yok"
-            val hint = ui.text("Filtrelerden birini gevşet; ya da yarın yeni liste gelince tekrar bak.", 24, C.TEXT2, 400)
+            val hint = ui.text("Süz'deki seçimlerden birini gevşet.", 24, C.TEXT2, 400)
             grid.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 40, left = 10))
             return
         }
         addMore()
     }
+
+    // ---------- Rows ----------
+
+    /** What was played and not finished (a series: also the episode after a finished one), last played first. */
+    private fun leftOff(): List<Pick> = all.filter { ofKind(it) }
+        .mapNotNull { p -> WatchMarks.of(playback, p)?.takeIf { it.fraction != null || it.episode != null }?.let { p to it.at } }
+        .sortedByDescending { it.second }
+        .map { it.first }
+
+    private fun showRows() {
+        val mine = all.filter { ofKind(it) }
+        countText.text = "${mine.size} ${if (kind == "tv") "dizi" else "film"}"
+        val today = mine.filter { (days(it) ?: 1) <= 0 || days(it) == null }
+        addRow("Kaldığın yerden", leftOff())
+        addRow("Yeni çıkanlar", today.filter { val d = days(it); d != null && d in -90..0 }.sortedBy { -(days(it) ?: -999) }) {
+            TmdbDiscover.page(kind, it, newest = true)
+        }
+        addRow("En çok izlenenler", mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }) {
+            TmdbDiscover.page(kind, it)
+        }
+        addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb }) {
+            TmdbDiscover.page(kind, it, minScore = 8.0)
+        }
+        addRow("Yerli yapımlar", mine.filter { from(it, "local") })
+        val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
+            .sortedByDescending { it.value }.map { it.key }.take(12)
+        for (g in genres) {
+            addRow(g, today.filter { g in it.genres }.sortedByDescending { it.imdb }) { TmdbDiscover.page(kind, it, genre = g) }
+        }
+    }
+
+    /**
+     * A row of posters (20 at first). [more], when given, brings the next TMDB page at the row's end:
+     * titles already on the page are left out.
+     */
+    private fun addRow(title: String, items: List<Pick>, more: ((Int) -> List<Pick>)? = null) {
+        val online = more != null && BuildConfig.TMDB_API_KEY.isNotBlank()
+        if (items.isEmpty() && !online) return
+        val label = ui.text(title, 26, C.TEXT, 700)
+        grid.addView(label, ui.ll(ui.wrap, ui.wrap, top = 8, bottom = 14, left = 4))
+        val line = ui.hbox()
+        line.clipChildren = false
+        line.clipToPadding = false
+        line.setPadding(ui.u(4), ui.u(10), ui.u(40), ui.u(10))
+        val scroll = android.widget.HorizontalScrollView(this)
+        scroll.isHorizontalScrollBarEnabled = false
+        scroll.clipChildren = false
+        scroll.clipToPadding = false
+        scroll.addView(line)
+        grid.addView(scroll, ui.ll(ui.match, ui.wrap, bottom = 34))
+        val seen = HashSet<String>()
+        val start = items.take(20)
+        start.forEach { p -> seen.add(seenKey(p)); line.addView(card(p)) }
+        if (more == null) return
+        var page = 1
+        var moreCard: View? = null
+        fun addMoreCard() {
+            moreCard = moreCard(0).also { c ->
+                (c.tag as View).setOnClickListener { _ ->
+                    val g = gen
+                    val box = c.tag as View
+                    box.isEnabled = false
+                    Thread {
+                        val next = try { more(page) } catch (e: Exception) { emptyList() }
+                        page++
+                        runOnUiThread {
+                            if (isFinishing || g != gen) return@runOnUiThread
+                            val fresh = next.filter { seen.add(seenKey(it)) && !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+                            line.removeView(c)
+                            if (fresh.isEmpty() && next.isEmpty()) {
+                                Glass.toast(this, "Bu satırda başka yapım bulunamadı")
+                                return@runOnUiThread
+                            }
+                            var first: View? = null
+                            fresh.forEach { p -> val v = card(p); line.addView(v); if (first == null) first = v.tag as View }
+                            addMoreCard()
+                            (first ?: (moreCard?.tag as? View))?.requestFocus()
+                        }
+                    }.start()
+                }
+                line.addView(c)
+            }
+        }
+        if (!online) return
+        addMoreCard()
+        // Nothing of its own in today's list: the row starts with TMDB's first page.
+        if (start.isEmpty()) (moreCard?.tag as? View)?.performClick()
+    }
+
+    /** One title once in a row, whether it came from today's list or from TMDB. */
+    private fun seenKey(p: Pick) = if (p.id > 0) "${p.kind}:${p.id}" else p.key
 
     /** The next 30 onto the page (30 at first: quick on any TV), then a "30 daha göster" card if more are left. */
     private fun addMore() {
@@ -354,7 +504,7 @@ class ExploreActivity : Activity() {
         val plus = ui.text("+", 64, C.TEXT, 300)
         plus.gravity = Gravity.CENTER
         inner.addView(plus)
-        val t = ui.text("$n daha göster", 21, C.TEXT, 600)
+        val t = ui.text(if (n > 0) "$n daha göster" else "Daha fazla", 21, C.TEXT, 600)
         t.gravity = Gravity.CENTER
         inner.addView(t, ui.ll(ui.wrap, ui.wrap, top = 6))
         box.addView(inner, ui.fl(ui.match, ui.match, Gravity.CENTER))
@@ -412,6 +562,7 @@ class ExploreActivity : Activity() {
             val b = Net.bitmap("https://image.tmdb.org/t/p/w342" + p.poster, ui.u(cw), true)
             runOnUiThread { if (b != null && !isFinishing && g == gen) Fx.fadeIn(img, b) }
         }
+        WatchMarks.add(ui, poster, WatchMarks.of(playback, p))
         val fx = Fx.decorate(ui, poster, D.CARD)
         val title = ui.text(p.title, 19, C.TEXT2, 500)
         title.maxLines = 1
@@ -422,10 +573,11 @@ class ExploreActivity : Activity() {
             // Not out yet: when, instead of the score.
             bits.add(dateText(p))
         } else {
+            val tmdb = TmdbDiscover.score["${p.kind}:${p.id}"]
             if (p.imdb > 0) bits.add(String.format(tr, "IMDb %.1f", p.imdb))
+            else if (tmdb != null && tmdb > 0) bits.add(String.format(tr, "TMDB %.1f", tmdb))
             when {
                 from(p, "cinema") -> bits.add("Sinemada")
-                platformsOf(p).isNotEmpty() -> bits.add(platformsOf(p).first())
                 d != null && d >= -30 -> bits.add(dateText(p))
                 p.year.isNotEmpty() -> bits.add(p.year)
             }

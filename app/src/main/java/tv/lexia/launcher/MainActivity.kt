@@ -817,7 +817,9 @@ class MainActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
+        val strip = episodeBadge(p)
+        strip?.let { addBadge(poster, it, episode = true) }
+        WatchMarks.add(ui, poster, WatchMarks.of(playback, p), aboveStrip = strip != null)
         if (p.key in watchedNow) addWatchedMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
         Img.load(this, "w342", p.poster, ui.u(180), img)
@@ -940,7 +942,9 @@ class MainActivity : Activity() {
         Img.load(this, "w342", p.poster, ui.u(180), img)
         if (badge.isNotEmpty()) addBadge(poster, badge)
         else addMoneyTag(poster, p)
-        if (badge.isEmpty()) episodeBadge(p)?.let { addBadge(poster, it, episode = true) }
+        val strip = if (badge.isEmpty()) episodeBadge(p) else null
+        strip?.let { addBadge(poster, it, episode = true) }
+        WatchMarks.add(ui, poster, WatchMarks.of(playback, p), aboveStrip = strip != null)
         if (p.key in watchedNow) addWatchedMark(poster)
         else if (playback.isAvailable(p.key)) addPlayableMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
@@ -1579,7 +1583,8 @@ class MainActivity : Activity() {
     private fun refreshMarks() {
         watchedNow = prefs.watched
         skipNow = watchedNow + prefs.disliked.keys
-        val sig = skipNow.sorted().joinToString("|") + "#" + prefs.liked.keys.sorted().joinToString("|")
+        val sig = skipNow.sorted().joinToString("|") + "#" + prefs.liked.keys.sorted().joinToString("|") +
+            "#" + MediaPlaybackStore.changes
         if (sig == markSig) return
         val first = markSig.isEmpty()
         markSig = sig
