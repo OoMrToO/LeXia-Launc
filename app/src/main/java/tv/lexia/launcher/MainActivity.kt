@@ -1104,7 +1104,8 @@ class MainActivity : Activity() {
     private class Notice(val id: String, val icon: Int, val title: String, val sub: String, val open: () -> Unit)
 
     /**
-     * What's worth knowing now: new episodes of Listem series (today, tomorrow), reminded films
+     * What's worth knowing now: new episodes of Listem series (today, tomorrow) and of series you
+     * watch (out this week, not seen yet), reminded films
      * on release, films coming to cinemas in the next three days, and a new version.
      */
     private fun notices(): List<Notice> {
@@ -1132,6 +1133,23 @@ class MainActivity : Activity() {
             val w = Episodes.what(n).lowercase(tr)
             out.add(Notice("ep:${p.key}:${n.date}", R.drawable.ic_tv,
                 (if (d == 0) "Bugün $w: " else "Yarın $w: ") + p.title, which) { openDetail(p, null, null) })
+        }
+        // A series you watch in LeXia has a new episode out (this week) that you have not finished:
+        // OK opens it straight on its sources.
+        val today = todayIndex()
+        val listed = prefs.watchlist.map { it.key }.toSet()
+        for (e in WatchHistory(this).entries().filter { it.pick.isSeries }) {
+            val p = today[e.pick.key] ?: e.pick
+            val r = Episodes.recent(p) ?: continue
+            if (p.key in listed && Episodes.of(p) != null) continue
+            val id = p.imdbId.ifBlank { e.pick.imdbId }.ifBlank { if (p.id > 0) "tmdb:${p.id}" else "" }
+            if (id.isEmpty() || r.season <= 0 || r.episode <= 0) continue
+            val episode = "$id:${r.season}:${r.episode}"
+            if (playback.isFinished(episode)) continue
+            out.add(Notice("new:${p.key}:${r.season}:${r.episode}", R.drawable.ic_tv, "Yeni bölüm çıktı: ${p.title}",
+                "${r.season}. sezon ${r.episode}. bölüm  ·  İzlemek için OK'e bas") {
+                MediaSourcePickerActivity.open(this, p, resumeEpisode = episode)
+            })
         }
         for (p in prefs.reminders) {
             val d = daysUntil(p.release) ?: continue
