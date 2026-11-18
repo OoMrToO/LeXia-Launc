@@ -300,10 +300,12 @@ class PlayerActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        com.nuvio.tv.LeXiaCinema.playing = true
         if (!cardVisible) startPlayer()
     }
 
     override fun onStop() {
+        com.nuvio.tv.LeXiaCinema.playing = false
         handler.removeCallbacksAndMessages(null)
         pendingSeekMs = -1L
         saveProgress()

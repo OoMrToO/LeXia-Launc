@@ -129,3 +129,4 @@ imdb:$type:$tmdbId text
 contRowAdded bool
 titles text
 finishes text
+cinemaMode bool

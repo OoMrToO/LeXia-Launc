@@ -643,7 +643,7 @@ class SettingsActivity : Activity() {
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("favSource", "playAutoSource", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "cinemaMode", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -653,6 +653,12 @@ class SettingsActivity : Activity() {
                 "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +
                     "Başka bir kaynak seçmek için oynatıcıdan Geri ile çık: kaynak listesi açılır. Kapalıyken kaynağı her seferinde listeden seçersin.",
                 { prefs.playAutoSource }, { prefs.playAutoSource = it }
+            ),
+            toggle(
+                "Sinema modu",
+                "Film başlarken siyah perde iki yana açılır; film oynarken LeXia hiçbir bildirim göstermez ve güncellemeyi kurmak için filmin bitmesini bekler. " +
+                    "Uyku uyarısı yine görünür.",
+                { prefs.cinemaMode }, { prefs.cinemaMode = it; com.nuvio.tv.LeXiaCinema.enabled = it }
             ),
             toggle(
                 "Nuvio'nun oynatıcısı",

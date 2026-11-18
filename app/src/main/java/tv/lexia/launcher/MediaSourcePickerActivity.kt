@@ -934,6 +934,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
+        com.nuvio.tv.LeXiaCinema.enabled = prefs.cinemaMode
         // İzlediklerim: the title, kept with its page data.
         val keep = film
         Thread { WatchHistory(applicationContext).played(keep) }.start()

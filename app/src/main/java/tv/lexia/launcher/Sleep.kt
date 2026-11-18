@@ -102,7 +102,7 @@ object Sleep {
 
     private fun toast(a: Context, s: String) {
         try {
-            Glass.toast(a, s, long = true)
+            Glass.toast(a, s, long = true, force = true)
         } catch (e: Exception) {
         }
     }

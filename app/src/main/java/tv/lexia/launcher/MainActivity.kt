@@ -278,7 +278,8 @@ class MainActivity : Activity() {
                 remoteChanged()
                 showUpdatePill()
                 updateBell()
-                if (Updater.available && prefs.autoUpdate && Updater.canInstall(this@MainActivity)) startUpdate()
+                // Never in the middle of a film: the update waits for the next check.
+                if (Updater.available && prefs.autoUpdate && Updater.canInstall(this@MainActivity) && !com.nuvio.tv.LeXiaCinema.playing) startUpdate()
             }
             handler.postDelayed(this, 30 * 60 * 1000L)
         }
