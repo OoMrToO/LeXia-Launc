@@ -1,5 +1,6 @@
 package tv.lexia.launcher
 
+import com.nuvio.tv.LeXiaNuvio
 import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Intent
@@ -664,6 +665,27 @@ class SettingsActivity : Activity() {
                 "LeXia'nın önceki oynatıcısında da videolar Nuvio'nun koduyla açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
                     "Bir videoda sorun olursa kapatıp eski yolla deneyebilirsin.",
                 { prefs.nuvioEngine }, { prefs.nuvioEngine = it }
+            ),
+            Header("SİNEMA SESİ"),
+            choice(
+                "Gece sesi",
+                "Patlamalar ve müzik kısılır, fısıltılar yükselir: geceleri sesi açıp kısmadan izlersin. Nuvio'nun oynatıcısında çalışır.",
+                listOf("off", "light", "medium", "strong"), listOf("Kapalı", "Hafif", "Orta", "Güçlü"),
+                { LeXiaNuvio.nightMode(this) }, { LeXiaNuvio.setNightMode(this, it) }
+            ),
+            choice(
+                "Diyalog netleştirme",
+                "Konuşmalar müziğin ve efektlerin önüne çıkar (çok kanallı seslerde orta kanal yükseltilir). Nuvio'nun oynatıcısında çalışır.",
+                listOf(0, 3, 6), listOf("Kapalı", "Hafif (+3 dB)", "Güçlü (+6 dB)"),
+                { LeXiaNuvio.dialogueBoost(this).let { if (it >= 6) 6 else if (it >= 3) 3 else 0 } },
+                { LeXiaNuvio.setDialogueBoost(this, it) }
+            ),
+            choice(
+                "Ses sistemi",
+                "HDMI ile bağlı soundbar ya da ev sineması Dolby Atmos, DTS ve TrueHD sesleri kendisi alır, TV çözmeden. " +
+                    "Ses sistemin optik kabloyla bağlıysa “Optik kablo”yu seç: bu sesler ona olduğu gibi gönderilir.",
+                listOf(false, true), listOf("TV ya da HDMI (kendiliğinden)", "Optik kablo"),
+                { LeXiaNuvio.opticalPassthrough(this) }, { LeXiaNuvio.setOpticalPassthrough(this, it) }
             ),
             Header("SES VE ALTYAZI"),
             choice(

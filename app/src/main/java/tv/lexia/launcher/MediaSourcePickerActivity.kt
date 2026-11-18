@@ -1204,20 +1204,30 @@ class MediaSourcePickerActivity : Activity() {
             alpha = 0.55f
         }
         frame.addView(picture, android.widget.FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(this).apply {
-            background = GradientDrawable(
+        // Deep navy shades, turned toward the film's own colour once its picture is in.
+        fun shade(base: Int, alpha: Int, accent: Int) =
+            Fx.blend(base, accent, if (accent == 0) 0f else 0.4f).let { Color.argb(alpha, Color.red(it), Color.green(it), Color.blue(it)) }
+        val vertical = View(this)
+        val horizontal = View(this)
+        fun paint(accent: Int) {
+            vertical.background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.argb(150, 12, 16, 48), Color.argb(205, 14, 18, 56), Color.argb(245, 8, 10, 30))
+                intArrayOf(shade(Color.rgb(12, 16, 48), 150, accent), shade(Color.rgb(14, 18, 56), 205, accent), shade(Color.rgb(8, 10, 30), 245, accent))
             )
-        }, android.widget.FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(this).apply {
-            background = GradientDrawable(
+            horizontal.background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.argb(170, 8, 10, 30), Color.argb(40, 30, 40, 120), Color.argb(120, 8, 10, 30))
+                intArrayOf(shade(Color.rgb(8, 10, 30), 170, accent), shade(Color.rgb(30, 40, 120), 40, accent), shade(Color.rgb(8, 10, 30), 120, accent))
             )
-        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+        paint(0)
+        frame.addView(vertical, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(horizontal, android.widget.FrameLayout.LayoutParams(-1, -1))
         frame.addView(page, android.widget.FrameLayout.LayoutParams(-1, -1))
-        Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false)
+        Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false) { ok ->
+            val bmp = if (ok) (picture.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap else null
+            val c = bmp?.let { Fx.accent(it) } ?: 0
+            if (c != 0) paint(c)
+        }
         return frame
     }
 

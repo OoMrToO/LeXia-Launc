@@ -276,6 +276,7 @@ class WatchHistoryActivity : Activity() {
             fx(f)
             title.setTextColor(if (f) C.TEXT else C.TEXT2)
         }
+        poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { play(e) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {

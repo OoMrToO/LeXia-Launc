@@ -55,32 +55,54 @@ internal object TmdbDiscover {
             params["with_genres"] = id.toString()
         }
         val results = get("discover/$kind", params)?.optJSONArray("results") ?: return emptyList()
-        val byId = names.entries.associate { it.value to it.key }
-        return (0 until results.length()).mapNotNull { i ->
-            val o = results.optJSONObject(i) ?: return@mapNotNull null
-            val poster = o.optString("poster_path").takeIf { it.startsWith("/") } ?: return@mapNotNull null
-            val title = o.optString(if (kind == "tv") "name" else "title").ifBlank { return@mapNotNull null }
-            val date = o.optString(if (kind == "tv") "first_air_date" else "release_date")
-            val ids = o.optJSONArray("genre_ids")
-            val tmdbId = o.optInt("id")
-            score["$kind:$tmdbId"] = Math.round(o.optDouble("vote_average", 0.0) * 10) / 10.0
-            Pick(
-                title = title,
-                meta = "",
-                overview = o.optString("overview"),
-                backdrop = o.optString("backdrop_path").takeIf { it.startsWith("/") } ?: poster,
-                reason = "",
-                trailer = "",
-                logo = "",
-                // TMDB's own score, not IMDb's: kept apart ([score]) so no page calls it IMDb.
-                imdb = 0.0,
-                year = date.take(4),
-                genres = (0 until (ids?.length() ?: 0)).mapNotNull { byId[ids!!.optInt(it)] },
-                runtime = 0,
-                poster = poster,
-                kind = if (kind == "tv") "tv" else "movie",
-                id = tmdbId
-            )
+        return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
+    }
+
+    /** A TMDB result (discover, a person's credits) as a page LeXia can open; null without a poster. */
+    fun pickOf(o: org.json.JSONObject, kindOf: String): Pick? {
+        val kind = if (kindOf == "tv") "tv" else "movie"
+        val poster = o.optString("poster_path").takeIf { it.startsWith("/") } ?: return null
+        val title = o.optString(if (kind == "tv") "name" else "title").ifBlank { return null }
+        val date = o.optString(if (kind == "tv") "first_air_date" else "release_date")
+        val ids = o.optJSONArray("genre_ids")
+        val byId = genreIds(kind).entries.associate { it.value to it.key }
+        val tmdbId = o.optInt("id")
+        score["$kind:$tmdbId"] = Math.round(o.optDouble("vote_average", 0.0) * 10) / 10.0
+        return Pick(
+            title = title,
+            meta = "",
+            overview = o.optString("overview"),
+            backdrop = o.optString("backdrop_path").takeIf { it.startsWith("/") } ?: poster,
+            reason = "",
+            trailer = "",
+            logo = "",
+            // TMDB's own score, not IMDb's: kept apart ([score]) so no page calls it IMDb.
+            imdb = 0.0,
+            year = date.take(4),
+            genres = (0 until (ids?.length() ?: 0)).mapNotNull { byId[ids!!.optInt(it)] },
+            runtime = 0,
+            poster = poster,
+            kind = kind,
+            id = tmdbId
+        )
+    }
+
+    /** A person (actor, director) by name: TMDB's page, with every film and series they made. */
+    fun person(name: String, directing: Boolean): org.json.JSONObject? {
+        val found = get("search/person", mapOf("query" to name))?.optJSONArray("results") ?: return null
+        val all = (0 until found.length()).mapNotNull { found.optJSONObject(it) }
+        val best = all.firstOrNull { it.optString("name").equals(name, true) && (it.optString("known_for_department") == "Directing") == directing }
+            ?: all.firstOrNull { it.optString("name").equals(name, true) }
+            ?: all.firstOrNull()
+            ?: return null
+        val id = best.optInt("id")
+        val page = get("person/$id", mapOf("append_to_response" to "combined_credits")) ?: return null
+        // No Turkish biography: the English one.
+        if (page.optString("biography").isBlank()) {
+            val key = BuildConfig.TMDB_API_KEY
+            Net.get("$API/person/$id?api_key=$key&language=en-US")?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.optString("biography")?.takeIf { it.isNotBlank() }?.let { page.put("biography", it) }
         }
+        return page
     }
 }

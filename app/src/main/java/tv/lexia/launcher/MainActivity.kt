@@ -855,6 +855,7 @@ class MainActivity : Activity() {
                 tintTo(0)
             }
         }
+        poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { openDetail(p, poster, img) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {
@@ -990,6 +991,7 @@ class MainActivity : Activity() {
                 tintTo(0)
             }
         }
+        poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { openDetail(p, poster, img) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {
@@ -1089,9 +1091,11 @@ class MainActivity : Activity() {
     /** Opens a film page, growing the card's picture into it. */
     private fun openDetail(p: Pick, from: View?, img: ImageView?) {
         idleOff()
+        // The row it was opened from: ◀ ▶ on the film page go along it.
+        val row = DetailActivity.rowAround(from)
         Fx.zoomOpen(frame, from, img?.drawable) {
             try {
-                DetailActivity.open(this, p)
+                DetailActivity.open(this, p, row = row)
                 overridePendingTransition(0, 0)
             } catch (e: Exception) {
                 Fx.zoomReset(frame)

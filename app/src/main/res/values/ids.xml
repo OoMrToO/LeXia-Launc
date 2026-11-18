@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A poster's film, for moving between a row's films on the film page. -->
+    <item name="lexia_pick" type="id" />
+</resources>

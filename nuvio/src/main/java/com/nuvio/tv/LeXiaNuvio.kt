@@ -362,6 +362,33 @@ object LeXiaNuvio {
 
     private const val PLAYER_DEFAULTS = 1
 
+    private fun playerSettingsStore(context: Context) =
+        PlayerSettingsDataStore(dataStoreFactory(context.applicationContext), profileManager, context.applicationContext)
+
+    private fun playerSettings(context: Context): com.nuvio.tv.data.local.PlayerSettings =
+        kotlinx.coroutines.runBlocking { playerSettingsStore(context).playerSettings.first() }
+
+    /** Nuvio's night sound ("off", "light", "medium", "strong"): loud scenes come down, quiet ones up. */
+    fun nightMode(context: Context): String = playerSettings(context).nightMode.settingValue
+
+    fun setNightMode(context: Context, value: String) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setNightMode(com.nuvio.tv.data.local.NightMode.fromSettingValue(value))
+    }
+
+    /** Nuvio's centre channel level (dB): voices stand out over music and effects. */
+    fun dialogueBoost(context: Context): Int = playerSettings(context).centerMixLevelDb
+
+    fun setDialogueBoost(context: Context, db: Int) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setCenterMixLevelDb(db)
+    }
+
+    /** A sound system on the optical cable (which cannot tell what it plays): Dolby and DTS go to it as they are. */
+    fun opticalPassthrough(context: Context): Boolean = playerSettings(context).forceOpticalPassthrough
+
+    fun setOpticalPassthrough(context: Context, on: Boolean) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setForceOpticalPassthrough(on)
+    }
+
     /**
      * Nuvio's player view model (ui/screens/player/PlayerViewModel.kt), built as Hilt builds it in
      * NuvioTV. [arguments] are its route arguments; [progress] is LeXia's record of where films stop.

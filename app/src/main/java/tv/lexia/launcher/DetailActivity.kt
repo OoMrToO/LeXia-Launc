@@ -33,7 +33,28 @@ class DetailActivity : Activity() {
         private const val SURPRISE = "surprise"
         private const val WHY = "why"
 
-        fun open(ctx: Context, p: Pick, surprise: Boolean = false, why: String = "") {
+        /** The films of the row the page was opened from, for ◀ ▶ (set by [open]). */
+        @Volatile private var siblings: List<Pick> = emptyList()
+
+        /** The films in the row around [view] (posters carry their film under R.id.lexia_pick). */
+        fun rowAround(view: View?): List<Pick> {
+            var row: View? = view
+            repeat(3) {
+                val parent = row?.parent as? android.view.ViewGroup ?: return emptyList()
+                val found = ArrayList<Pick>()
+                fun collect(v: View, depth: Int) {
+                    (v.getTag(R.id.lexia_pick) as? Pick)?.let { found.add(it); return }
+                    if (depth > 0 && v is android.view.ViewGroup) for (i in 0 until v.childCount) collect(v.getChildAt(i), depth - 1)
+                }
+                for (i in 0 until parent.childCount) collect(parent.getChildAt(i), 2)
+                if (found.size > 1) return found.distinctBy { it.key }
+                row = parent
+            }
+            return emptyList()
+        }
+
+        fun open(ctx: Context, p: Pick, surprise: Boolean = false, why: String = "", row: List<Pick>? = null) {
+            if (row != null) siblings = row
             ctx.startActivity(
                 Intent(ctx, DetailActivity::class.java)
                     .putExtra(EXTRA, p.toJson().toString())
@@ -85,8 +106,26 @@ class DetailActivity : Activity() {
         back.scaleType = ImageView.ScaleType.CENTER_CROP
         back.alpha = 0f
         frame.addView(back, ui.fl(m, m))
+        // The picture turns into the trailer, without sound, after a few seconds (as on the home screen).
+        trailerStage = FrameLayout(this)
+        frame.addView(trailerStage, ui.fl(m, m))
+        pageTrailer = HeroTrailer(this, trailerStage)
+        // The film's own colour, softly over the shade (sand for Dune, green for The Matrix).
+        val tint = View(this)
+        tint.alpha = 0f
         Img.load(this, if (screenW > 1280) "original" else "w1280", film.backdrop, screenW, back) {
             back.animate().alpha(1f).setDuration(700).start()
+            val bmp = (back.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            val c = bmp?.let { Fx.accent(it) } ?: 0
+            if (c != 0) {
+                tint.background = ui.gradient(
+                    GradientDrawable.Orientation.BL_TR,
+                    Color.argb(95, Color.red(c), Color.green(c), Color.blue(c)),
+                    Color.argb(35, Color.red(c), Color.green(c), Color.blue(c)),
+                    Color.argb(0, 0, 0, 0)
+                )
+                tint.animate().alpha(1f).setDuration(900).start()
+            }
         }
         val left = View(this)
         left.background = ui.gradient(
@@ -100,6 +139,7 @@ class DetailActivity : Activity() {
             Color.argb(0, 0, 0, 0), Color.argb(200, 0, 0, 0), Color.argb(250, 0, 0, 0)
         )
         frame.addView(bottom, ui.fl(m, (screenH * 0.55f).toInt(), Gravity.BOTTOM))
+        frame.addView(tint, ui.fl(m, m))
 
         scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
@@ -207,6 +247,7 @@ class DetailActivity : Activity() {
             top.addView(d, ui.ll(w, w, top = 16))
         }
         val buttons = ui.hbox()
+        heroButtons = buttons
         buttons.clipChildren = false
         playBtn = ui.pill("▶   Oynat", 64, 23, primary = true)
         playBtn.setOnFocusChangeListener { _, f ->
@@ -297,6 +338,17 @@ class DetailActivity : Activity() {
         buttons.addView(remindBtn)
         buttons.addView(another)
         top.addView(buttons, ui.ll(w, w, top = 34))
+        // Opened from a row: a quiet line says the row's other films are a press away.
+        val at = siblings.indexOfFirst { it.key == film.key }
+        if (at >= 0 && siblings.size > 1) {
+            val before = siblings.getOrNull(at - 1)?.title
+            val after = siblings.getOrNull(at + 1)?.title
+            val hint = listOfNotNull(before?.let { "◀  $it" }, after?.let { "$it  ▶" }).joinToString("        ")
+            val line = ui.text(hint, 17, C.TEXT3, 500)
+            line.maxLines = 1
+            line.ellipsize = TextUtils.TruncateAt.END
+            top.addView(line, ui.ll(w, w, top = 18))
+        }
         col.addView(top, ui.ll(m, screenH))
 
         // A series: its seasons and episodes on this page; an episode opens its sources.
@@ -311,9 +363,13 @@ class DetailActivity : Activity() {
             col.addView(rowOf(episodeRow), rowParams())
             loadEpisodes()
         }
-        if (film.cast.isNotEmpty()) {
-            col.addView(label("OYUNCULAR"), ui.ll(w, w, top = if (hasEpisodes) 40 else 10))
+        if (film.cast.isNotEmpty() || film.director.isNotEmpty()) {
+            col.addView(label(if (film.director.isNotEmpty()) "YÖNETMEN VE OYUNCULAR" else "OYUNCULAR"), ui.ll(w, w, top = if (hasEpisodes) 40 else 10))
             val row = ui.hbox()
+            // The director first (each name of a few), then the cast.
+            film.director.split(",").map { it.trim() }.filter { it.isNotEmpty() }.take(2).forEach { d ->
+                row.addView(castCard(CastMember(d, if (film.isSeries) "Yaratıcı" else "Yönetmen", "")))
+            }
             for (c in film.cast) row.addView(castCard(c))
             col.addView(rowOf(row), rowParams())
         }
@@ -328,6 +384,8 @@ class DetailActivity : Activity() {
         stuck = stickyTitle()
         frame.addView(stuck, ui.fl(m, w, Gravity.TOP))
         scroll.setOnScrollChangeListener { _, _, y, _, _ ->
+            // Down to the cast and similar films: the trailer gives the screen back.
+            if (y > 0) stopPageTrailer() else queuePageTrailer()
             if (!Fx.lite) {
                 back.translationY = -y * 0.22f
                 val z = 1f + (y.toFloat() / screenH).coerceIn(0f, 1f) * 0.05f
@@ -430,6 +488,9 @@ class DetailActivity : Activity() {
             ui.lift(v, f, 1.1f, 24)
             if (f) onRowFocus(v)
         }
+        // Their page: photo, a few lines, everything they made.
+        photo.isClickable = true
+        photo.setOnClickListener { PersonActivity.open(this, c.name, directing = c.role == "Yönetmen" || c.role == "Yaratıcı") }
         col.addView(photo, ui.ll(ui.u(140), ui.u(140)))
         val name = ui.text(c.name, 19, C.TEXT, 600)
         name.gravity = Gravity.CENTER
@@ -698,8 +759,38 @@ class DetailActivity : Activity() {
         remindBtn.text = if (reminded()) "✓   Hatırlatılacak" else "Hatırlat"
     }
 
+    private var heroButtons: LinearLayout? = null
+
+    /** The film [step] places along the row it was opened from; the page swaps to it softly. */
+    private fun moveInRow(step: Int): Boolean {
+        val list = siblings
+        val at = list.indexOfFirst { it.key == film.key }
+        if (at < 0 || list.size < 2) return false
+        val next = list.getOrNull(at + step) ?: return false
+        stopPageTrailer()
+        Sound.event(Sound.OPEN)
+        open(this, next)
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        super.finish()
+        return true
+    }
+
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            // ◀ on the first button, ▶ on the last (or the channel keys): the row's other films.
+            val k = event.keyCode
+            if (k == android.view.KeyEvent.KEYCODE_CHANNEL_UP || k == android.view.KeyEvent.KEYCODE_CHANNEL_DOWN) {
+                if (moveInRow(if (k == android.view.KeyEvent.KEYCODE_CHANNEL_UP) 1 else -1)) return true
+            }
+            if ((k == android.view.KeyEvent.KEYCODE_DPAD_LEFT || k == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) && event.repeatCount == 0) {
+                val row = heroButtons
+                val focus = currentFocus
+                if (row != null && focus != null && focus.parent === row && (!::scroll.isInitialized || scroll.scrollY == 0)) {
+                    val dir = if (k == android.view.KeyEvent.KEYCODE_DPAD_LEFT) View.FOCUS_LEFT else View.FOCUS_RIGHT
+                    val target = focus.focusSearch(dir)
+                    if ((target == null || target.parent !== row) && moveInRow(if (dir == View.FOCUS_LEFT) -1 else 1)) return true
+                }
+            }
             Fx.lastDir = when (event.keyCode) {
                 android.view.KeyEvent.KEYCODE_DPAD_LEFT -> -1
                 android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 1
@@ -795,8 +886,37 @@ class DetailActivity : Activity() {
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
+    private lateinit var trailerStage: FrameLayout
+    private var pageTrailer: HeroTrailer? = null
+    private val trailerSoon = Runnable {
+        if (!isFinishing && hasWindowFocus() && (!::scroll.isInitialized || scroll.scrollY == 0)) pageTrailer?.start(film.trailer)
+    }
+
+    /** After five quiet seconds on the page, the silent trailer (Ayarlar › Görünüm › sessiz fragman). */
+    private fun queuePageTrailer() {
+        if (!::frame.isInitialized || pageTrailer?.active == true) return
+        frame.removeCallbacks(trailerSoon)
+        if (prefs.heroTrailer && !Fx.lite && film.trailer.isNotEmpty()) frame.postDelayed(trailerSoon, 5000L)
+    }
+
+    private fun stopPageTrailer() {
+        if (::frame.isInitialized) frame.removeCallbacks(trailerSoon)
+        if (pageTrailer?.active == true) pageTrailer?.stop()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopPageTrailer()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        pageTrailer?.release()
+    }
+
     override fun onResume() {
         super.onResume()
+        queuePageTrailer()
         if (::frame.isInitialized) Fx.zoomReset(frame)
         // Back from the player: "Oynat" says where it was left, the episodes how far they were watched.
         updatePlayBtn()
