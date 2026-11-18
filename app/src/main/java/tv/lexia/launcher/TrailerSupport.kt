@@ -104,6 +104,15 @@ internal class YouTubeChunkedDataSource(private val http: DefaultHttpDataSource)
 internal object TrailerDecoders {
     private val answers = HashMap<String, Boolean>()
 
+    /** The TV shows HDR (HDR10, HLG or Dolby Vision): trailers come in HDR where YouTube has it. */
+    fun screenHdr(activity: android.app.Activity): Boolean = try {
+        @Suppress("DEPRECATION")
+        val types = activity.windowManager.defaultDisplay.hdrCapabilities?.supportedHdrTypes
+        types != null && types.isNotEmpty() && canDecode("vp9")
+    } catch (_: Exception) {
+        false
+    }
+
     /** [codec] is "avc1", "vp9" or "av01". H.264 plays everywhere; the others only with the TV's own chip. */
     fun canDecode(codec: String): Boolean = synchronized(answers) {
         answers.getOrPut(codec) {

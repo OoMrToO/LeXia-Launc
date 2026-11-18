@@ -113,6 +113,9 @@ class MainActivity : Activity() {
     private lateinit var descView: TextView
     private lateinit var buttons: LinearLayout
     private lateinit var trailerBtn: TextView
+    private lateinit var resumeBtn: TextView
+    /** The title left half way, shown first in the big area ("KALDIĞIN YERDEN"); empty when none. */
+    private var resumeKey = ""
     private lateinit var listBtn: TextView
     private lateinit var progress: LinearLayout
     private var progressAnim: Animator? = null
@@ -275,7 +278,8 @@ class MainActivity : Activity() {
                 remoteChanged()
                 showUpdatePill()
                 updateBell()
-                if (Updater.available && prefs.autoUpdate && Updater.canInstall(this@MainActivity)) startUpdate()
+                // Never in the middle of a film: the update waits for the next check.
+                if (Updater.available && prefs.autoUpdate && Updater.canInstall(this@MainActivity) && !com.nuvio.tv.LeXiaCinema.playing) startUpdate()
             }
             handler.postDelayed(this, 30 * 60 * 1000L)
         }
@@ -356,7 +360,10 @@ class MainActivity : Activity() {
             stage.addView(b, ui.fl(m, m))
         }
         frame.addView(stage, ui.fl(m, m))
-        heroTrailer = HeroTrailer(this, stage).also { t -> t.onFinished = { schedule() } }
+        heroTrailer = HeroTrailer(this, stage).also { t ->
+            t.onFinished = { schedule() }
+            t.onShowing = { on -> trailerLight(on) }
+        }
 
         // Dip to black between films, like a cut in the cinema.
         blackout = View(this)
@@ -765,6 +772,10 @@ class MainActivity : Activity() {
         buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.visibility = View.INVISIBLE
+        // The film (or series) left half way, when it is the one on show: on from where it stopped.
+        resumeBtn = ui.pill("", 64, 23, primary = true)
+        resumeBtn.visibility = View.GONE
+        resumeBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { resume(it) } }
         trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
         trailerBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { trailer(it) } }
         listBtn = ui.pill("+   Listeme Ekle", 64, 23)
@@ -773,7 +784,7 @@ class MainActivity : Activity() {
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
         val nextBtn = ui.pill("Sonraki", 64, 23)
         nextBtn.setOnClickListener { next() }
-        for (b in listOf(trailerBtn, infoBtn, listBtn, nextBtn)) {
+        for (b in listOf(resumeBtn, trailerBtn, infoBtn, listBtn, nextBtn)) {
             val old = b.onFocusChangeListener
             b.setOnFocusChangeListener { v, f ->
                 old?.onFocusChange(v, f)
@@ -784,6 +795,7 @@ class MainActivity : Activity() {
             }
         }
         progress = ui.hbox()
+        buttons.addView(resumeBtn)
         buttons.addView(trailerBtn)
         buttons.addView(infoBtn)
         buttons.addView(listBtn)
@@ -844,6 +856,7 @@ class MainActivity : Activity() {
                 tintTo(0)
             }
         }
+        poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { openDetail(p, poster, img) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {
@@ -979,6 +992,7 @@ class MainActivity : Activity() {
                 tintTo(0)
             }
         }
+        poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { openDetail(p, poster, img) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {
@@ -1078,9 +1092,11 @@ class MainActivity : Activity() {
     /** Opens a film page, growing the card's picture into it. */
     private fun openDetail(p: Pick, from: View?, img: ImageView?) {
         idleOff()
+        // The row it was opened from: ◀ ▶ on the film page go along it.
+        val row = DetailActivity.rowAround(from)
         Fx.zoomOpen(frame, from, img?.drawable) {
             try {
-                DetailActivity.open(this, p)
+                DetailActivity.open(this, p, row = row)
                 overridePendingTransition(0, 0)
             } catch (e: Exception) {
                 Fx.zoomReset(frame)
@@ -1093,7 +1109,8 @@ class MainActivity : Activity() {
     private class Notice(val id: String, val icon: Int, val title: String, val sub: String, val open: () -> Unit)
 
     /**
-     * What's worth knowing now: new episodes of Listem series (today, tomorrow), reminded films
+     * What's worth knowing now: new episodes of Listem series (today, tomorrow) and of series you
+     * watch (out this week, not seen yet), reminded films
      * on release, films coming to cinemas in the next three days, and a new version.
      */
     private fun notices(): List<Notice> {
@@ -1121,6 +1138,23 @@ class MainActivity : Activity() {
             val w = Episodes.what(n).lowercase(tr)
             out.add(Notice("ep:${p.key}:${n.date}", R.drawable.ic_tv,
                 (if (d == 0) "Bugün $w: " else "Yarın $w: ") + p.title, which) { openDetail(p, null, null) })
+        }
+        // A series you watch in LeXia has a new episode out (this week) that you have not finished:
+        // OK opens it straight on its sources.
+        val today = todayIndex()
+        val listed = prefs.watchlist.map { it.key }.toSet()
+        for (e in WatchHistory(this).entries().filter { it.pick.isSeries }) {
+            val p = today[e.pick.key] ?: e.pick
+            val r = Episodes.recent(p) ?: continue
+            if (p.key in listed && Episodes.of(p) != null) continue
+            val id = p.imdbId.ifBlank { e.pick.imdbId }.ifBlank { if (p.id > 0) "tmdb:${p.id}" else "" }
+            if (id.isEmpty() || r.season <= 0 || r.episode <= 0) continue
+            val episode = "$id:${r.season}:${r.episode}"
+            if (playback.isFinished(episode)) continue
+            out.add(Notice("new:${p.key}:${r.season}:${r.episode}", R.drawable.ic_tv, "Yeni bölüm çıktı: ${p.title}",
+                "${r.season}. sezon ${r.episode}. bölüm  ·  İzlemek için OK'e bas") {
+                MediaSourcePickerActivity.open(this, p, resumeEpisode = episode)
+            })
         }
         for (p in prefs.reminders) {
             val d = daysUntil(p.release) ?: continue
@@ -3347,6 +3381,10 @@ class MainActivity : Activity() {
             val keys = fs.map { it.key }.toSet()
             next = fs + next.filter { it.key !in keys }
         }
+        // What was left half way comes first, with "Devam et".
+        val left = leftHalfWay()
+        resumeKey = left?.key.orEmpty()
+        if (left != null) next = listOf(left) + next.filter { it.key != left.key }
         if (savedPicks != null) {
             // The screensaver is showing cinema films; swap in after it ends.
             savedPicks = next
@@ -3354,9 +3392,50 @@ class MainActivity : Activity() {
             return
         }
         picks = next
-        // Each start of the TV begins on another film; a featured film (admin page) always comes first.
-        pickIndex = if (pinPick() != null || next.isEmpty()) 0 else heroStart % next.size
+        // Each start of the TV begins on another film; a featured film (admin page) or the one left
+        // half way always comes first.
+        pickIndex = if (pinPick() != null || left != null || next.isEmpty()) 0 else heroStart % next.size
         showPick()
+    }
+
+    /** The film or series last left half way (İzlediklerim), if it was played in the last two weeks. */
+    private fun leftHalfWay(): Pick? = WatchHistory(this).entries().firstOrNull { e ->
+        System.currentTimeMillis() - e.playedAt < 14L * 24 * 60 * 60 * 1000 &&
+            WatchMarks.of(playback, e.pick)?.let { it.fraction != null || (e.pick.isSeries && it.episode != null) } == true &&
+            !Remote.isHidden(e.pick) && e.pick.backdrop.isNotEmpty()
+    }?.pick
+
+    /** "Devam et · 42 dk kaldı", "Devam et · S2 · B5", "Sıradaki · S2 · B6". */
+    private fun resumeLabel(p: Pick): String {
+        val state = WatchMarks.of(playback, p) ?: return "▶   Oynat"
+        val last = playback.last(p.key)
+        val pos = playback.resumePositionMs(last)
+        val dur = playback.durationMs(last)
+        val left = if (pos > 0 && dur > pos) ((dur - pos) / 60_000L).coerceAtLeast(1) else 0L
+        val time = when {
+            left >= 60 -> "${left / 60} sa ${left % 60} dk kaldı"
+            left > 0 -> "$left dk kaldı"
+            else -> ""
+        }
+        return when {
+            state.episode != null && state.fraction == null -> "▶   Sıradaki  ·  ${state.episode}"
+            state.episode != null -> "▶   Devam et  ·  ${state.episode}" + if (time.isNotEmpty()) "  ·  $time" else ""
+            time.isNotEmpty() -> "▶   Devam et  ·  $time"
+            else -> "▶   Devam et"
+        }
+    }
+
+    /** The source page, on the film (it opens where it stopped) or the series' episode to go on with. */
+    private fun resume(p: Pick) {
+        val last = playback.last(p.key)
+        val m = Regex(":(\\d+):(\\d+)$").find(last)
+        val episode = if (p.isSeries && m != null) {
+            val season = m.groupValues[1].toInt()
+            val number = m.groupValues[2].toInt()
+            if (playback.isFinished(last) && playback.resumePositionMs(last) <= 0) last.substring(0, m.range.first) + ":$season:${number + 1}"
+            else last
+        } else ""
+        MediaSourcePickerActivity.open(this, p, resumeEpisode = episode)
     }
 
     /**
@@ -3570,6 +3649,21 @@ class MainActivity : Activity() {
      * After a few seconds on a film, its picture turns into its trailer without sound; the film
      * stays until the trailer ends (Ayarlar › Görünüm). Not on weak TVs, nor in the screensaver.
      */
+    /**
+     * While the trailer plays the shades over the picture lighten, so it shows in full colour:
+     * only the side and the bottom behind the text stay (lighter), the vignette and the top go.
+     */
+    private fun trailerLight(on: Boolean) {
+        if (scrims.size < 4) return
+        val (vignette, left, bottom, top) = scrims
+        val time = if (on) 1400L else 600L
+        vignette.animate().alpha(if (on) 0f else 1f).setDuration(time).start()
+        top.animate().alpha(if (on) 0.3f else 1f).setDuration(time).start()
+        left.animate().alpha(if (on) 0.7f else 1f).setDuration(time).start()
+        bottom.animate().alpha(if (on) 0.8f else 1f).setDuration(time).start()
+        if (::boost.isInitialized) boost.animate().alpha(if (on) 0f else boostLevel).setDuration(time).start()
+    }
+
     private fun startHeroTrailer() {
         val p = picks.getOrNull(pickIndex) ?: return
         if (!prefs.heroTrailer || Fx.lite || idle || level != 0 || !hasWindowFocus() || menu != null) return
@@ -3609,6 +3703,7 @@ class MainActivity : Activity() {
         }
         val bind = {
             tagView.text = when {
+                p.key == resumeKey -> "KALDIĞIN YERDEN"
                 p.key in pinFilmKeys -> "LEXIA SEÇKİSİ"
                 shortEvening() && !p.isSeries && p.runtime in 1..SHORT_MIN -> "BU AKŞAM İÇİN KISA"
                 p.key == moodFilmKey && pickIndex != 0 -> "HAVAYA GÖRE"
@@ -3654,6 +3749,9 @@ class MainActivity : Activity() {
                 "Yarın iş var: bu akşam ${shortTime(p.runtime)} biten bir film." else p.reason
             whyView.visibility = if (p.reason.isEmpty()) View.GONE else View.VISIBLE
             descView.text = p.overview
+            val resuming = p.key == resumeKey
+            resumeBtn.visibility = if (resuming) View.VISIBLE else View.GONE
+            if (resuming) resumeBtn.text = resumeLabel(p)
             trailerBtn.visibility = if (p.trailer.isEmpty()) View.GONE else View.VISIBLE
             updateListBtn()
         }

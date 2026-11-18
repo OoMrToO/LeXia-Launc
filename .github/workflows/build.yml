@@ -87,7 +87,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.13
-      - run: gradle assembleFullRelease assembleSetupRelease --no-daemon
+      # One APK at a time: shrinking both together (R8) ran the 7 GB machine out of memory (#57, #58).
+      - run: gradle assembleFullRelease --no-daemon
+      - run: gradle assembleSetupRelease --no-daemon
       - run: |
           cp app/build/outputs/apk/full/release/app-full-release.apk app.apk
           cp app/build/outputs/apk/full/release/app-full-release.apk app-${{ github.run_number }}.apk

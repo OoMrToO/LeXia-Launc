@@ -84,6 +84,7 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var sourceControls: LinearLayout
     private lateinit var sortButton: TextView
     private lateinit var groupButton: TextView
+    private lateinit var sleepButton: TextView
     private lateinit var allButton: TextView
     private var sortByQuality = true
     private var groupByProvider = true
@@ -261,6 +262,16 @@ class MediaSourcePickerActivity : Activity() {
             }
         }
         sourceControls.addView(allButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        // The TV sleeps when this film (or episode) ends.
+        sleepButton = action("").apply {
+            setOnClickListener {
+                Sleep.afterPlayback = !Sleep.afterPlayback
+                updateSourceControls()
+                Glass.toast(this@MediaSourcePickerActivity,
+                    if (Sleep.afterPlayback) "Bitince TV bir dakikalık uyarıdan sonra uykuya geçecek" else "Bitince uyku kapandı")
+            }
+        }
+        sourceControls.addView(sleepButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
         root.addView(sourceControls)
 
         scroll = ScrollView(this).apply {
@@ -283,6 +294,7 @@ class MediaSourcePickerActivity : Activity() {
         sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
         groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
         allButton.visibility = if (favoriteName.isNotBlank()) View.VISIBLE else View.GONE
+        sleepButton.text = if (Sleep.afterPlayback) "Bitince uyu: Açık" else "Bitince uyu: Kapalı"
     }
 
     private fun clearContent(showSourceControls: Boolean = false) {
@@ -771,6 +783,14 @@ class MediaSourcePickerActivity : Activity() {
         status.text = message
         clearContent()
 
+        // Sources found for this a little while ago: on the page (and the best one started) at
+        // once; the fresh search below adds what is new.
+        val kept = memory.kept(key)
+        if (kept.isNotEmpty()) {
+            addStreams(kept)
+            if (this.auto != Auto.NO) playBestNow()
+        }
+
         var open = 2
         fun partial(part: List<MediaStream>) = runOnUiThread {
             if (mine == generation && !isFinishing) addStreams(part)
@@ -835,6 +855,9 @@ class MediaSourcePickerActivity : Activity() {
             return
         }
         updateStatus()
+        val found = streams
+        val key = mediaKey
+        worker.submit { memory.keep(key, found) }
         if (auto != Auto.NO) playBestNow()
     }
 
@@ -862,6 +885,8 @@ class MediaSourcePickerActivity : Activity() {
         else -> 0
     }
 
+    private val memory by lazy { SourceMemory(this) }
+
     private fun score(stream: MediaStream) = stream.tags.score(screenHeight, screenHdr, wantDubbed)
 
     /**
@@ -876,6 +901,8 @@ class MediaSourcePickerActivity : Activity() {
             .withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
+                    // Sites that played before come before ones that would not open.
+                    .thenByDescending { memory.trust(sourceName(it.value)) }
                     .thenByDescending { score(it.value) }
                     .thenBy { it.index }
             )
@@ -907,6 +934,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
+        com.nuvio.tv.LeXiaCinema.enabled = prefs.cinemaMode
         // İzlediklerim: the title, kept with its page data.
         val keep = film
         Thread { WatchHistory(applicationContext).played(keep) }.start()
@@ -952,6 +980,7 @@ class MediaSourcePickerActivity : Activity() {
             store.saveLast(watchKey, key)
             if (markWatched && watchKey.isNotBlank() && watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
             WatchHistory(applicationContext).finished(film, key)
+            Sleep.playbackFinished(applicationContext)
         }
         LeXiaPlayerActivity.progress = object : LeXiaProgress {
             override fun positionMs(key: String): Long = store.resumePositionMs(key)
@@ -1007,9 +1036,22 @@ class MediaSourcePickerActivity : Activity() {
         if (requestCode != REQUEST_PLAY) return
         val stream = playing
         playing = null
+        // What LeXia learns about the site: it would not open, or it played.
+        if (stream != null) {
+            val site = sourceName(stream)
+            val store = MediaPlaybackStore(this)
+            if (resultCode == PlayerActivity.RESULT_FAILED) {
+                memory.failed(site)
+                val key = mediaKey
+                worker.submit { memory.drop(key, stream.url) }
+            } else if (store.progress(mediaKey) != null || store.isFinished(mediaKey)) {
+                memory.played(site)
+            }
+        }
         // LeXia's own player marks a finished film or episode; İzlediklerim counts it.
         if (mediaKey.isNotBlank() && MediaPlaybackStore(this).isFinished(mediaKey)) {
             WatchHistory(applicationContext).finished(film, mediaKey)
+            Sleep.playbackFinished(applicationContext)
         }
         when (resultCode) {
             PlayerActivity.RESULT_FAILED -> {
@@ -1163,20 +1205,30 @@ class MediaSourcePickerActivity : Activity() {
             alpha = 0.55f
         }
         frame.addView(picture, android.widget.FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(this).apply {
-            background = GradientDrawable(
+        // Deep navy shades, turned toward the film's own colour once its picture is in.
+        fun shade(base: Int, alpha: Int, accent: Int) =
+            Fx.blend(base, accent, if (accent == 0) 0f else 0.4f).let { Color.argb(alpha, Color.red(it), Color.green(it), Color.blue(it)) }
+        val vertical = View(this)
+        val horizontal = View(this)
+        fun paint(accent: Int) {
+            vertical.background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.argb(150, 12, 16, 48), Color.argb(205, 14, 18, 56), Color.argb(245, 8, 10, 30))
+                intArrayOf(shade(Color.rgb(12, 16, 48), 150, accent), shade(Color.rgb(14, 18, 56), 205, accent), shade(Color.rgb(8, 10, 30), 245, accent))
             )
-        }, android.widget.FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(this).apply {
-            background = GradientDrawable(
+            horizontal.background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.argb(170, 8, 10, 30), Color.argb(40, 30, 40, 120), Color.argb(120, 8, 10, 30))
+                intArrayOf(shade(Color.rgb(8, 10, 30), 170, accent), shade(Color.rgb(30, 40, 120), 40, accent), shade(Color.rgb(8, 10, 30), 120, accent))
             )
-        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+        paint(0)
+        frame.addView(vertical, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(horizontal, android.widget.FrameLayout.LayoutParams(-1, -1))
         frame.addView(page, android.widget.FrameLayout.LayoutParams(-1, -1))
-        Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false)
+        Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false) { ok ->
+            val bmp = if (ok) (picture.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap else null
+            val c = bmp?.let { Fx.accent(it) } ?: 0
+            if (c != 0) paint(c)
+        }
         return frame
     }
 

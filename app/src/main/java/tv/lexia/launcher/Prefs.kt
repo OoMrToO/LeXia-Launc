@@ -217,6 +217,8 @@ class Prefs(ctx: Context) {
     var favSource: String get() = str("favSource"); set(v) = putStr("favSource", v)
     var favSourceName: String get() = str("favSourceName"); set(v) = putStr("favSourceName", v)
     /** Videos open through NuvioTV's own player code (media source, FFmpeg sound); off = LeXia's earlier way. */
+    /** Sinema modu: a curtain opens on each film, LeXia stays quiet while it plays. */
+    var cinemaMode: Boolean get() = bool("cinemaMode", true); set(v) = putBool("cinemaMode", v)
     /** Films play in NuvioTV's own player screen; off = LeXia's earlier player. */
     var nuvioPlayer: Boolean get() = bool("nuvioPlayer", true); set(v) = putBool("nuvioPlayer", v)
     var nuvioEngine: Boolean get() = bool("nuvioEngine", true); set(v) = putBool("nuvioEngine", v)

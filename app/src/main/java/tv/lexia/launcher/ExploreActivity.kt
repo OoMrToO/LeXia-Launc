@@ -592,7 +592,8 @@ class ExploreActivity : Activity() {
             fx(f)
             title.setTextColor(if (f) C.TEXT else C.TEXT2)
         }
-        poster.setOnClickListener { DetailActivity.open(this, p) }
+        poster.setTag(R.id.lexia_pick, p)
+        poster.setOnClickListener { DetailActivity.open(this, p, row = DetailActivity.rowAround(poster)) }
         col.addView(poster, ui.ll(ui.u(cw), ui.u(cw * 3 / 2)))
         col.addView(title, ui.ll(ui.u(cw), ui.wrap, top = 12))
         col.addView(sub, ui.ll(ui.u(cw), ui.wrap, top = 2))

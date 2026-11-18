@@ -96,21 +96,23 @@ internal object YouTubeStreams {
      * [maxHeight] is the tallest picture worth fetching; [canDecode] says whether the TV plays a
      * codec ("avc1", "vp9", "av01").
      */
-    fun find(id: String, maxHeight: Int, canDecode: (String) -> Boolean): TrailerSource? {
+    fun find(id: String, maxHeight: Int, canDecode: (String) -> Boolean, hdr: Boolean = false): TrailerSource? {
         if (!ID.matches(id)) return null
+        // The same trailer can be wanted at another size (home screen, trailer page) or in HDR.
+        val slot = "$id|$maxHeight|$hdr"
         synchronized(cache) {
-            cache[id]?.let { (at, source) -> if (System.currentTimeMillis() - at < SOURCE_LIFE_MS) return source }
+            cache[slot]?.let { (at, source) -> if (System.currentTimeMillis() - at < SOURCE_LIFE_MS) return source }
         }
         return try {
             refreshVisitor(force = false)
-            var source = askClients(id, maxHeight, canDecode)
+            var source = askClients(id, maxHeight, canDecode, hdr)
             if (source == null && visitor.isNotEmpty()) {
                 // "Sign in" from every app usually means the visitor id went stale.
                 refreshVisitor(force = true)
-                source = askClients(id, maxHeight, canDecode)
+                source = askClients(id, maxHeight, canDecode, hdr)
             }
             if (source != null) synchronized(cache) {
-                cache[id] = System.currentTimeMillis() to source
+                cache[slot] = System.currentTimeMillis() to source
                 while (cache.size > 12) cache.remove(cache.keys.first())
             }
             source
@@ -121,10 +123,10 @@ internal object YouTubeStreams {
 
     /** A source that would not play is not offered again. */
     fun forget(id: String) {
-        synchronized(cache) { cache.remove(id) }
+        synchronized(cache) { cache.keys.filter { it.startsWith("$id|") }.forEach { cache.remove(it) } }
     }
 
-    private fun askClients(id: String, maxHeight: Int, canDecode: (String) -> Boolean): TrailerSource? {
+    private fun askClients(id: String, maxHeight: Int, canDecode: (String) -> Boolean, hdr: Boolean): TrailerSource? {
         for (client in clients) {
             if (Thread.currentThread().isInterrupted) return null
             val answer = try {
@@ -132,7 +134,7 @@ internal object YouTubeStreams {
             } catch (_: Exception) {
                 continue
             }
-            pick(answer, client.userAgent, maxHeight, canDecode)?.let { return it }
+            pick(answer, client.userAgent, maxHeight, canDecode, hdr)?.let { return it }
         }
         return null
     }
@@ -218,7 +220,14 @@ internal object YouTubeStreams {
      * Reads one answer of the player service. Preference: separate picture and sound (the sharpest
      * the TV can decode, not taller than [maxHeight]), then an HLS list, then a single small file.
      */
-    internal fun pick(answer: JSONObject, userAgent: String, maxHeight: Int, canDecode: (String) -> Boolean): TrailerSource? {
+    internal fun pick(
+        answer: JSONObject,
+        userAgent: String,
+        maxHeight: Int,
+        canDecode: (String) -> Boolean,
+        /** The screen shows HDR (and the picture goes to a surface that can): HDR pictures first. */
+        hdr: Boolean = false
+    ): TrailerSource? {
         val status = answer.optJSONObject("playabilityStatus")?.let { text(it, "status") }.orEmpty()
         if (status.isNotEmpty() && status != "OK") return null
         val data = answer.optJSONObject("streamingData") ?: return null
@@ -226,7 +235,7 @@ internal object YouTubeStreams {
         val adaptive = items(data.optJSONArray("adaptiveFormats")).filter { text(it, "url").startsWith("https://") }
 
         val pictures = adaptive
-            .filter { text(it, "mimeType").startsWith("video/") && !isHdr(it) && it.optInt("height") > 0 }
+            .filter { text(it, "mimeType").startsWith("video/") && (hdr || !isHdr(it)) && it.optInt("height") > 0 }
             .filter { canDecode(codecOf(text(it, "mimeType"))) }
         val sounds = adaptive.filter { text(it, "mimeType").startsWith("audio/") }
             // A trailer with several dubs lists each; the one marked as the video's own is wanted.
@@ -236,7 +245,8 @@ internal object YouTubeStreams {
             val fitting = pictures.filter { it.optInt("height") <= maxHeight && it.optInt("width") <= maxHeight * 16 / 9 }
             val picture = (fitting.ifEmpty { pictures.filter { it.optInt("height") == pictures.minOf { p -> p.optInt("height") } } })
                 .sortedWith(
-                    compareByDescending<JSONObject> { it.optInt("height") }
+                    compareByDescending<JSONObject> { if (hdr && isHdr(it)) 1 else 0 }
+                        .thenByDescending { it.optInt("height") }
                         // 60 frames a second doubles the work for no gain in a trailer.
                         .thenBy { if (it.optInt("fps", 30) > 30) 1 else 0 }
                         .thenBy { when (codecOf(text(it, "mimeType"))) { "avc1" -> 0; "vp9" -> 1; else -> 2 } }

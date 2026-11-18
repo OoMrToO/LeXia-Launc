@@ -386,6 +386,28 @@ internal class MediaAddonRepository(context: Context) {
                 // A broken subtitle endpoint must not hide streams or other subtitle providers.
             }
         }
+        // No Turkish subtitle from the installed add-ons: OpenSubtitles (its free Stremio add-on)
+        // is asked by itself, for Turkish and English only, so a film is never left without one.
+        val hasTurkish = result.values.any { Lang.code(it.language).ifBlank { Lang.code(it.label) } == "tr" }
+        val ownOpenSubtitles = activeAddons().any { it.baseUrl.contains("opensubtitles", true) }
+        if (!hasTurkish && !ownOpenSubtitles && videoId.startsWith("tt")) {
+            try {
+                val url = "$OPEN_SUBTITLES/subtitles/$type/${java.net.URLEncoder.encode(videoId, "UTF-8").replace("%3A", ":")}.json"
+                val subtitles = getJson(url.toHttpUrlOrNull() ?: throw IllegalArgumentException()).optJSONArray("subtitles")
+                for (i in 0 until (subtitles?.length() ?: 0)) {
+                    val item = subtitles!!.optJSONObject(i) ?: continue
+                    val link = item.optString("url")
+                    val language = item.optString("lang").ifBlank { "und" }.take(16)
+                    val code = Lang.code(language)
+                    if (!isDirectHttpUrl(link) || (code != "tr" && code != "en")) continue
+                    val label = (if (code == "tr") "Türkçe" else "İngilizce") + " · OpenSubtitles"
+                    result.putIfAbsent("$link|$language", MediaSubtitle(link, language, label))
+                    if (result.size >= MAX_SUBTITLES) break
+                }
+            } catch (_: Exception) {
+                // OpenSubtitles did not answer: the film plays with what there is.
+            }
+        }
         return result.values.toList()
     }
 
@@ -617,6 +639,8 @@ internal class MediaAddonRepository(context: Context) {
     private companion object {
         const val CINEMETA = "https://v3-cinemeta.strem.io"
         const val TMDB = "https://api.themoviedb.org/3"
+        /** OpenSubtitles' free Stremio add-on, asked when no installed add-on gave a Turkish subtitle. */
+        const val OPEN_SUBTITLES = "https://opensubtitles-v3.strem.io"
         const val PREFS_NAME = "media_addons"
         const val KEY_INSTALLED = "installed_v1"
         const val MAX_RESPONSE_BYTES = 5 * 1024 * 1024

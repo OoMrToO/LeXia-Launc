@@ -338,6 +338,58 @@ object LeXiaNuvio {
     }
 
     /**
+     * LeXia's choices among the player settings NuvioTV leaves off by default, written once into
+     * Nuvio's own settings store: the next episode's sources are found while this one plays, the
+     * next episode starts in the player (same provider first), and a source that will not start
+     * gives way to the next one. Raise [PLAYER_DEFAULTS] to write a new set.
+     */
+    fun applyPlayerDefaults(context: Context) {
+        val app = context.applicationContext
+        val marks = app.getSharedPreferences("lexia_nuvio", Context.MODE_PRIVATE)
+        if (marks.getInt("player_defaults", 0) >= PLAYER_DEFAULTS) return
+        val settings = PlayerSettingsDataStore(dataStoreFactory(app), profileManager, app)
+        kotlinx.coroutines.runBlocking {
+            settings.setPreloadNextEpisodeSources(true)
+            settings.setStreamAutoPlayNextEpisodeEnabled(true)
+            settings.setStreamAutoPlayPreferBingeGroupForNextEpisode(true)
+            settings.setStreamAutoPlayMode(com.nuvio.tv.data.local.StreamAutoPlayMode.FIRST_STREAM)
+            settings.setStreamAutoPlayFallbackOnFailure(true)
+            settings.setStreamReuseLastLinkCacheHours(6)
+            settings.setSkipIntroEnabled(true)
+        }
+        marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
+    }
+
+    private const val PLAYER_DEFAULTS = 1
+
+    private fun playerSettingsStore(context: Context) =
+        PlayerSettingsDataStore(dataStoreFactory(context.applicationContext), profileManager, context.applicationContext)
+
+    private fun playerSettings(context: Context): com.nuvio.tv.data.local.PlayerSettings =
+        kotlinx.coroutines.runBlocking { playerSettingsStore(context).playerSettings.first() }
+
+    /** Nuvio's night sound ("off", "light", "medium", "strong"): loud scenes come down, quiet ones up. */
+    fun nightMode(context: Context): String = playerSettings(context).nightMode.settingValue
+
+    fun setNightMode(context: Context, value: String) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setNightMode(com.nuvio.tv.data.local.NightMode.fromSettingValue(value))
+    }
+
+    /** Nuvio's centre channel level (dB): voices stand out over music and effects. */
+    fun dialogueBoost(context: Context): Int = playerSettings(context).centerMixLevelDb
+
+    fun setDialogueBoost(context: Context, db: Int) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setCenterMixLevelDb(db)
+    }
+
+    /** A sound system on the optical cable (which cannot tell what it plays): Dolby and DTS go to it as they are. */
+    fun opticalPassthrough(context: Context): Boolean = playerSettings(context).forceOpticalPassthrough
+
+    fun setOpticalPassthrough(context: Context, on: Boolean) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setForceOpticalPassthrough(on)
+    }
+
+    /**
      * Nuvio's player view model (ui/screens/player/PlayerViewModel.kt), built as Hilt builds it in
      * NuvioTV. [arguments] are its route arguments; [progress] is LeXia's record of where films stop.
      */

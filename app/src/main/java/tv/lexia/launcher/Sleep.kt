@@ -43,6 +43,16 @@ object Sleep {
         return SimpleDateFormat(f, Locale("tr", "TR")).format(Date(endsAt))
     }
 
+    /** "Bu film ya da bölüm bitince": the TV sleeps when what is playing ends (one-minute notice first). */
+    @Volatile var afterPlayback = false
+
+    /** A film or an episode was watched to the end; if asked, the sleep starts now. */
+    fun playbackFinished(ctx: Context) {
+        if (!afterPlayback) return
+        afterPlayback = false
+        handler.post { start(ctx, 1) }
+    }
+
     fun start(ctx: Context, minutes: Int) {
         cancel()
         if (minutes <= 0) return
@@ -92,7 +102,7 @@ object Sleep {
 
     private fun toast(a: Context, s: String) {
         try {
-            Glass.toast(a, s, long = true)
+            Glass.toast(a, s, long = true, force = true)
         } catch (e: Exception) {
         }
     }

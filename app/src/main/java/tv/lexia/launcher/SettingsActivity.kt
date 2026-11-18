@@ -1,5 +1,6 @@
 package tv.lexia.launcher
 
+import com.nuvio.tv.LeXiaNuvio
 import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Intent
@@ -576,7 +577,7 @@ class SettingsActivity : Activity() {
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
-                value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else "" }),
+                value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else if (Sleep.afterPlayback) "Film bitince uyku" else "" }),
 
             Header("SİSTEM"),
             sub("Güvenlik", "Ayarları ve uygulama silmeyi PIN ile kilitle.", { safetyPage() },
@@ -642,7 +643,7 @@ class SettingsActivity : Activity() {
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("favSource", "playAutoSource", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "cinemaMode", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
     ) {
         listOf(
             Header("KAYNAK"),
@@ -652,6 +653,12 @@ class SettingsActivity : Activity() {
                 "Oynat'a basınca bu TV'ye en uygun kaynak sormadan başlar; bir dizide sonraki bölümler aynı kaynaktan devam eder. " +
                     "Başka bir kaynak seçmek için oynatıcıdan Geri ile çık: kaynak listesi açılır. Kapalıyken kaynağı her seferinde listeden seçersin.",
                 { prefs.playAutoSource }, { prefs.playAutoSource = it }
+            ),
+            toggle(
+                "Sinema modu",
+                "Film başlarken siyah perde iki yana açılır; film oynarken LeXia hiçbir bildirim göstermez ve güncellemeyi kurmak için filmin bitmesini bekler. " +
+                    "Uyku uyarısı yine görünür.",
+                { prefs.cinemaMode }, { prefs.cinemaMode = it; com.nuvio.tv.LeXiaCinema.enabled = it }
             ),
             toggle(
                 "Nuvio'nun oynatıcısı",
@@ -664,6 +671,27 @@ class SettingsActivity : Activity() {
                 "LeXia'nın önceki oynatıcısında da videolar Nuvio'nun koduyla açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
                     "Bir videoda sorun olursa kapatıp eski yolla deneyebilirsin.",
                 { prefs.nuvioEngine }, { prefs.nuvioEngine = it }
+            ),
+            Header("SİNEMA SESİ"),
+            choice(
+                "Gece sesi",
+                "Patlamalar ve müzik kısılır, fısıltılar yükselir: geceleri sesi açıp kısmadan izlersin. Nuvio'nun oynatıcısında çalışır.",
+                listOf("off", "light", "medium", "strong"), listOf("Kapalı", "Hafif", "Orta", "Güçlü"),
+                { LeXiaNuvio.nightMode(this) }, { LeXiaNuvio.setNightMode(this, it) }
+            ),
+            choice(
+                "Diyalog netleştirme",
+                "Konuşmalar müziğin ve efektlerin önüne çıkar (çok kanallı seslerde orta kanal yükseltilir). Nuvio'nun oynatıcısında çalışır.",
+                listOf(0, 3, 6), listOf("Kapalı", "Hafif (+3 dB)", "Güçlü (+6 dB)"),
+                { LeXiaNuvio.dialogueBoost(this).let { if (it >= 6) 6 else if (it >= 3) 3 else 0 } },
+                { LeXiaNuvio.setDialogueBoost(this, it) }
+            ),
+            choice(
+                "Ses sistemi",
+                "HDMI ile bağlı soundbar ya da ev sineması Dolby Atmos, DTS ve TrueHD sesleri kendisi alır, TV çözmeden. " +
+                    "Ses sistemin optik kabloyla bağlıysa “Optik kablo”yu seç: bu sesler ona olduğu gibi gönderilir.",
+                listOf(false, true), listOf("TV ya da HDMI (kendiliğinden)", "Optik kablo"),
+                { LeXiaNuvio.opticalPassthrough(this) }, { LeXiaNuvio.setOpticalPassthrough(this, it) }
             ),
             Header("SES VE ALTYAZI"),
             choice(
@@ -1069,13 +1097,18 @@ class SettingsActivity : Activity() {
                 "Uyku zamanlayıcısı",
                 "Süre dolunca TV uykuya geçer. Bir dakika önce ekranda uyarı çıkar; o sırada kumandada bir tuşa basarsan 30 dakika ertelenir.",
                 value = {
-                    if (Sleep.minutesLeft > 0) "Kapanış ${Sleep.endsText(prefs.clock24)}  ·  ${Sleep.minutesLeft} dk kaldı" else "Kapalı"
+                    when {
+                        Sleep.minutesLeft > 0 -> "Kapanış ${Sleep.endsText(prefs.clock24)}  ·  ${Sleep.minutesLeft} dk kaldı"
+                        Sleep.afterPlayback -> "Film ya da bölüm bitince"
+                        else -> "Kapalı"
+                    }
                 },
                 action = {
-                    val opts = listOf(0, 30, 60, 90, 120)
-                    val names = listOf("Kapalı", "30 dakika", "1 saat", "1,5 saat", "2 saat")
+                    val opts = listOf(0, -1, 30, 60, 90, 120)
+                    val names = listOf("Kapalı", "Bu film ya da bölüm bitince", "30 dakika", "1 saat", "1,5 saat", "2 saat")
                     Dialogs.choose(this, "Uyku zamanlayıcısı", names) { i ->
-                        if (opts[i] == 0) Sleep.cancel() else Sleep.start(this, opts[i])
+                        Sleep.afterPlayback = opts[i] == -1
+                        if (opts[i] <= 0) Sleep.cancel() else Sleep.start(this, opts[i])
                         refreshValues()
                     }
                 }

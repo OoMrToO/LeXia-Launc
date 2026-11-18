@@ -6,6 +6,13 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModel
@@ -30,14 +37,17 @@ class LeXiaPlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val extras = intent.extras
         val arguments: Map<String, String?> = extras?.keySet()?.associateWith { extras.getString(it) }.orEmpty()
+        LeXiaNuvio.applyPlayerDefaults(this)
         val keep = progress
         val viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 LeXiaNuvio.playerViewModel(applicationContext, arguments, keep) as T
         })[PlayerViewModel::class.java]
+        val curtain = LeXiaCinema.enabled && savedInstanceState == null
         setContent {
             NuvioTheme {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 PlayerScreen(
                     viewModel = viewModel,
                     onBackPress = { videoId, season, episode, _, completed ->
@@ -52,7 +62,58 @@ class LeXiaPlayerActivity : ComponentActivity() {
                         }
                     }
                 )
+                if (curtain) Curtain()
+                }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        LeXiaCinema.playing = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        LeXiaCinema.playing = false
+    }
+
+    /**
+     * Sinema modu: the film starts behind black curtains that part to the sides, as in a cinema
+     * (a moment's pause, then 1.6 seconds), and are gone.
+     */
+    @androidx.compose.runtime.Composable
+    private fun Curtain() {
+        val open = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+        var done by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(600)
+            open.animateTo(1f, androidx.compose.animation.core.tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            done = true
+        }
+        if (done) return
+        androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxSize()) {
+            val half = maxWidth / 2
+            val shift = half * open.value
+            val shade = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                listOf(androidx.compose.ui.graphics.Color.Black, androidx.compose.ui.graphics.Color(0xFF0B0B0D))
+            )
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier
+                    .offset(x = -shift)
+                    .width(half)
+                    .fillMaxHeight()
+                    .background(shade)
+            )
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier
+                    .offset(x = half + shift)
+                    .width(half)
+                    .fillMaxHeight()
+                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        listOf(androidx.compose.ui.graphics.Color(0xFF0B0B0D), androidx.compose.ui.graphics.Color.Black)
+                    ))
+            )
         }
     }
 

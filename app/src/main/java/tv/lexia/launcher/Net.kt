@@ -132,7 +132,9 @@ object Net {
             while (o.outWidth / (s * 2) >= maxWidth) s *= 2
             val d = BitmapFactory.Options()
             d.inSampleSize = s
-            if (opaque) d.inPreferredConfig = Bitmap.Config.RGB_565
+            // Full colour (no banding in skies and dark scenes); 16-bit colour only in light mode,
+            // where memory is short.
+            if (opaque && Fx.lite) d.inPreferredConfig = Bitmap.Config.RGB_565
             BitmapFactory.decodeByteArray(data, 0, data.size, d)
         } catch (e: Throwable) {
             null

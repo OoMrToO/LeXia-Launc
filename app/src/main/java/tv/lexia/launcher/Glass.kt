@@ -19,7 +19,10 @@ import java.lang.ref.WeakReference
 object Glass {
     private var shown: WeakReference<View>? = null
 
-    fun toast(ctx: Context, text: CharSequence, long: Boolean = false) {
+    fun toast(ctx: Context, text: CharSequence, long: Boolean = false, force: Boolean = false) {
+        // Sinema modu: while a film plays, LeXia says nothing from behind it (only what the player
+        // screen itself asks for, and the sleep warning, get through).
+        if (!force && com.nuvio.tv.LeXiaCinema.quiet && ctx !is PlayerActivity) return
         val a = ctx as? Activity
         val root = a?.takeIf { !it.isFinishing && !it.isDestroyed }?.findViewById<ViewGroup>(android.R.id.content) as? FrameLayout
         if (a == null || root == null || !a.hasWindowFocus() && !root.isAttachedToWindow) {
