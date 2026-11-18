@@ -576,7 +576,7 @@ class SettingsActivity : Activity() {
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
-                value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else "" }),
+                value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else if (Sleep.afterPlayback) "Film bitince uyku" else "" }),
 
             Header("SİSTEM"),
             sub("Güvenlik", "Ayarları ve uygulama silmeyi PIN ile kilitle.", { safetyPage() },
@@ -1069,13 +1069,18 @@ class SettingsActivity : Activity() {
                 "Uyku zamanlayıcısı",
                 "Süre dolunca TV uykuya geçer. Bir dakika önce ekranda uyarı çıkar; o sırada kumandada bir tuşa basarsan 30 dakika ertelenir.",
                 value = {
-                    if (Sleep.minutesLeft > 0) "Kapanış ${Sleep.endsText(prefs.clock24)}  ·  ${Sleep.minutesLeft} dk kaldı" else "Kapalı"
+                    when {
+                        Sleep.minutesLeft > 0 -> "Kapanış ${Sleep.endsText(prefs.clock24)}  ·  ${Sleep.minutesLeft} dk kaldı"
+                        Sleep.afterPlayback -> "Film ya da bölüm bitince"
+                        else -> "Kapalı"
+                    }
                 },
                 action = {
-                    val opts = listOf(0, 30, 60, 90, 120)
-                    val names = listOf("Kapalı", "30 dakika", "1 saat", "1,5 saat", "2 saat")
+                    val opts = listOf(0, -1, 30, 60, 90, 120)
+                    val names = listOf("Kapalı", "Bu film ya da bölüm bitince", "30 dakika", "1 saat", "1,5 saat", "2 saat")
                     Dialogs.choose(this, "Uyku zamanlayıcısı", names) { i ->
-                        if (opts[i] == 0) Sleep.cancel() else Sleep.start(this, opts[i])
+                        Sleep.afterPlayback = opts[i] == -1
+                        if (opts[i] <= 0) Sleep.cancel() else Sleep.start(this, opts[i])
                         refreshValues()
                     }
                 }

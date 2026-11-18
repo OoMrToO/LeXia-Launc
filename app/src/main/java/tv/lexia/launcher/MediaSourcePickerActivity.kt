@@ -84,6 +84,7 @@ class MediaSourcePickerActivity : Activity() {
     private lateinit var sourceControls: LinearLayout
     private lateinit var sortButton: TextView
     private lateinit var groupButton: TextView
+    private lateinit var sleepButton: TextView
     private lateinit var allButton: TextView
     private var sortByQuality = true
     private var groupByProvider = true
@@ -261,6 +262,16 @@ class MediaSourcePickerActivity : Activity() {
             }
         }
         sourceControls.addView(allButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        // The TV sleeps when this film (or episode) ends.
+        sleepButton = action("").apply {
+            setOnClickListener {
+                Sleep.afterPlayback = !Sleep.afterPlayback
+                updateSourceControls()
+                Glass.toast(this@MediaSourcePickerActivity,
+                    if (Sleep.afterPlayback) "Bitince TV bir dakikalık uyarıdan sonra uykuya geçecek" else "Bitince uyku kapandı")
+            }
+        }
+        sourceControls.addView(sleepButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
         root.addView(sourceControls)
 
         scroll = ScrollView(this).apply {
@@ -283,6 +294,7 @@ class MediaSourcePickerActivity : Activity() {
         sortButton.text = if (sortByQuality) "Sırala: Kalite" else "Sırala: Ad"
         groupButton.text = if (groupByProvider) "Grupla: Sağlayıcı" else "Grupla: Tümü"
         allButton.visibility = if (favoriteName.isNotBlank()) View.VISIBLE else View.GONE
+        sleepButton.text = if (Sleep.afterPlayback) "Bitince uyu: Açık" else "Bitince uyu: Kapalı"
     }
 
     private fun clearContent(showSourceControls: Boolean = false) {
@@ -771,6 +783,14 @@ class MediaSourcePickerActivity : Activity() {
         status.text = message
         clearContent()
 
+        // Sources found for this a little while ago: on the page (and the best one started) at
+        // once; the fresh search below adds what is new.
+        val kept = memory.kept(key)
+        if (kept.isNotEmpty()) {
+            addStreams(kept)
+            if (this.auto != Auto.NO) playBestNow()
+        }
+
         var open = 2
         fun partial(part: List<MediaStream>) = runOnUiThread {
             if (mine == generation && !isFinishing) addStreams(part)
@@ -835,6 +855,9 @@ class MediaSourcePickerActivity : Activity() {
             return
         }
         updateStatus()
+        val found = streams
+        val key = mediaKey
+        worker.submit { memory.keep(key, found) }
         if (auto != Auto.NO) playBestNow()
     }
 
@@ -862,6 +885,8 @@ class MediaSourcePickerActivity : Activity() {
         else -> 0
     }
 
+    private val memory by lazy { SourceMemory(this) }
+
     private fun score(stream: MediaStream) = stream.tags.score(screenHeight, screenHdr, wantDubbed)
 
     /**
@@ -876,6 +901,8 @@ class MediaSourcePickerActivity : Activity() {
             .withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
+                    // Sites that played before come before ones that would not open.
+                    .thenByDescending { memory.trust(sourceName(it.value)) }
                     .thenByDescending { score(it.value) }
                     .thenBy { it.index }
             )
@@ -952,6 +979,7 @@ class MediaSourcePickerActivity : Activity() {
             store.saveLast(watchKey, key)
             if (markWatched && watchKey.isNotBlank() && watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
             WatchHistory(applicationContext).finished(film, key)
+            Sleep.playbackFinished(applicationContext)
         }
         LeXiaPlayerActivity.progress = object : LeXiaProgress {
             override fun positionMs(key: String): Long = store.resumePositionMs(key)
@@ -1007,9 +1035,22 @@ class MediaSourcePickerActivity : Activity() {
         if (requestCode != REQUEST_PLAY) return
         val stream = playing
         playing = null
+        // What LeXia learns about the site: it would not open, or it played.
+        if (stream != null) {
+            val site = sourceName(stream)
+            val store = MediaPlaybackStore(this)
+            if (resultCode == PlayerActivity.RESULT_FAILED) {
+                memory.failed(site)
+                val key = mediaKey
+                worker.submit { memory.drop(key, stream.url) }
+            } else if (store.progress(mediaKey) != null || store.isFinished(mediaKey)) {
+                memory.played(site)
+            }
+        }
         // LeXia's own player marks a finished film or episode; İzlediklerim counts it.
         if (mediaKey.isNotBlank() && MediaPlaybackStore(this).isFinished(mediaKey)) {
             WatchHistory(applicationContext).finished(film, mediaKey)
+            Sleep.playbackFinished(applicationContext)
         }
         when (resultCode) {
             PlayerActivity.RESULT_FAILED -> {

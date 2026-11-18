@@ -18,7 +18,8 @@ android {
         val tmdbApiKey = System.getenv("TMDB_API_KEY").orEmpty()
         buildConfigField("String", "TMDB_API_KEY", "\"${tmdbApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         // NuvioTV's build settings its player reads (public build values; LeXia has no reports or Dolby Vision bridge).
-        buildConfigField("String", "INTRODB_API_URL", "\"\"")
+        // IntroDB (introdb.app): free intro/recap/outro times by IMDb id; its API answers at api.introdb.app.
+        buildConfigField("String", "INTRODB_API_URL", "\"https://api.introdb.app/\"")
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"\"")
         buildConfigField("String", "SIMKL_APP_NAME", "\"nuvio\"")
         buildConfigField("String", "PLAYBACK_REPORTS_BASE_URL", "\"\"")

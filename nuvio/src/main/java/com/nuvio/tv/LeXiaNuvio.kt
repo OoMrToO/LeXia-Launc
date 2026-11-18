@@ -338,6 +338,31 @@ object LeXiaNuvio {
     }
 
     /**
+     * LeXia's choices among the player settings NuvioTV leaves off by default, written once into
+     * Nuvio's own settings store: the next episode's sources are found while this one plays, the
+     * next episode starts in the player (same provider first), and a source that will not start
+     * gives way to the next one. Raise [PLAYER_DEFAULTS] to write a new set.
+     */
+    fun applyPlayerDefaults(context: Context) {
+        val app = context.applicationContext
+        val marks = app.getSharedPreferences("lexia_nuvio", Context.MODE_PRIVATE)
+        if (marks.getInt("player_defaults", 0) >= PLAYER_DEFAULTS) return
+        val settings = PlayerSettingsDataStore(dataStoreFactory(app), profileManager, app)
+        kotlinx.coroutines.runBlocking {
+            settings.setPreloadNextEpisodeSources(true)
+            settings.setStreamAutoPlayNextEpisodeEnabled(true)
+            settings.setStreamAutoPlayPreferBingeGroupForNextEpisode(true)
+            settings.setStreamAutoPlayMode(com.nuvio.tv.data.local.StreamAutoPlayMode.FIRST_STREAM)
+            settings.setStreamAutoPlayFallbackOnFailure(true)
+            settings.setStreamReuseLastLinkCacheHours(6)
+            settings.setSkipIntroEnabled(true)
+        }
+        marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
+    }
+
+    private const val PLAYER_DEFAULTS = 1
+
+    /**
      * Nuvio's player view model (ui/screens/player/PlayerViewModel.kt), built as Hilt builds it in
      * NuvioTV. [arguments] are its route arguments; [progress] is LeXia's record of where films stop.
      */

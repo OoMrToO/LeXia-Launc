@@ -30,6 +30,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val extras = intent.extras
         val arguments: Map<String, String?> = extras?.keySet()?.associateWith { extras.getString(it) }.orEmpty()
+        LeXiaNuvio.applyPlayerDefaults(this)
         val keep = progress
         val viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
