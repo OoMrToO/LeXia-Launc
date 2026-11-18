@@ -218,6 +218,11 @@ class DetailActivity : Activity() {
             val ep = ui.text(Episodes.line(it), 21, C.ACCENT, 600)
             top.addView(ep, ui.ll(w, w, top = 16))
         }
+        // Tonight's plan: when it ends if started now (from where it was left), and by when to start.
+        tonight = ui.text("", 20, C.TEXT, 500)
+        tonight.alpha = 0.9f
+        top.addView(tonight, ui.ll(w, w, top = 14))
+        updateTonight()
         // Where it streams in Turkey ("Nerede izlenir"); nothing is played here.
         val platforms = (listOfNotNull(film.provider.takeIf { it.isNotEmpty() }) + film.where).distinct()
         if (platforms.isNotEmpty()) {
@@ -886,6 +891,56 @@ class DetailActivity : Activity() {
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
+    private lateinit var tonight: TextView
+
+    private fun timeOfDay(at: Long): String =
+        java.text.SimpleDateFormat(if (prefs.clock24) "HH:mm" else "h:mm a", Locale("tr", "TR")).format(java.util.Date(at))
+
+    /**
+     * "Şimdi başlarsan bitiş 23:12", "Kaldığın yerden 42 dk · bitiş 21:54", for a series "Bir bölüm
+     * 47 dk · bitiş 21:54 · iki bölüm 22:41"; late in the evening also by when to start for it to
+     * end before midnight. Nothing for a film not out yet or of unknown length.
+     */
+    private fun updateTonight() {
+        if (!::tonight.isInitialized) return
+        val minutes = film.runtime
+        if (minutes <= 0 || isUpcoming() || cinemaState.isNotEmpty()) {
+            tonight.visibility = View.GONE
+            return
+        }
+        val now = System.currentTimeMillis()
+        val store = MediaPlaybackStore(this)
+        val last = store.last(film.key)
+        val left = if (!film.isSeries && last.isNotBlank() && store.resumePositionMs(last) > 0) {
+            val dur = store.durationMs(last).takeIf { it > 0 } ?: minutes * 60_000L
+            (dur - store.resumePositionMs(last)).coerceAtLeast(60_000L)
+        } else minutes * 60_000L
+        val parts = ArrayList<String>()
+        if (film.isSeries) {
+            parts.add("Bir bölüm $minutes dk")
+            parts.add("bitiş ${timeOfDay(now + left)}")
+            parts.add("iki bölüm ${timeOfDay(now + 2 * left)}")
+        } else {
+            parts.add(if (left < minutes * 60_000L) "Kaldığın yerden ${left / 60_000L} dk" else "Şimdi başlarsan")
+            parts.add("bitiş ${timeOfDay(now + left)}")
+        }
+        // From six in the evening: if it would run past midnight, the latest start that ends by then.
+        val c = java.util.Calendar.getInstance()
+        val hour = c.get(java.util.Calendar.HOUR_OF_DAY)
+        if (hour >= 18 && !film.isSeries) {
+            c.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 0); c.set(java.util.Calendar.SECOND, 0)
+            val midnight = c.timeInMillis
+            if (now + left > midnight) {
+                parts.add("gece yarısını geçer")
+            } else if (midnight - (now + left) < 45 * 60_000L) {
+                parts.add("gece yarısından önce bitmesi için en geç başlangıç ${timeOfDay(midnight - left)}")
+            }
+        }
+        tonight.text = "◷  " + parts.joinToString("  ·  ")
+        tonight.visibility = View.VISIBLE
+    }
+
     private lateinit var trailerStage: FrameLayout
     private var pageTrailer: HeroTrailer? = null
     private val trailerSoon = Runnable {
@@ -917,6 +972,7 @@ class DetailActivity : Activity() {
     override fun onResume() {
         super.onResume()
         queuePageTrailer()
+        updateTonight()
         if (::frame.isInitialized) Fx.zoomReset(frame)
         // Back from the player: "Oynat" says where it was left, the episodes how far they were watched.
         updatePlayBtn()
@@ -954,6 +1010,7 @@ class DetailActivity : Activity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 cinemaState = state
                 updatePlayBtn()
+                updateTonight()
             }
         }.start()
     }
