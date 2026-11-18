@@ -1,5 +1,8 @@
 package tv.lexia.launcher
 
+import com.nuvio.tv.LeXiaPlayerActivity
+import com.nuvio.tv.data.repository.LeXiaProgress
+import com.nuvio.tv.domain.model.Subtitle as NuvioSubtitle
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -904,6 +907,10 @@ class MediaSourcePickerActivity : Activity() {
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
+        if (prefs.nuvioPlayer) {
+            playInNuvio(stream)
+            return
+        }
         val intent = try {
             PlayerActivity.intent(
                 this,
@@ -928,6 +935,69 @@ class MediaSourcePickerActivity : Activity() {
         startActivityForResult(intent, REQUEST_PLAY)
     }
 
+    /**
+     * NuvioTV's own player screen for [stream]. Where the film was left goes to LeXia's record
+     * (the "Devam et" button reads it); its subtitles and the add-ons' go with it.
+     */
+    private fun playInNuvio(stream: MediaStream) {
+        val store = MediaPlaybackStore(this)
+        val watchKey = film.key
+        val markWatched = !film.isSeries
+        fun finished(key: String) {
+            store.clear(key)
+            store.markFinished(key)
+            store.saveLast(watchKey, key)
+            if (markWatched && watchKey.isNotBlank() && watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
+        }
+        LeXiaPlayerActivity.progress = object : LeXiaProgress {
+            override fun positionMs(key: String): Long = store.resumePositionMs(key)
+            override fun durationMs(key: String): Long = store.durationMs(key)
+            override fun save(key: String, positionMs: Long, durationMs: Long) {
+                if (store.save(key, positionMs, durationMs)) finished(key) else store.saveLast(watchKey, key)
+            }
+            override fun finished(key: String) = finished(key)
+        }
+        val episode = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
+        val season = episode?.season ?: typedSeason.takeIf { film.isSeries && it > 0 }
+        val number = episode?.episode ?: typedEpisode.takeIf { film.isSeries && it > 0 }
+        fun image(path: String, size: String) =
+            path.takeIf { it.isNotBlank() }?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/$size$it" }
+        val subtitles = subtitlesFor(stream).mapIndexed { i, track ->
+            NuvioSubtitle(
+                id = "lexia-$i",
+                url = track.uri,
+                lang = track.language.ifBlank { "und" },
+                addonName = track.label.ifBlank { stream.addonName },
+                addonLogo = null,
+                isStreamProvided = i < stream.subtitles.size
+            )
+        }
+        val intent = LeXiaPlayerActivity.intent(
+            this,
+            streamUrl = stream.url,
+            title = film.title,
+            contentId = imdb.ifBlank { "tmdb:${film.id}" },
+            contentType = if (film.isSeries) "series" else "movie",
+            videoId = mediaKey,
+            season = season,
+            episode = number,
+            episodeTitle = episode?.title?.takeIf { it.isNotBlank() },
+            year = film.year.takeIf { it.isNotBlank() },
+            poster = image(film.poster, "w500"),
+            backdrop = image(film.backdrop, "w1280"),
+            logo = image(film.logo, "w500"),
+            headers = stream.headers,
+            streamName = stream.name,
+            addonName = stream.addonName,
+            streamDescription = stream.description.takeIf { it.isNotBlank() },
+            filename = stream.fileName.takeIf { it.isNotBlank() },
+            subtitles = subtitles
+        )
+        playing = stream
+        focusedUrl = stream.url
+        startActivityForResult(intent, REQUEST_PLAY)
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_PLAY) return
@@ -944,6 +1014,18 @@ class MediaSourcePickerActivity : Activity() {
             PlayerActivity.RESULT_NEXT -> {
                 // The next episode starts on the source this one played from.
                 if (stream != null) remember("choices", signature(stream))
+                // NuvioTV's player names the episode it moves on to (it may have played on in place).
+                val s = data?.getIntExtra(LeXiaPlayerActivity.RESULT_SEASON, -1) ?: -1
+                val e = data?.getIntExtra(LeXiaPlayerActivity.RESULT_EPISODE, -1) ?: -1
+                val named = episodes.indexOfFirst { it.season == s && it.episode == e }
+                if (named >= 0) {
+                    loadEpisodeStreams(named, Auto.NEXT_EPISODE)
+                    return
+                }
+                if (s > 0 && e > 0 && episodes.isEmpty()) {
+                    loadTypedEpisode(s, e, Auto.NEXT_EPISODE)
+                    return
+                }
                 val next = nextEpisode()
                 if (next != null) next.second(Auto.NEXT_EPISODE) else loadEpisodes()
             }

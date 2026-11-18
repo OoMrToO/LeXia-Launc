@@ -121,6 +121,7 @@ favSource text
 favSourceName text
 heroTrailer bool
 nuvioEngine bool
+nuvioPlayer bool
 choices text
 episodes text
 trailerNative bool
