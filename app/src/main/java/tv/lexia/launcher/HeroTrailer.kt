@@ -34,6 +34,9 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     /** Called when the trailer ends or fails, so the hero can carry on. */
     var onFinished: (() -> Unit)? = null
 
+    /** Called with true when the trailer's first frame shows, false when the picture comes back. */
+    var onShowing: ((Boolean) -> Unit)? = null
+
     fun start(youtubeId: String) {
         stop()
         if (youtubeId.isBlank()) return
@@ -41,7 +44,8 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         active = true
         finder.execute {
             val source = try {
-                YouTubeStreams.find(youtubeId, 720, TrailerDecoders::canDecode)
+                // Full HD: sharp on any TV, light enough to decode beside the home screen.
+                YouTubeStreams.find(youtubeId, 1080, TrailerDecoders::canDecode)
             } catch (_: Exception) {
                 null
             }
@@ -62,7 +66,10 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         exo.setVideoTextureView(texture)
         exo.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
-                if (mine == token) texture.animate().alpha(1f).setDuration(1400).start()
+                if (mine == token) {
+                    texture.animate().alpha(1f).setDuration(1400).start()
+                    onShowing?.invoke(true)
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -94,6 +101,7 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         active = false
         player?.release()
         player = null
+        if (view != null) onShowing?.invoke(false)
         view?.let { v ->
             v.animate().cancel()
             v.animate().alpha(0f).setDuration(600).withEndAction { stage.removeView(v) }.start()

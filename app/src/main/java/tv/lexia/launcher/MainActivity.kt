@@ -356,7 +356,10 @@ class MainActivity : Activity() {
             stage.addView(b, ui.fl(m, m))
         }
         frame.addView(stage, ui.fl(m, m))
-        heroTrailer = HeroTrailer(this, stage).also { t -> t.onFinished = { schedule() } }
+        heroTrailer = HeroTrailer(this, stage).also { t ->
+            t.onFinished = { schedule() }
+            t.onShowing = { on -> trailerLight(on) }
+        }
 
         // Dip to black between films, like a cut in the cinema.
         blackout = View(this)
@@ -3570,6 +3573,21 @@ class MainActivity : Activity() {
      * After a few seconds on a film, its picture turns into its trailer without sound; the film
      * stays until the trailer ends (Ayarlar › Görünüm). Not on weak TVs, nor in the screensaver.
      */
+    /**
+     * While the trailer plays the shades over the picture lighten, so it shows in full colour:
+     * only the side and the bottom behind the text stay (lighter), the vignette and the top go.
+     */
+    private fun trailerLight(on: Boolean) {
+        if (scrims.size < 4) return
+        val (vignette, left, bottom, top) = scrims
+        val time = if (on) 1400L else 600L
+        vignette.animate().alpha(if (on) 0f else 1f).setDuration(time).start()
+        top.animate().alpha(if (on) 0.3f else 1f).setDuration(time).start()
+        left.animate().alpha(if (on) 0.7f else 1f).setDuration(time).start()
+        bottom.animate().alpha(if (on) 0.8f else 1f).setDuration(time).start()
+        if (::boost.isInitialized) boost.animate().alpha(if (on) 0f else boostLevel).setDuration(time).start()
+    }
+
     private fun startHeroTrailer() {
         val p = picks.getOrNull(pickIndex) ?: return
         if (!prefs.heroTrailer || Fx.lite || idle || level != 0 || !hasWindowFocus() || menu != null) return

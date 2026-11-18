@@ -166,6 +166,8 @@ class TrailerActivity : Activity() {
         val tallest = windowManager.defaultDisplay.supportedModes.maxOfOrNull { it.physicalHeight } ?: 1080
         if (Fx.lite) 720 else if (tallest >= 2000) 2160 else 1080
     }
+    /** HDR trailers on an HDR screen (the player draws on a surface, which shows HDR). */
+    private val hdr by lazy { !Fx.lite && TrailerDecoders.screenHdr(this) }
     private lateinit var ui: Ui
     private lateinit var prefs: Prefs
     private lateinit var frame: FrameLayout
@@ -372,7 +374,7 @@ class TrailerActivity : Activity() {
         pendingStart = startSec
         handler.postDelayed(nativeTooSlow, 8_000)
         finder.execute {
-            val source = YouTubeStreams.find(wanted, maxHeight, TrailerDecoders::canDecode)
+            val source = YouTubeStreams.find(wanted, maxHeight, TrailerDecoders::canDecode, hdr)
             runOnUiThread {
                 if (mine != findGeneration || done || isFinishing || wanted != id) return@runOnUiThread
                 handler.removeCallbacks(nativeTooSlow)
@@ -834,7 +836,8 @@ class TrailerActivity : Activity() {
             val next = list[at + 1]
             if (nativeMode) {
                 val height = maxHeight
-                finder.execute { YouTubeStreams.find(next, height, TrailerDecoders::canDecode) }
+                val wantsHdr = hdr
+                finder.execute { YouTubeStreams.find(next, height, TrailerDecoders::canDecode, wantsHdr) }
             } else {
                 web?.evaluateJavascript("prep('$next')", null)
             }
