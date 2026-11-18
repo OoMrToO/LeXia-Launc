@@ -107,19 +107,22 @@ class ScreensTest {
         }
 
         // A favourite provider: the film starts on its best source, no list is waited for.
-        Prefs(app).favSource = "liderfilm-id"
-        Prefs(app).favSourceName = "Liderfilm"
-        ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
-            settle(3000)
-            scenario.onActivity { a ->
-                val started = shadowOf(a).nextStartedActivityForResult
-                val uri = started?.intent?.getStringExtra("media.uri").orEmpty()
-                println("FAVORITE started=${started?.intent?.component?.className} uri=$uri")
-                check(started != null && uri.contains("Liderfilm")) { "Favourite source did not start: $uri" }
+        // It needs a real Nuvio repository (-Dlexia.repo) for the provider's name; without one it is skipped.
+        if (address.isNotBlank()) {
+            Prefs(app).favSource = "liderfilm-id"
+            Prefs(app).favSourceName = "Liderfilm"
+            ActivityScenario.launch<MediaSourcePickerActivity>(intent).use { scenario ->
+                settle(3000)
+                scenario.onActivity { a ->
+                    val started = shadowOf(a).nextStartedActivityForResult
+                    val uri = started?.intent?.getStringExtra("media.uri").orEmpty()
+                    println("FAVORITE started=${started?.intent?.component?.className} uri=$uri")
+                    check(started != null && uri.contains("Liderfilm")) { "Favourite source did not start: $uri" }
+                }
             }
+            Prefs(app).favSource = ""
+            Prefs(app).favSourceName = ""
         }
-        Prefs(app).favSource = ""
-        Prefs(app).favSourceName = ""
 
         // A series: the episode list from Nuvio's details source (Cinemeta), with stills.
         val series = Pick(
