@@ -11,6 +11,15 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import java.io.IOException
 
+/** A release date alone cannot establish that a film is still showing in cinemas. */
+internal enum class TrailerReleasePhase { UPCOMING, RELEASES_TODAY, PAST_OR_UNKNOWN }
+
+internal fun trailerReleasePhase(daysUntil: Int?): TrailerReleasePhase = when {
+    daysUntil == null || daysUntil < 0 -> TrailerReleasePhase.PAST_OR_UNKNOWN
+    daysUntil == 0 -> TrailerReleasePhase.RELEASES_TODAY
+    else -> TrailerReleasePhase.UPCOMING
+}
+
 /**
  * Fetches a YouTube stream in pieces. YouTube slows a stream that is asked for in one go down to
  * a trickle, but serves pieces named in the address ("&range=0-10485759") at full speed. Other

@@ -225,6 +225,8 @@ class TrailerActivity : Activity() {
     private var progress = 0f
     /** When a trailer ends: what to do next, instead of closing. */
     private var endCard: View? = null
+    /** The end card's primary action follows the current film's accent colour. */
+    private var accentAction: TextView? = null
     private var countdown: Runnable? = null
 
     private val skipEnd = Runnable { skipSum = 0; bubble.animate().alpha(0f).setDuration(D.MED).start() }
@@ -312,6 +314,7 @@ class TrailerActivity : Activity() {
         center.gravity = Gravity.CENTER
         center.setPadding(ui.u(12), 0, 0, 0)
         center.background = ui.round(Color.argb(60, 255, 255, 255), 75, 1, Color.argb(70, 255, 255, 255))
+        center.elevation = ui.uf(8)
         center.alpha = 0f
         val clp = ui.fl(ui.u(150), ui.u(150), Gravity.CENTER)
         clp.bottomMargin = ui.u(130)
@@ -985,7 +988,10 @@ class TrailerActivity : Activity() {
     /** The film of the trailer on screen, when it is known. */
     private fun film(): Pick? = films.firstOrNull { it.trailer == id || it.trailers.any { v -> v.key == id } }
 
-    private fun upcoming(p: Pick) = Episodes.daysUntil(p.release)?.let { it > 0 } == true
+    private fun releasePhase(p: Pick): TrailerReleasePhase =
+        trailerReleasePhase(p.release.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil))
+
+    private fun upcoming(p: Pick) = releasePhase(p) == TrailerReleasePhase.UPCOMING
 
     /** "Listeme ekle" (or, before its release, "Çıkınca haber ver"), as a button that switches. */
     private fun listButton(p: Pick, primary: Boolean): TextView {
@@ -1078,10 +1084,11 @@ class TrailerActivity : Activity() {
         }
 
         if (p != null) {
-            val releaseStatus = when {
-                upcoming(p) -> "YAKINDA SİNEMALARDA"
-                p.release.isNotEmpty() && Episodes.daysUntil(p.release) != null -> "ŞU AN SİNEMALARDA"
-                else -> ""
+            val phase = releasePhase(p)
+            val releaseStatus = when (phase) {
+                TrailerReleasePhase.UPCOMING -> "YAKINDA SİNEMALARDA"
+                TrailerReleasePhase.RELEASES_TODAY -> "BUGÜN VİZYONA GİRİYOR"
+                TrailerReleasePhase.PAST_OR_UNKNOWN -> ""
             }
             if (releaseStatus.isNotEmpty()) {
                 val statusText = ui.text(releaseStatus, 19, Color.WHITE, 800)
@@ -1091,8 +1098,8 @@ class TrailerActivity : Activity() {
                 card.addView(statusText, ui.ll(ui.wrap, ui.wrap, top = 22))
             }
             val line = when {
-                upcoming(p) -> "Vizyona girdiğinde LeXia'da haber vereyim mi?"
-                releaseStatus == "ŞU AN SİNEMALARDA" -> "Film şu an sinemalarda gösterimde."
+                phase == TrailerReleasePhase.UPCOMING -> "Vizyona girdiğinde LeXia'da haber vereyim mi?"
+                phase == TrailerReleasePhase.RELEASES_TODAY -> "Film bugün vizyona giriyor."
                 p.id > 0 -> "Hazırsan filmi LeXia kaynaklarında arayabilirsin."
                 else -> "Filmi listene ekleyip daha sonra kolayca bulabilirsin."
             }
@@ -1135,6 +1142,10 @@ class TrailerActivity : Activity() {
         shut.setOnClickListener { close() }
         row.addView(shut)
         card.addView(row, ui.ll(ui.wrap, ui.wrap, top = 40))
+        (row.getChildAt(0) as? TextView)?.let {
+            accentAction = it
+            styleAccentAction(it)
+        }
         val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
         lp.leftMargin = ui.u(110)
         lp.bottomMargin = ui.u(120)
@@ -1181,7 +1192,7 @@ class TrailerActivity : Activity() {
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         img.setBackgroundColor(Color.parseColor("#1C2A3A"))
         pic.addView(img, ui.fl(ui.match, ui.match))
-        val ring = Ring(this)
+        val ring = Ring(this, barColor)
         val rlp = ui.fl(ui.u(64), ui.u(64), Gravity.BOTTOM or Gravity.END)
         rlp.setMargins(0, 0, ui.u(18), ui.u(18))
         pic.addView(ring, rlp)
@@ -1235,6 +1246,7 @@ class TrailerActivity : Activity() {
         stopCountdown()
         endCard?.let { frame.removeView(it) }
         endCard = null
+        accentAction = null
         // The badges were lent to the card: back under the title.
         if (infoMeta.parent !== infoTitle.parent) {
             (infoMeta.parent as? android.view.ViewGroup)?.removeView(infoMeta)
@@ -1277,12 +1289,12 @@ class TrailerActivity : Activity() {
     }
 
     /** The five-second ring on the next trailer's card: a white arc that empties. */
-    private class Ring(ctx: Context) : View(ctx) {
+    private class Ring(ctx: Context, accent: Int) : View(ctx) {
         var fraction = 1f
             set(v) { field = v; invalidate() }
         private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(110, 0, 0, 0) }
         private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.argb(70, 255, 255, 255) }
-        private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
+        private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = accent; strokeCap = Paint.Cap.ROUND }
         private val num = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
 
         override fun onDraw(c: Canvas) {
@@ -1444,6 +1456,8 @@ class TrailerActivity : Activity() {
 
     /** The bar and its knob take the film's own colour, softened toward white. */
     private fun filmColor(p: Pick) {
+        barColor = Color.WHITE
+        applyAccent()
         if (p.backdrop.isEmpty()) return
         val key = id
         Thread {
@@ -1452,10 +1466,43 @@ class TrailerActivity : Activity() {
             runOnUiThread {
                 if (isFinishing || key != id) return@runOnUiThread
                 barColor = if (c == 0) Color.WHITE else Fx.blend(c, Color.WHITE, 0.3f)
-                barFill.background = ui.round(barColor, 4)
-                knob.background = ui.round(barColor, 13, 6, Color.argb(50, 255, 255, 255))
+                applyAccent()
             }
         }.start()
+    }
+
+    private fun applyAccent() {
+        barFill.background = ui.round(barColor, 4)
+        knob.background = ui.round(barColor, 13, 6, Color.argb(50, 255, 255, 255))
+        infoLabel.setTextColor(barColor)
+        center.setTextColor(accentInk())
+        center.background = ui.round(accentWash(54), 75, 2, accentWash(210))
+        bubble.setTextColor(accentInk())
+        bubble.background = ui.round(barColor, 30, 1, accentWash(210))
+        accentAction?.let(::styleAccentAction)
+    }
+
+    private fun accentInk(): Int = if (Color.luminance(barColor) > 0.55f) C.INK else Color.WHITE
+
+    private fun accentWash(alpha: Int): Int =
+        Color.argb(alpha, Color.red(barColor), Color.green(barColor), Color.blue(barColor))
+
+    /** The main end-card action follows the film colour and becomes a clear white focus plate. */
+    private fun styleAccentAction(button: TextView) {
+        fun style(focused: Boolean) {
+            button.background = ui.round(
+                if (focused) Color.WHITE else barColor,
+                D.PANEL,
+                if (focused) 0 else 1,
+                if (focused) Color.WHITE else accentWash(210)
+            )
+            button.setTextColor(if (focused) C.INK else accentInk())
+        }
+        style(button.isFocused)
+        button.setOnFocusChangeListener { view, focused ->
+            style(focused)
+            ui.lift(view, focused, 1.08f, 18)
+        }
     }
 
     override fun finish() {
