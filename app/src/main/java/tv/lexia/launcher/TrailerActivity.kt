@@ -1142,12 +1142,21 @@ class TrailerActivity : Activity() {
 
         // Marathon's five-second up-next countdown remains independent of the end-card actions.
         val next = at + 1
-        if (list.size > 1 && next < list.size) box.addView(upNext(next), run {
+        if (list.size > 1 && next < list.size) {
+            val marathonProgress = ui.text("MARATON  ·  ${at + 1} / ${list.size}", 18, C.TEXT2, 700)
+            marathonProgress.letterSpacing = 0.14f
+            marathonProgress.setPadding(ui.u(110), 0, 0, ui.u(16))
+            box.addView(marathonProgress, ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = ui.u(110)
+                bottomMargin = ui.u(500)
+            })
+            box.addView(upNext(next), run {
             val l = ui.fl(ui.u(480), ui.wrap, Gravity.BOTTOM or Gravity.END)
             l.rightMargin = ui.u(110)
             l.bottomMargin = ui.u(120)
             l
-        })
+            })
+        }
         frame.addView(box, ui.fl(ui.match, ui.match))
         endCard = box
         card.alpha = 0f
@@ -1186,6 +1195,9 @@ class TrailerActivity : Activity() {
         txt.addView(nt, ui.ll(ui.match, ui.wrap, top = 6))
         val left = ui.text("5 saniye içinde başlıyor", 18, C.TEXT2, 500)
         txt.addView(left, ui.ll(ui.wrap, ui.wrap, top = 6))
+        val action = ui.text("OK  ·  HEMEN GEÇ", 16, C.TEXT, 700)
+        action.letterSpacing = 0.08f
+        txt.addView(action, ui.ll(ui.wrap, ui.wrap, top = 12))
         box.addView(txt)
         films.firstOrNull { it.trailer == list[next] }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
             Thread {
@@ -1196,7 +1208,7 @@ class TrailerActivity : Activity() {
         box.setOnFocusChangeListener { v, f ->
             ui.lift(v, f, 1.04f, 20)
             box.background = ui.round(if (f) Color.argb(230, 255, 255, 255) else Color.argb(160, 20, 20, 26), 24, 1, Color.argb(40, 255, 255, 255))
-            for (tv in listOf(nt, left)) tv.setTextColor(if (f) C.INK else if (tv === nt) C.TEXT else C.TEXT2)
+            for (tv in listOf(nt, left, action)) tv.setTextColor(if (f) C.INK else if (tv === nt) C.TEXT else C.TEXT2)
         }
         box.setOnClickListener { stopCountdown(); nextTrailer() }
         var s = 5
