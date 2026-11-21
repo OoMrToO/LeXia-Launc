@@ -734,18 +734,28 @@ class TrailerActivity : Activity() {
             if (p.year.isNotEmpty() && !upcoming(p)) bits.add(p.year)
             if (p.genres.isNotEmpty()) bits.add(p.genres.take(2).joinToString(", "))
             infoMeta.addView(ui.text(bits.joinToString("   ·   "), 21, C.TEXT2, 500))
-            // Which trailer this is: "TÜRKÇE DUBLAJ", "TÜRKÇE ALTYAZILI", "ORİJİNAL DİL".
+            // Identify both the trailer format and its language using the catalogue label.
             p.trailers.firstOrNull { it.key == id }?.let { v ->
                 val l = v.label.lowercase(java.util.Locale("tr", "TR"))
-                val text = when {
-                    "dublaj" in l -> "TÜRKÇE DUBLAJ"
-                    "altyazı" in l -> "TÜRKÇE ALTYAZILI"
-                    "türkçe" in l -> "TÜRKÇE"
-                    else -> "ORİJİNAL DİL"
+                val language = when {
+                    "dublaj" in l || "turkish" in l || "türkçe" in l -> "TÜRKÇE DUBLAJ"
+                    "altyaz" in l || "subtitled" in l || "sub " in l -> "TÜRKÇE ALTYAZILI"
+                    "original" in l || "orijinal" in l -> "ORİJİNAL SES"
+                    else -> "DİL BELİRTİLMEMİŞ"
                 }
-                val b = ui.certBadge(text)
-                b.letterSpacing = 0.08f
-                infoMeta.addView(b, ui.ll(ui.wrap, ui.wrap, left = 22))
+                val kind = when {
+                    "teaser" in l || "tanıtım" in l -> "TEASER"
+                    "final" in l -> "FİNAL FRAGMANI"
+                    "official" in l || "resmi" in l || "resmî" in l -> "RESMÎ FRAGMAN"
+                    "trailer" in l || "fragman" in l -> "FRAGMAN"
+                    else -> ""
+                }
+                val badgeText = listOf(kind, language).filter { it.isNotEmpty() }.joinToString("  ·  ")
+                if (badgeText.isNotEmpty() && language != "DİL BELİRTİLMEMİŞ") {
+                    val badge = ui.certBadge(badgeText)
+                    badge.letterSpacing = 0.06f
+                    infoMeta.addView(badge, ui.ll(ui.wrap, ui.wrap, left = 22))
+                }
             }
             filmColor(p)
         }
