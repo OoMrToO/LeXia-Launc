@@ -39,12 +39,16 @@ jobs:
         run: gradle testFullDebugUnitTest --no-daemon
       - name: Assemble Android TV variants
         run: gradle assembleFullDebug assembleSetupDebug --no-daemon
+      # PR validation is the tests + successful assembly above. APK retention is optional:
+      # a full GitHub artifact quota must not turn a green build into a failed check.
       - name: Upload Android TV test APKs
+        if: ${{ success() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: lexia-pr-test-apks
           path: |
             app/build/outputs/apk/full/debug/*.apk
             app/build/outputs/apk/setup/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
+          if-no-files-found: warn
+          retention-days: 1
