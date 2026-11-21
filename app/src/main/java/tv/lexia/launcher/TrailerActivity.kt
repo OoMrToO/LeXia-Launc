@@ -1017,7 +1017,7 @@ class TrailerActivity : Activity() {
         shieldTo(1f)
         val box = FrameLayout(this)
         val p = film()
-        // The film's own picture, dim, behind the card.
+        // Keep the film artwork as the emotional anchor of the end card.
         if (p != null && p.backdrop.isNotEmpty()) {
             val img = ImageView(this)
             img.scaleType = ImageView.ScaleType.CENTER_CROP
@@ -1026,17 +1026,25 @@ class TrailerActivity : Activity() {
             val wpx = resources.displayMetrics.widthPixels
             Thread {
                 val b = Net.bitmap("https://image.tmdb.org/t/p/w1280" + p.backdrop, wpx / 2, true)
-                runOnUiThread { if (b != null && !isFinishing) { img.setImageBitmap(b); img.animate().alpha(0.38f).setDuration(D.SLOW).start() } }
+                runOnUiThread {
+                    if (b != null && !isFinishing) {
+                        img.setImageBitmap(b)
+                        img.animate().alpha(0.42f).setDuration(D.SLOW).start()
+                    }
+                }
             }.start()
         }
         val shade = View(this)
-        shade.background = ui.gradient(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, Color.argb(200, 0, 0, 0), Color.argb(60, 0, 0, 0))
+        shade.background = ui.gradient(
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            Color.argb(210, 0, 0, 0), Color.argb(55, 0, 0, 0)
+        )
         box.addView(shade, ui.fl(ui.match, ui.match))
 
         val card = ui.vbox()
         card.clipChildren = false
         card.clipToPadding = false
-        card.addView(ui.label("FRAGMAN BİTTİ"))
+        card.addView(ui.label(if (list.size > 1 && at + 1 < list.size) "BU FRAGMAN SONA ERDİ" else "FRAGMAN SONA ERDİ"))
         val t = ui.text(p?.title ?: currentTitle, 84, C.TEXT, 800)
         t.letterSpacing = -0.02f
         t.maxLines = 2
@@ -1046,32 +1054,71 @@ class TrailerActivity : Activity() {
             (infoMeta.parent as? LinearLayout)?.removeView(infoMeta)
             card.addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 18))
         }
+
         if (p != null) {
-            val line = when {
-                upcoming(p) -> "Vizyona girdiğinde ana ekranda haber vereyim mi?"
-                else -> "Beğendiysen listene ekle, sonra izlemek için hazır olsun."
+            val releaseStatus = when {
+                upcoming(p) -> "YAKINDA SİNEMALARDA"
+                p.release.isNotEmpty() && Episodes.daysUntil(p.release) != null -> "ŞU AN SİNEMALARDA"
+                else -> ""
             }
-            card.addView(ui.text(line, 28, C.TEXT2, 400), ui.ll(ui.wrap, ui.wrap, top = 18))
+            if (releaseStatus.isNotEmpty()) {
+                val statusText = ui.text(releaseStatus, 19, Color.WHITE, 800)
+                statusText.letterSpacing = 0.12f
+                statusText.setPadding(ui.u(16), ui.u(9), ui.u(16), ui.u(9))
+                statusText.background = ui.round(Color.argb(115, 255, 255, 255), 12, 1, Color.argb(65, 255, 255, 255))
+                card.addView(statusText, ui.ll(ui.wrap, ui.wrap, top = 22))
+            }
+            val line = when {
+                upcoming(p) -> "Vizyona girdiğinde LeXia'da haber vereyim mi?"
+                releaseStatus == "ŞU AN SİNEMALARDA" -> "Film şu an sinemalarda gösterimde."
+                p.id > 0 -> "Hazırsan filmi LeXia kaynaklarında arayabilirsin."
+                else -> "Filmi listene ekleyip daha sonra kolayca bulabilirsin."
+            }
+            card.addView(ui.text(line, 27, C.TEXT2, 400), ui.ll(ui.wrap, ui.wrap, top = 18))
         }
+
         val row = ui.hbox()
         row.clipChildren = false
         row.clipToPadding = false
         if (p != null) {
-            row.addView(listButton(p, false))
+            // Streaming/source discovery stays inside LeXia; no external platform is shown.
+            if (!upcoming(p) && p.id > 0) {
+                val watch = ui.pill("▶   Filmi izle", 68, 24, primary = true)
+                watch.setOnClickListener {
+                    pausePlayer()
+                    MediaSourcePickerActivity.open(this, p)
+                }
+                row.addView(watch)
+            } else {
+                row.addView(listButton(p, primary = true))
+            }
+            if (!upcoming(p) && p.release.isNotEmpty()) {
+                val save = ui.pill(if (prefs.watchlist.any { it.key == p.key }) "✓   Listemde" else "+   Listeme ekle", 64, 23)
+                save.setOnClickListener {
+                    val saved = prefs.watchlist.any { it.key == p.key }
+                    prefs.watchlist = if (saved) prefs.watchlist.filterNot { it.key == p.key } else listOf(p) + prefs.watchlist
+                    save.text = if (saved) "+   Listeme ekle" else "✓   Listemde"
+                }
+                row.addView(save)
+            }
         }
-        val again = ui.pill("Tekrar izle", 64, 23)
+        val again = ui.pill("Fragmanı tekrar izle", 64, 23)
         again.setOnClickListener { replay() }
         row.addView(again)
+        val detailsButton = if (p != null) ui.pill("Detaylar", 64, 23).also { b ->
+            b.setOnClickListener { details(p) }
+        } else null
+        if (detailsButton != null) row.addView(detailsButton)
         val shut = ui.pill("Kapat", 64, 23)
         shut.setOnClickListener { close() }
         row.addView(shut)
-        card.addView(row, ui.ll(ui.wrap, ui.wrap, top = 44))
+        card.addView(row, ui.ll(ui.wrap, ui.wrap, top = 40))
         val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
         lp.leftMargin = ui.u(110)
         lp.bottomMargin = ui.u(120)
         box.addView(card, lp)
 
-        // Marathon: the next trailer, starting by itself after five seconds.
+        // Marathon's five-second up-next countdown remains independent of the end-card actions.
         val next = at + 1
         if (list.size > 1 && next < list.size) box.addView(upNext(next), run {
             val l = ui.fl(ui.u(480), ui.wrap, Gravity.BOTTOM or Gravity.END)
@@ -1084,6 +1131,7 @@ class TrailerActivity : Activity() {
         card.alpha = 0f
         card.translationY = ui.uf(30)
         card.animate().alpha(1f).translationY(0f).setDuration(D.SLOW).start()
+        // The primary action is always the first focus target for the TV remote.
         row.getChildAt(0)?.requestFocus()
     }
 
