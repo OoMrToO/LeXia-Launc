@@ -1152,7 +1152,10 @@ class TrailerActivity : Activity() {
         endCard = box
         card.alpha = 0f
         card.translationY = ui.uf(30)
-        card.animate().alpha(1f).translationY(0f).setDuration(D.SLOW).start()
+        box.alpha = 0f
+        box.animate().alpha(1f).setDuration(D.MED).start()
+        card.animate().alpha(1f).translationY(0f).setStartDelay(D.FAST.toLong())
+            .setDuration(D.SLOW).setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
         // The primary action is always the first focus target for the TV remote.
         row.getChildAt(0)?.requestFocus()
     }
