@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -192,6 +193,11 @@ class TrailerActivity : Activity() {
     private lateinit var center: TextView
     /** "+30 sn" while skipping with the arrows held. */
     private lateinit var bubble: TextView
+    /** A preview frame shown while the user seeks with the remote. */
+    private var seekPreview: FrameLayout? = null
+    private var seekPreviewImage: ImageView? = null
+    private var seekPreviewTime: TextView? = null
+    private var seekPreviewToken = 0
     private lateinit var status: TextView
     /** Black over the player until it plays and while paused: hides YouTube's title, logo and "more videos". */
     private lateinit var shield: View
@@ -942,13 +948,16 @@ class TrailerActivity : Activity() {
     }
 
     private fun skip(s: Int) {
-        if (nativeMode) {
-            exo?.let { p ->
-                val last = (p.duration - 1000L).coerceAtLeast(0L)
-                p.seekTo((p.currentPosition + s * 1000L).coerceIn(0L, last))
-            }
+        val target = if (nativeMode) {
+            val p = exo ?: return
+            val last = (p.duration - 1000L).coerceAtLeast(0L)
+            val next = (p.currentPosition + s * 1000L).coerceIn(0L, last)
+            p.seekTo(next)
+            next / 1000L
         } else {
-            web?.evaluateJavascript("seek($s)", null)
+            val next = (web?.let { 0L } ?: 0L)
+            web?.evaluateJavascript("seek($s);(player&&player.getCurrentTime)?player.getCurrentTime():0", null)
+            next
         }
         skipSum += s
         bubble.text = (if (skipSum >= 0) "+" else "−") + Math.abs(skipSum) + " sn"
@@ -956,6 +965,53 @@ class TrailerActivity : Activity() {
         bubble.alpha = 1f
         handler.removeCallbacks(skipEnd)
         handler.postDelayed(skipEnd, 900)
+        showSeekPreview(target.takeIf { nativeMode }?.toDouble())
+    }
+
+    /** Shows a lightweight preview at the seek target without touching the playback pipeline. */
+    private fun showSeekPreview(nativeSeconds: Double? = null) {
+        val p = film() ?: return
+        if (p.backdrop.isEmpty()) return
+        val time = nativeSeconds
+        val preview = seekPreview ?: FrameLayout(this).also { root ->
+            root.background = ui.round(Color.argb(220, 16, 16, 20), 18, 1, Color.argb(70, 255, 255, 255))
+            root.clipToOutline = true
+            val image = ImageView(this)
+            image.scaleType = ImageView.ScaleType.CENTER_CROP
+            root.addView(image, ui.fl(ui.u(240), ui.u(135), Gravity.TOP))
+            val label = ui.text("", 17, C.TEXT, 700)
+            label.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
+            root.addView(label, ui.fl(ui.match, ui.wrap, Gravity.BOTTOM))
+            seekPreviewImage = image
+            seekPreviewTime = label
+            frame.addView(root, ui.fl(ui.u(240), ui.u(178), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = ui.u(155)
+            })
+            seekPreview = root
+        }
+        val token = ++seekPreviewToken
+        seekPreviewTime?.text = time?.let { clock(it) } ?: "Konum aranıyor…"
+        preview.animate().cancel()
+        preview.alpha = 1f
+        if (time != null) {
+            val image = seekPreviewImage ?: return
+            image.setImageDrawable(null)
+            // Until a thumbnail index is available from the trailer source, show the film artwork
+            // as a stable visual reference rather than fabricating a frame from the wrong timestamp.
+            val w = ui.u(240)
+            Thread {
+                val bitmap = Net.bitmap("https://image.tmdb.org/t/p/w500" + p.backdrop, w, true)
+                runOnUiThread {
+                    if (token == seekPreviewToken && !isFinishing && image.parent != null && bitmap != null) {
+                        image.setImageBitmap(bitmap)
+                        seekPreviewTime?.text = clock(time)
+                    }
+                }
+            }.start()
+        }
+        handler.postDelayed({
+            if (token == seekPreviewToken) preview.animate().alpha(0f).setDuration(D.MED).start()
+        }, 1000)
     }
 
     // ---------- Film actions ----------
