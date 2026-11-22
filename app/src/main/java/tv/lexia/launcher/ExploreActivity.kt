@@ -371,7 +371,7 @@ class ExploreActivity : Activity() {
     /** "Süz": genre, years, score, order; each opens its choices, the page follows at once. */
     private fun openFilters() {
         val genres = all.filter { ofKind(it) }.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
-        val rows = listOf(
+        val rows = listOf<Pair<String, String>>(
             "Tür" to genre.ifEmpty { "Bütün türler" },
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
