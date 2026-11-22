@@ -446,6 +446,11 @@ class Prefs(ctx: Context) {
     var remoteSeen: String get() = str("remoteSeen"); set(v) = putStr("remoteSeen", v)
 
     /** Notices already seen in the bell panel. */
+    /** Notice kinds turned off in Ayarlar › Bildirimler ("ep", "new", "rel", "soon", "plat", "now", "night", "listold"). */
+    var noticeOff: Set<String>
+        get() = HashSet(p.getStringSet("noticeOff", emptySet()) ?: emptySet())
+        set(v) = p.edit().putStringSet("noticeOff", HashSet(v)).apply()
+
     var noticesRead: Set<String>
         get() = HashSet(p.getStringSet("noticesRead", emptySet()) ?: emptySet())
         set(v) = p.edit().putStringSet("noticesRead", HashSet(v)).apply()

@@ -56,6 +56,7 @@ name text
 navSound bool
 nightSleep int
 noticesRead set
+noticeOff set
 nowStreaming set
 order text
 pickDate text

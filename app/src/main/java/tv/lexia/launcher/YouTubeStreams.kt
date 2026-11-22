@@ -274,11 +274,23 @@ internal object YouTubeStreams {
         val tracks = answer.optJSONObject("captions")
             ?.optJSONObject("playerCaptionsTracklistRenderer")
             ?.optJSONArray("captionTracks")
-        val track = items(tracks).firstOrNull {
+        val all = items(tracks)
+        val own = all.firstOrNull {
             text(it, "languageCode").startsWith("tr", ignoreCase = true) && text(it, "kind") != "asr"
-        } ?: return null
+        }
+        // No Turkish subtitles of its own: another language's, translated to Turkish by YouTube
+        // (English first, people-made before machine-made).
+        // YouTube's own speech captions in Turkish mean the trailer speaks Turkish (dubbed): no subtitles.
+        val spokenTurkish = all.any { text(it, "kind") == "asr" && text(it, "languageCode").startsWith("tr", ignoreCase = true) }
+        val other = if (own != null || spokenTurkish) null else all.sortedWith(compareBy(
+            { if (text(it, "kind") == "asr") 1 else 0 },
+            { if (text(it, "languageCode").startsWith("en", ignoreCase = true)) 0 else 1 }
+        )).firstOrNull()
+        val track = own ?: other ?: return null
         val base = text(track, "baseUrl")
         if (!base.startsWith("https://")) return null
-        return base.replace(Regex("[&?]fmt=[^&]*"), "") + (if ('?' in base) "&" else "?") + "fmt=vtt"
+        val clean = base.replace(Regex("[&?]fmt=[^&]*"), "").replace(Regex("[&?]tlang=[^&]*"), "")
+        val sep = if ('?' in clean) "&" else "?"
+        return clean + sep + "fmt=vtt" + (if (own == null) "&tlang=tr" else "")
     }
 }

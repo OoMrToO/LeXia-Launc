@@ -84,6 +84,14 @@ internal class MediaPlaybackStore(context: Context) {
         return preferences.getBoolean("${key}_done", false)
     }
 
+    /** "İzlendi" put by mistake: taken back. */
+    fun unmarkFinished(mediaKey: String) {
+        changes++
+        if (mediaKey.isBlank()) return
+        val key = prefix(mediaKey)
+        preferences.edit().remove("${key}_done").apply()
+    }
+
     fun markFinished(mediaKey: String) {
         changes++
         if (mediaKey.isBlank()) return

@@ -1004,6 +1004,8 @@ class MediaSourcePickerActivity : Activity() {
             }
             override fun finished(key: String) = finished(key)
         }
+        // The audio and subtitle languages chosen in LeXia's settings, for Nuvio's player too.
+        try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang) } catch (_: Exception) { }
         val episode = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
         val season = episode?.season ?: typedSeason.takeIf { film.isSeries && it > 0 }
         val number = episode?.episode ?: typedEpisode.takeIf { film.isSeries && it > 0 }

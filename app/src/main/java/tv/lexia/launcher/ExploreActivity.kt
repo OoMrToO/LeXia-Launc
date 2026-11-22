@@ -38,6 +38,14 @@ class ExploreActivity : Activity() {
     private var minScore = 0.0
     /** Years: "" any, "2020" the 2020s, "2010", "2000", "old" before 2000. */
     private var years = ""
+    /** A platform's name ("Netflix"); "" anywhere. */
+    private var where = ""
+    /** "short" under 90 min, "mid" 90–150, "long" over 150; "" any. */
+    private var length = ""
+    /** "unwatched", "half" (left half way), "done"; "" all. */
+    private var state = ""
+    /** "Akıllı bul": a ready-made search and what TMDB found for it. */
+    private var smart: Pair<String, List<Pick>>? = null
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
     private lateinit var tabBar: LinearLayout
@@ -195,15 +203,38 @@ class ExploreActivity : Activity() {
     }
 
     /** Anything chosen under "Süz": the page is a grid then, not rows. */
-    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty()
+    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty() ||
+        where.isNotEmpty() || length.isNotEmpty() || state.isNotEmpty() || smart != null
 
     private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
 
     private fun matches(p: Pick): Boolean =
         ofKind(p) &&
-            (genre.isEmpty() || genre in p.genres) &&
+            (genre.isEmpty() || genre.split(',').all { it in p.genres }) &&
             (minScore <= 0 || p.imdb >= minScore) &&
-            matchesYears(p)
+            matchesYears(p) &&
+            (where.isEmpty() || where in platformsOf(p)) &&
+            matchesLength(p) &&
+            matchesState(p)
+
+    private fun matchesLength(p: Pick): Boolean = when (length) {
+        "short" -> p.runtime in 1..90
+        "mid" -> p.runtime in 91..150
+        "long" -> p.runtime > 150
+        else -> true
+    }
+
+    private fun matchesState(p: Pick): Boolean {
+        if (state.isEmpty()) return true
+        val mark = WatchMarks.of(playback, p)
+        val done = p.key in prefs.watched || mark?.finished == true
+        return when (state) {
+            "unwatched" -> !done && mark == null
+            "half" -> mark != null && (mark.fraction != null || mark.episode != null) && !done
+            "done" -> done
+            else -> true
+        }
+    }
 
     /** The tabs, "Süz" (with what is chosen) and the marathon. */
     private fun buildFilters() {
@@ -225,7 +256,11 @@ class ExploreActivity : Activity() {
             genre.takeIf { it.isNotEmpty() },
             yearsName().takeIf { years.isNotEmpty() },
             "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
-            sortName().takeIf { sort.isNotEmpty() }
+            sortName().takeIf { sort.isNotEmpty() },
+            where.takeIf { it.isNotEmpty() },
+            lengthName().takeIf { length.isNotEmpty() },
+            stateName().takeIf { state.isNotEmpty() },
+            smart?.first
         )
         val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
@@ -233,13 +268,19 @@ class ExploreActivity : Activity() {
         if (chosen.isNotEmpty()) {
             val clear = ui.pill("Temizle", 58, 21)
             clear.setOnClickListener {
-                genre = ""; minScore = 0.0; years = ""; sort = ""
+                genre = ""; minScore = 0.0; years = ""; sort = ""; where = ""; length = ""; state = ""; smart = null
                 buildFilters()
                 show()
                 filterBar.getChildAt(2)?.requestFocus()
             }
             filterBar.addView(clear)
         }
+        val search = ui.iconPill("Ara", R.drawable.ic_search)
+        search.setOnClickListener { SearchAll.ask(this, all) }
+        filterBar.addView(search)
+        val clever = ui.iconPill("Akıllı bul", R.drawable.ic_dice)
+        clever.setOnClickListener { chooseSmart() }
+        filterBar.addView(clever)
         val mine = ui.iconPill("İzlediklerim", R.drawable.ic_history)
         mine.setOnClickListener { WatchHistoryActivity.open(this) }
         filterBar.addView(mine)
@@ -266,35 +307,79 @@ class ExploreActivity : Activity() {
         else -> "Önerilen"
     }
 
-    /** "Süz": genre, years, score, order; each opens its choices, the page follows at once. */
+    private fun lengthName() = when (length) {
+        "short" -> "90 dakikadan kısa"
+        "mid" -> "90–150 dakika"
+        "long" -> "2,5 saatten uzun"
+        else -> "Süre fark etmez"
+    }
+
+    private fun stateName() = when (state) {
+        "unwatched" -> "İzlemediklerim"
+        "half" -> "Yarım kalanlar"
+        "done" -> "İzlediklerim"
+        else -> "Hepsi"
+    }
+
+    /** "Süz": genres (several at once), platform, length, years, score, watched or not, order. */
     private fun openFilters() {
         val genres = all.filter { ofKind(it) }.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
+        val platforms = all.filter { ofKind(it) }.flatMap { platformsOf(it) }.groupingBy { it }.eachCount()
+            .entries.sortedByDescending { it.value }.map { it.key }
         val rows = listOf(
-            "Tür" to genre.ifEmpty { "Bütün türler" },
+            "Tür" to genre.ifEmpty { "Bütün türler" }.replace(",", " + "),
+            "Nerede" to where.ifEmpty { "Her yerde" },
+            "Süre" to lengthName(),
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
+            "Durum" to stateName(),
             "Sırala" to sortName()
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
+                smart = null
                 buildFilters()
                 show()
                 openFilters()
             }
             when (i) {
-                0 -> Dialogs.chooseOne(this, "Tür", listOf("Bütün türler") + genres, (genres.indexOf(genre) + 1).coerceAtLeast(0)) {
-                    genre = if (it == 0) "" else genres[it - 1]; apply()
+                0 -> {
+                    // Several genres: each pick adds or removes one; "Bütün türler" clears.
+                    val chosen = genre.split(',').filter { it.isNotEmpty() }
+                    val labels = listOf("Bütün türler") + genres.map { if (it in chosen) "✓  $it" else it }
+                    Dialogs.chooseOne(this, "Tür (birden çok seçilebilir)", labels, 0) {
+                        genre = if (it == 0) "" else {
+                            val g = genres[it - 1]
+                            (if (g in chosen) chosen - g else chosen + g).joinToString(",")
+                        }
+                        apply()
+                    }
                 }
-                1 -> {
+                1 -> Dialogs.chooseOne(this, "Nerede", listOf("Her yerde") + platforms, (platforms.indexOf(where) + 1).coerceAtLeast(0)) {
+                    where = if (it == 0) "" else platforms[it - 1]; apply()
+                }
+                2 -> {
+                    val v = listOf("", "short", "mid", "long")
+                    Dialogs.chooseOne(this, "Süre", listOf("Süre fark etmez", "90 dakikadan kısa", "90–150 dakika", "2,5 saatten uzun"), v.indexOf(length).coerceAtLeast(0)) {
+                        length = v[it]; apply()
+                    }
+                }
+                3 -> {
                     val v = listOf("", "2020", "2010", "2000", "old")
                     Dialogs.chooseOne(this, "Yıl", listOf("Bütün yıllar", "2020'ler", "2010'lar", "2000'ler", "2000'den önce"), v.indexOf(years).coerceAtLeast(0)) {
                         years = v[it]; apply()
                     }
                 }
-                2 -> {
+                4 -> {
                     val v = listOf(0.0, 6.0, 7.0, 8.0)
                     Dialogs.chooseOne(this, "Puan", listOf("Bütün puanlar", "IMDb 6 ve üstü", "IMDb 7 ve üstü", "IMDb 8 ve üstü"), v.indexOf(minScore).coerceAtLeast(0)) {
                         minScore = v[it]; apply()
+                    }
+                }
+                5 -> {
+                    val v = listOf("", "unwatched", "half", "done")
+                    Dialogs.chooseOne(this, "Durum", listOf("Hepsi", "İzlemediklerim", "Yarım kalanlar", "İzlediklerim"), v.indexOf(state).coerceAtLeast(0)) {
+                        state = v[it]; apply()
                     }
                 }
                 else -> {
@@ -304,6 +389,60 @@ class ExploreActivity : Activity() {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * "Akıllı bul": ready-made searches over every film and series TMDB knows (not only today's
+     * list): tonight's short ones, the best of a genre, little-known gems, ones like the last watched.
+     */
+    private fun chooseSmart() {
+        if (BuildConfig.TMDB_API_KEY.isBlank()) {
+            Glass.toast(this, "Bu sürümde TMDB anahtarı yok")
+            return
+        }
+        val tv = kind == "tv"
+        val noun = if (tv) "dizi" else "film"
+        val last = WatchHistory(this).entries().firstOrNull { it.pick.isSeries == tv && it.pick.id > 0 }?.pick
+        val good = mapOf("vote_average.gte" to "7", "vote_count.gte" to "300", "sort_by" to "vote_average.desc")
+        val options = ArrayList<Triple<String, String, (Int) -> List<Pick>>>()
+        if (!tv) options.add(Triple("Bu akşam: 2 saatten kısa", "IMDb 7 ve üstü, en çok sevilenler", { pg ->
+            TmdbDiscover.discover("movie", pg, mapOf("with_runtime.lte" to "120", "with_runtime.gte" to "75", "vote_average.gte" to "7", "vote_count.gte" to "1000", "sort_by" to "popularity.desc"))
+        }))
+        if (last != null) options.add(Triple("${last.title} gibi", "Son izlediğine benzeyenler", { pg -> TmdbDiscover.similar(last, pg) }))
+        options.add(Triple("Puanı 8 ve üstü bilim kurgu", "Türün en iyileri", { pg ->
+            TmdbDiscover.discover(kind, pg, mapOf("vote_average.gte" to "8", "vote_count.gte" to "500", "sort_by" to "vote_average.desc"), genre = if (tv) "Bilim Kurgu & Fantazi" else "Bilim-Kurgu")
+        }))
+        options.add(Triple("Az bilinen ama çok iyi gerilimler", "Az oy almış, puanı yüksek", { pg ->
+            TmdbDiscover.discover(kind, pg, mapOf("vote_average.gte" to "7.2", "vote_count.gte" to "150", "vote_count.lte" to "1500", "sort_by" to "vote_average.desc"), genre = if (tv) "Suç" else "Gerilim")
+        }))
+        options.add(Triple("Kafa yormayan komediler", "Hafif, keyifli", { pg -> TmdbDiscover.discover(kind, pg, good + ("sort_by" to "popularity.desc"), genre = "Komedi") }))
+        options.add(Triple("Duygusal ${noun}ler", "Dram, iyi bir hikâye", { pg -> TmdbDiscover.discover(kind, pg, good + ("sort_by" to "popularity.desc"), genre = "Dram") }))
+        options.add(Triple("Ailece izlemelik", "Animasyon ve aile", { pg -> TmdbDiscover.discover(kind, pg, good + ("sort_by" to "popularity.desc"), genre = "Aile") }))
+        options.add(Triple("Tüm zamanların en iyileri", "En çok oy alanlar arasında en yüksek puanlılar", { pg ->
+            TmdbDiscover.discover(kind, pg, mapOf("vote_count.gte" to "5000", "sort_by" to "vote_average.desc"))
+        }))
+        options.add(Triple("Yerli yapımlar", "Türkiye'den, en sevilenler", { pg ->
+            TmdbDiscover.discover(kind, pg, mapOf("with_origin_country" to "TR", "vote_count.gte" to "30", "sort_by" to "popularity.desc"))
+        }))
+        Dialogs.list(this, "Akıllı bul", options.map { it.first to it.second }, if (tv) "Diziler" else "Filmler", R.drawable.ic_dice) { i ->
+            val (title, _, fetch) = options[i]
+            Glass.toast(this, "$title aranıyor…")
+            Thread {
+                val list = (1..2).flatMap { pg -> try { fetch(pg) } catch (e: Exception) { emptyList() } }
+                    .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }.distinctBy { it.key }
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    if (list.isEmpty()) {
+                        Glass.toast(this, "Sonuç bulunamadı")
+                        return@runOnUiThread
+                    }
+                    smart = title to list
+                    buildFilters()
+                    show()
+                    FocusKeep.first(grid)
+                }
+            }.start()
         }
     }
 
@@ -361,7 +500,7 @@ class ExploreActivity : Activity() {
             showRows()
             return
         }
-        found = ordered(all.filter { matches(it) })
+        found = smart?.second ?: ordered(all.filter { matches(it) })
         if (found.isEmpty()) {
             countText.text = "Bu seçimde yapım yok"
             val hint = ui.text("Süz'deki seçimlerden birini gevşet.", 24, C.TEXT2, 400)
@@ -392,6 +531,9 @@ class ExploreActivity : Activity() {
         }
         addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb }) {
             TmdbDiscover.page(kind, it, minScore = 8.0)
+        }
+        addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }) {
+            TmdbDiscover.upcoming(kind, it)
         }
         addRow("Yerli yapımlar", mine.filter { from(it, "local") })
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
