@@ -875,7 +875,12 @@ class DetailActivity : Activity() {
     }
 
     private fun updateListBtn() {
-        listBtn.text = if (inList()) "✓   Listemde" else "+   Listeme Ekle"
+        listBtn.text = if (film.isSeries) {
+            // A series: the list follows it for new-episode notices.
+            if (inList()) "✓   Takipte" else "+   Takibe Al"
+        } else {
+            if (inList()) "✓   Listemde" else "+   Listeme Ekle"
+        }
     }
 
     @Deprecated("Deprecated in Java")
