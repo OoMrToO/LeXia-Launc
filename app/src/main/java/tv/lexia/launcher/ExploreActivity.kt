@@ -204,6 +204,7 @@ class ExploreActivity : Activity() {
         if (searchTerm.isBlank()) return true
         val q = searchTerm.trim().lowercase(tr)
         return p.title.lowercase(tr).contains(q) ||
+            p.originalTitle.lowercase(tr).contains(q) ||
             p.director.lowercase(tr).contains(q) ||
             p.cast.any { it.name.lowercase(tr).contains(q) }
     }
