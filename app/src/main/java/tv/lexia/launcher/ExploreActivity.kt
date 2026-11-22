@@ -339,7 +339,7 @@ class ExploreActivity : Activity() {
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
             "Sırala" to sortName(),
-            "Yapım ülkesi" to when (origin) { "local" -> "Yerli (listede işaretli)"; "foreign" -> "Yabancı (yerli listesi dışında)"; else -> "Tümü" }
+            "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" }
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
@@ -371,7 +371,7 @@ class ExploreActivity : Activity() {
                 }
                 else -> {
                     val v = listOf("", "local", "foreign")
-                    Dialogs.chooseOne(this, "Yapım ülkesi", listOf("Tümü", "Yerli (yerli listesinde)", "Yabancı (yerli listesi dışında)"), v.indexOf(origin).coerceAtLeast(0)) {
+                    Dialogs.chooseOne(this, "Yerli / yabancı", listOf("Tümü", "Yerli listesinde", "Yerli listesi dışında"), v.indexOf(origin).coerceAtLeast(0)) {
                         origin = v[it]; apply()
                     }
                 }
