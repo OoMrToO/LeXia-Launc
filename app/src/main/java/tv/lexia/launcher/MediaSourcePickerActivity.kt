@@ -1127,6 +1127,73 @@ class MediaSourcePickerActivity : Activity() {
 
     // ---------- The source list ----------
 
+    /** A quick, factual overview of the source pool; unknown tags are not guessed. */
+    private fun addSourceSummary() {
+        val tags = streams.map { it.tags }
+        val providers = streams.map { it.addonName.trim() }.filter { it.isNotBlank() }.distinct().size
+        // The existing preference-aware source score provides a TV-specific quality estimate.
+        val ranked = streams.map { score(it) }.sortedDescending()
+        val topScore = ranked.firstOrNull() ?: 0
+        val topCount = ranked.count { it >= topScore - 80 }
+        val fourK = tags.count { it.resolution >= 2160 }
+        val fullHd = tags.count { it.resolution in 1080..2159 }
+        val hdr = tags.count { it.hdr.isNotBlank() }
+        val dubbed = tags.count { it.turkish == "Dublaj" }
+        val subtitled = tags.count { it.turkish == "Altyazılı" || it.turkish.isBlank() && it.audio.isNotBlank() }
+        val atmos = tags.count { it.audio == "Atmos" }
+        val surround = tags.count { it.channels in listOf("5.1", "7.1") }
+        val knownSizes = tags.map { it.sizeBytes }.filter { it > 0L }
+        val totalSize = knownSizes.sum()
+        val details = listOf(
+            "$providers sağlayıcı",
+            "$fourK 4K",
+            "$fullHd Full HD",
+            "$hdr HDR",
+            "$dubbed Türkçe dublaj",
+            "$subtitled altyazı/özgün ses",
+            "$atmos Atmos",
+            "$surround surround ses"
+        ).joinToString("  ·  ")
+        val scoreLine = if (ranked.isNotEmpty()) {
+            "En iyi eşleşme skoru: $topScore  ·  Bu seviyeye yakın: $topCount kaynak"
+        } else ""
+        val sizeLine = if (knownSizes.isNotEmpty()) {
+            "Boyutu bilinen ${knownSizes.size} kaynağın toplamı: " +
+                String.format(Locale.forLanguageTag("tr-TR"), "%.1f GB", totalSize / (1024.0 * 1024.0 * 1024.0))
+        } else ""
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(15), dp(18), dp(15))
+            background = panelBackground()
+        }
+        card.addView(TextView(this).apply {
+            text = "Kaynak özeti"
+            textSize = 19f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        card.addView(TextView(this).apply {
+            text = details
+            textSize = 14f
+            setTextColor(Color.rgb(190, 200, 225))
+            setLineSpacing(0f, 1.15f)
+            setPadding(0, dp(8), 0, 0)
+        })
+        if (scoreLine.isNotBlank()) card.addView(TextView(this).apply {
+            text = scoreLine
+            textSize = 13f
+            setTextColor(Color.rgb(140, 155, 185))
+            setPadding(0, dp(6), 0, 0)
+        })
+        if (sizeLine.isNotBlank()) card.addView(TextView(this).apply {
+            text = sizeLine
+            textSize = 13f
+            setTextColor(Color.rgb(140, 155, 185))
+            setPadding(0, dp(6), 0, 0)
+        })
+        content.addView(card, fullWidthParams(bottom = 14))
+    }
+
     private fun renderStreams() {
         if (streams.isEmpty()) return
         val groups: Map<String, List<MediaStream>> = if (groupByProvider) {
@@ -1138,6 +1205,7 @@ class MediaSourcePickerActivity : Activity() {
         val inList = content.findFocus() != null
         clearContent(showSourceControls = true)
         addSectionTitle("KAYNAKLAR  ·  ${streams.size}")
+        addSourceSummary()
 
         val tr = Locale.forLanguageTag("tr-TR")
         var number = 1
