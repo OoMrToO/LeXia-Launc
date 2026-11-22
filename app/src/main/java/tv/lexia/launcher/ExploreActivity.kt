@@ -259,13 +259,15 @@ class ExploreActivity : Activity() {
     }
 
     private fun randomPick() {
-        val candidates = all.filter { ofKind(it) && !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+        val candidates = (if (filtering()) all.filter { matches(it) } else all.filter { ofKind(it) })
+            .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         if (candidates.isEmpty()) {
-            Glass.toast(this, "Rastgele öneri bulunamadı")
+            Glass.toast(this, "Mevcut seçimde rastgele öneri bulunamadı")
             return
         }
         val picked = candidates.random()
-        DetailActivity.open(this, picked, surprise = true, why = "Keşfet'ten rastgele seçildi")
+        val reason = if (filtering()) "Keşfet'teki filtrelerine göre rastgele seçildi" else "Keşfet'ten rastgele seçildi"
+        DetailActivity.open(this, picked, surprise = true, why = reason)
     }
 
     /** The tabs, "Süz" (with what is chosen) and the marathon. */
