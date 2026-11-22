@@ -114,8 +114,10 @@ class WatchHistoryActivity : Activity() {
                 if (isFinishing) return@runOnUiThread
                 entries = list
                 summary.text = monthLine()
+                val spot = FocusKeep.save(this)
                 buildTabs()
                 show()
+                if (!FocusKeep.restore(this, spot) && spot != null) FocusKeep.first(grid)
             }
         }.start()
     }

@@ -291,6 +291,8 @@ class DetailActivity : Activity() {
         }
         if (film.trailer.isEmpty()) trailer.visibility = View.GONE
         trailerBtn = trailer
+        // A title from TMDB (Keşfet's "Daha fazla", a person's films) comes without its trailer.
+        if (film.trailer.isEmpty() && film.id > 0) completeFromTmdb()
         listBtn = ui.pill("", 64, 23)
         listBtn.setOnClickListener { toggleList() }
         updateListBtn()
@@ -939,6 +941,23 @@ class DetailActivity : Activity() {
         }
         tonight.text = "◷  " + parts.joinToString("  ·  ")
         tonight.visibility = View.VISIBLE
+    }
+
+    /** The trailer, length and IMDb id of a title that came from TMDB without them; the button appears. */
+    private fun completeFromTmdb() {
+        val before = film
+        Thread {
+            val full = try { TmdbDiscover.complete(before) } catch (e: Exception) { null } ?: return@Thread
+            runOnUiThread {
+                if (isFinishing || isDestroyed || film !== before) return@runOnUiThread
+                film = full
+                if (full.trailer.isNotEmpty()) {
+                    trailerBtn.visibility = View.VISIBLE
+                    queuePageTrailer()
+                }
+                updateTonight()
+            }
+        }.start()
     }
 
     private lateinit var trailerStage: FrameLayout
