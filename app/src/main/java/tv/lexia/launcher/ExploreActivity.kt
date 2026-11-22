@@ -402,8 +402,16 @@ class ExploreActivity : Activity() {
                         else {
                             Glass.toast(this, "Ülke bilgileri yükleniyor…")
                             Thread {
-                                all.filter { ofKind(it) && it.id > 0 }.forEach { TmdbDiscover.countries(kind, it.id) }
-                                runOnUiThread { buildFilters(); show(); openFilters() }
+                                all.filter { ofKind(it) && it.id > 0 }.forEach { p ->
+                                    runCatching { TmdbDiscover.countries(kind, p.id) }
+                                }
+                                runOnUiThread {
+                                    if (!isFinishing && !isDestroyed) {
+                                        buildFilters()
+                                        show()
+                                        openFilters()
+                                    }
+                                }
                             }.start()
                         }
                     }
