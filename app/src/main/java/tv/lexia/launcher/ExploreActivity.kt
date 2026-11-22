@@ -38,6 +38,9 @@ class ExploreActivity : Activity() {
     private var minScore = 0.0
     /** Years: "" any, "2020" the 2020s, "2010", "2000", "old" before 2000. */
     private var years = ""
+    private var searchTerm = ""
+    private var origin = ""
+    private var country = ""
     /** A platform's name ("Netflix"); "" anywhere. */
     private var where = ""
     /** "short" under 90 min, "mid" 90–150, "long" over 150; "" any. */
@@ -208,11 +211,20 @@ class ExploreActivity : Activity() {
 
     private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
 
+    private fun matchesSearch(p: Pick): Boolean {
+        if (searchTerm.isBlank()) return true
+        val q = searchTerm.trim().lowercase(tr)
+        return p.title.lowercase(tr).contains(q) || p.originalTitle.lowercase(tr).contains(q) ||
+            p.overview.lowercase(tr).contains(q) || p.genres.any { it.lowercase(tr).contains(q) } ||
+            p.director.lowercase(tr).contains(q) || p.cast.any { it.name.lowercase(tr).contains(q) }
+    }
+
     private fun matches(p: Pick): Boolean =
-        ofKind(p) &&
+        ofKind(p) && matchesSearch(p) &&
             (genre.isEmpty() || genre.split(',').all { it in p.genres }) &&
-            (minScore <= 0 || p.imdb >= minScore) &&
-            matchesYears(p) &&
+            (minScore <= 0 || p.imdb >= minScore) && matchesYears(p) &&
+            (origin.isEmpty() || (origin == "local") == from(p, "local")) &&
+            (country.isEmpty() || country in p.countries || TmdbDiscover.hasCountry(kind, p.id, country)) &&
             (where.isEmpty() || where in platformsOf(p)) &&
             matchesLength(p) &&
             matchesState(p)
@@ -237,6 +249,12 @@ class ExploreActivity : Activity() {
     }
 
     /** The tabs, "Süz" (with what is chosen) and the marathon. */
+    private fun countryName(code: String) = when (code) {
+        "TR" -> "Türkiye"; "US" -> "ABD"; "GB" -> "Birleşik Krallık"; "FR" -> "Fransa"; "DE" -> "Almanya"
+        "IT" -> "İtalya"; "ES" -> "İspanya"; "JP" -> "Japonya"; "KR" -> "Güney Kore"; "IN" -> "Hindistan"
+        "CA" -> "Kanada"; "AU" -> "Avustralya"; else -> code
+    }
+
     private fun buildFilters() {
         filterBar.removeAllViews()
         fun tab(label: String, value: String) {
@@ -260,7 +278,9 @@ class ExploreActivity : Activity() {
             where.takeIf { it.isNotEmpty() },
             lengthName().takeIf { length.isNotEmpty() },
             stateName().takeIf { state.isNotEmpty() },
-            smart?.first
+            smart?.first,
+            if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null,
+            country.takeIf { it.isNotEmpty() }?.let { "Ülke: " + countryName(it) }
         )
         // Count active filter dimensions; selected genres remain grouped in the compact bar.
         val activeCount = chosen.size
@@ -271,7 +291,7 @@ class ExploreActivity : Activity() {
         if (chosen.isNotEmpty()) {
             val clear = ui.pill("Temizle", 58, 21)
             clear.setOnClickListener {
-                genre = ""; minScore = 0.0; years = ""; sort = ""; where = ""; length = ""; state = ""; smart = null
+                genre = ""; minScore = 0.0; years = ""; sort = ""; where = ""; length = ""; state = ""; smart = null; searchTerm = ""; origin = ""; country = ""
                 buildFilters()
                 show()
                 filterBar.getChildAt(2)?.requestFocus()
@@ -281,6 +301,9 @@ class ExploreActivity : Activity() {
         val search = ui.iconPill("Ara", R.drawable.ic_search)
         search.setOnClickListener { SearchAll.ask(this, all) }
         filterBar.addView(search)
+        val random = ui.iconPill("🎲 Rastgele", R.drawable.ic_film)
+        random.setOnClickListener { randomPick() }
+        filterBar.addView(random)
         val clever = ui.iconPill("Akıllı bul", R.drawable.ic_dice)
         clever.setOnClickListener { chooseSmart() }
         filterBar.addView(clever)
@@ -293,6 +316,13 @@ class ExploreActivity : Activity() {
             run.setOnClickListener { chooseMarathon() }
             filterBar.addView(run)
         }
+    }
+
+    private fun randomPick() {
+        val candidates = (if (filtering()) all.filter { matches(it) } else all.filter { ofKind(it) }).filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+        if (candidates.isEmpty()) { Glass.toast(this, "Mevcut seçimde rastgele öneri bulunamadı"); return }
+        val picked = candidates.random()
+        DetailActivity.open(this, picked, surprise = true, why = "Keşfet seçimlerine göre rastgele seçildi")
     }
 
     private fun yearsName() = when (years) {
@@ -336,7 +366,9 @@ class ExploreActivity : Activity() {
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
             "Durum" to stateName(),
-            "Sırala" to sortName()
+            "Sırala" to sortName(),
+            "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" },
+            "Yapım ülkesi" to country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler"
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
@@ -383,6 +415,18 @@ class ExploreActivity : Activity() {
                     val v = listOf("", "unwatched", "half", "done")
                     Dialogs.chooseOne(this, "Durum", listOf("Hepsi", "İzlemediklerim", "Yarım kalanlar", "İzlediklerim"), v.indexOf(state).coerceAtLeast(0)) {
                         state = v[it]; apply()
+                    }
+                }
+                7 -> Dialogs.chooseOne(this, "Yerli / yabancı", listOf("Tümü", "Yerli listesinde", "Yerli listesi dışında"), listOf("", "local", "foreign").indexOf(origin).coerceAtLeast(0)) { origin = listOf("", "local", "foreign")[it]; apply() }
+                8 -> {
+                    val codes = listOf("", "TR", "US", "GB", "FR", "DE", "IT", "ES", "JP", "KR", "IN", "CA", "AU")
+                    val names = listOf("Tüm ülkeler", "Türkiye", "ABD", "Birleşik Krallık", "Fransa", "Almanya", "İtalya", "İspanya", "Japonya", "Güney Kore", "Hindistan", "Kanada", "Avustralya")
+                    Dialogs.chooseOne(this, "Yapım ülkesi", names, codes.indexOf(country).coerceAtLeast(0)) { selected ->
+                        country = codes[selected]
+                        if (country.isEmpty()) apply() else Thread {
+                            all.filter { ofKind(it) && it.id > 0 }.forEach { item -> runCatching { TmdbDiscover.countries(kind, item.id) } }
+                            runOnUiThread { if (!isFinishing && !isDestroyed) { buildFilters(); show(); openFilters() } }
+                        }.start()
                     }
                 }
                 else -> {
@@ -538,7 +582,16 @@ class ExploreActivity : Activity() {
         addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }) {
             TmdbDiscover.upcoming(kind, it)
         }
-        addRow("Yerli yapımlar", mine.filter { from(it, "local") })
+        if (kind == "tv") {
+            addRow("Yerli diziler", mine.filter { from(it, "local") })
+            addRow("Yabancı diziler", mine.filter { !from(it, "local") })
+        } else {
+            addRow("Yerli filmler", mine.filter { from(it, "local") })
+            addRow("Yabancı filmler", mine.filter { !from(it, "local") })
+        }
+        val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") }.distinctBy { seenKey(it) }
+            .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+        addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }.take(12)
         for (g in genres) {
