@@ -178,6 +178,13 @@ class TrailerActivity : Activity() {
     private lateinit var info: FrameLayout
     private lateinit var infoLabel: TextView
     private lateinit var infoTitle: TextView
+    /** The film's title artwork, instead of its name when there is one. */
+    private lateinit var infoLogo: ImageView
+    /** Two lines of its story. */
+    private lateinit var infoStory: TextView
+    /** The trailer has subtitles (native player): "Altyazı" turns them on and off. */
+    private var hasSubtitles = false
+    private var subtitlesOn = true
     private lateinit var infoMeta: LinearLayout
     private lateinit var buttons: LinearLayout
     private lateinit var nextCard: LinearLayout
@@ -437,7 +444,8 @@ class TrailerActivity : Activity() {
             .build().also { p ->
                 p.addListener(nativeListener)
                 // Subtitles only in Turkish: a Turkish track if the trailer has one, otherwise none.
-                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setPreferredTextLanguage("tr").build()
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setPreferredTextLanguage("tr")
+                    .setTrackTypeDisabled(MediaC.TRACK_TYPE_TEXT, !subtitlesOn).build()
                 exo = p
             }
         view.player = player
@@ -445,6 +453,9 @@ class TrailerActivity : Activity() {
         val hints = HashMap<String, SubtitleHint>()
         val item = MediaItem.Builder().setUri(source.video)
         if (source.hls) item.setMimeType(MimeTypes.APPLICATION_M3U8)
+        val hadSubtitles = hasSubtitles
+        hasSubtitles = source.turkishSubtitles != null
+        if (hadSubtitles != hasSubtitles && buttons.findFocus() == null) bindFilm()
         source.turkishSubtitles?.let { address ->
             val uri = Uri.parse(address)
             hints[uri.toString()] = SubtitleHint("tr", SubtitleText.VTT)
@@ -629,25 +640,33 @@ class TrailerActivity : Activity() {
         low.background = ui.gradient(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(215, 0, 0, 0), Color.TRANSPARENT)
         info.addView(low, ui.fl(ui.match, ui.u(470), Gravity.BOTTOM))
 
-        // Top left: what is playing.
+        // Bottom left, over the buttons: the film's logo (or name), facts and story, as on Apple TV.
         val head = ui.vbox()
         infoLabel = ui.label("")
         head.addView(infoLabel)
-        infoTitle = ui.text("", 52, C.TEXT, 800)
+        infoLogo = ImageView(this)
+        infoLogo.scaleType = ImageView.ScaleType.FIT_START
+        infoLogo.adjustViewBounds = true
+        infoLogo.visibility = View.GONE
+        head.addView(infoLogo, ui.ll(ui.u(560), ui.u(150), top = 14))
+        infoTitle = ui.text("", 58, C.TEXT, 800)
         infoTitle.letterSpacing = -0.02f
         infoTitle.maxLines = 1
         infoTitle.ellipsize = TextUtils.TruncateAt.END
         head.addView(infoTitle, ui.ll(ui.u(1300), ui.wrap, top = 10))
         infoMeta = ui.hbox()
-        head.addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 14))
-        val hlp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.START)
-        hlp.setMargins(ui.u(96), ui.u(66), 0, 0)
-        info.addView(head, hlp)
+        head.addView(infoMeta, ui.ll(ui.wrap, ui.wrap, top = 16))
+        infoStory = ui.text("", 22, Color.argb(215, 255, 255, 255), 400)
+        infoStory.maxLines = 2
+        infoStory.ellipsize = TextUtils.TruncateAt.END
+        infoStory.setLineSpacing(0f, 1.2f)
+        head.addView(infoStory, ui.ll(ui.u(1050), ui.wrap, top = 14))
 
         // Bottom: buttons with the next trailer on the right, the bar, the times, the keys.
         val foot = ui.vbox()
         foot.clipChildren = false
         foot.clipToPadding = false
+        foot.addView(head, ui.ll(ui.match, ui.wrap, bottom = 30))
         val row = ui.hbox()
         row.clipChildren = false
         row.clipToPadding = false
@@ -678,24 +697,24 @@ class TrailerActivity : Activity() {
         val barBox = FrameLayout(this)
         barBox.clipChildren = false
         track = FrameLayout(this)
-        track.background = ui.round(Color.argb(64, 255, 255, 255), 4)
+        track.background = ui.round(Color.argb(56, 255, 255, 255), 3)
         barFill = View(this)
         barFill.background = ui.round(Color.WHITE, 4)
         barFill.pivotX = 0f
         barFill.scaleX = 0f
         track.addView(barFill, ui.fl(ui.match, ui.match))
-        val tlp = ui.fl(ui.match, ui.u(8), Gravity.CENTER_VERTICAL)
+        val tlp = ui.fl(ui.match, ui.u(5), Gravity.CENTER_VERTICAL)
         barBox.addView(track, tlp)
         knob = View(this)
         knob.background = ui.round(Color.WHITE, 13, 6, Color.argb(50, 255, 255, 255))
-        barBox.addView(knob, ui.fl(ui.u(26), ui.u(26), Gravity.CENTER_VERTICAL))
+        barBox.addView(knob, ui.fl(ui.u(20), ui.u(20), Gravity.CENTER_VERTICAL))
         tip = ui.text("0:00", 22, C.TEXT, 700)
         tip.setPadding(ui.u(12), ui.u(5), ui.u(12), ui.u(5))
         tip.background = ui.round(Color.argb(140, 0, 0, 0), 8)
         val tipLp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP)
         tipLp.topMargin = -ui.u(60)
         barBox.addView(tip, tipLp)
-        foot.addView(barBox, ui.ll(ui.match, ui.u(30), top = 34))
+        foot.addView(barBox, ui.ll(ui.match, ui.u(30), top = 30))
         val times = ui.hbox()
         times.addView(ui.text("0:00", 20, C.TEXT2, 600), ui.ll(0, ui.wrap, weight = 1f))
         timeLeft = ui.text("", 20, C.TEXT2, 600)
@@ -704,7 +723,7 @@ class TrailerActivity : Activity() {
         hint = ui.text("", 18, Color.argb(130, 255, 255, 255), 500)
         foot.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 16))
         val flp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM)
-        flp.setMargins(ui.u(96), 0, ui.u(96), ui.u(56))
+        flp.setMargins(ui.u(110), 0, ui.u(110), ui.u(52))
         info.addView(foot, flp)
         frame.addView(info, ui.fl(ui.match, ui.match))
         track.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeKnob() }
@@ -715,6 +734,22 @@ class TrailerActivity : Activity() {
         val p = film()
         infoLabel.text = if (list.size > 1) "FRAGMAN MARATONU  ·  ${at + 1} / ${list.size}" else "FRAGMAN"
         infoTitle.text = p?.title ?: currentTitle
+        infoTitle.visibility = View.VISIBLE
+        infoLogo.visibility = View.GONE
+        infoStory.text = p?.overview.orEmpty()
+        infoStory.visibility = if (infoStory.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        p?.logo?.takeIf { it.isNotEmpty() }?.let { path ->
+            val want = id
+            Thread {
+                val b = Net.bitmap("https://image.tmdb.org/t/p/w500$path", ui.u(560), false)?.takeIf { !Img.isDark(it) }
+                runOnUiThread {
+                    if (b == null || isFinishing || id != want) return@runOnUiThread
+                    infoLogo.setImageBitmap(b)
+                    infoLogo.visibility = View.VISIBLE
+                    infoTitle.visibility = View.GONE
+                }
+            }.start()
+        }
         infoMeta.removeAllViews()
         if (p != null) {
             val where = ui.whereBadge()
@@ -765,6 +800,16 @@ class TrailerActivity : Activity() {
         // Buttons: list (or remind), details, the platform's app.
         buttons.removeAllViews()
         if (p != null) {
+            // The film itself, from the trailer (not before it is out).
+            if (!upcoming(p) && p.id > 0) {
+                val watch = ui.pill(if (p.isSeries) "▶   Diziyi izle" else "▶   Filmi izle", 64, 23)
+                styleAccentAction(watch)
+                watch.setOnClickListener {
+                    pausePlayer()
+                    MediaSourcePickerActivity.open(this, p)
+                }
+                buttons.addView(watch)
+            }
             buttons.addView(listButton(p, false))
             val more = ui.iconPill("Detaylar", R.drawable.ic_info)
             more.setOnClickListener { details(p) }
@@ -773,6 +818,18 @@ class TrailerActivity : Activity() {
                 val pick = ui.iconPill("Fragmanlar · ${p.trailers.size}", R.drawable.ic_film)
                 pick.setOnClickListener { chooseTrailer(p) }
                 buttons.addView(pick)
+            }
+            if (hasSubtitles) {
+                val subs = ui.pill(if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı", 64, 23)
+                subs.setOnClickListener {
+                    subtitlesOn = !subtitlesOn
+                    exo?.let { e ->
+                        e.trackSelectionParameters = e.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(MediaC.TRACK_TYPE_TEXT, !subtitlesOn).build()
+                    }
+                    subs.text = if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı"
+                }
+                buttons.addView(subs)
             }
             if (p.cast.isNotEmpty()) {
                 val cast = ui.iconPill("Oyuncular", R.drawable.ic_eye)
@@ -796,9 +853,11 @@ class TrailerActivity : Activity() {
         } else {
             nextCard.visibility = View.GONE
         }
-        hint.text = "OK  oynat / durdur   ·   ◀ ▶  sar, basılı tut: hızlı" +
-            (if (buttons.childCount > 0) "   ·   ▲  düğmeler" else "") +
-            (if (nextCard.visibility == View.VISIBLE) "   ·   ▼  sıradaki" else "") + "   ·   Geri  çık"
+        hint.text = listOfNotNull(
+            "◀ ▶  sar",
+            "▲  seçenekler".takeIf { buttons.childCount > 0 },
+            "▼  sıradaki".takeIf { nextCard.visibility == View.VISIBLE }
+        ).joinToString("     ")
     }
 
     private fun setButtonsFocusable(on: Boolean) {
