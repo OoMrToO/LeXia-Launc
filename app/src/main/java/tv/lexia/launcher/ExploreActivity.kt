@@ -465,9 +465,16 @@ class ExploreActivity : Activity() {
         addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb }) {
             TmdbDiscover.page(kind, it, minScore = 8.0)
         }
-        addRow("Yerli yapımlar", mine.filter { from(it, "local") })
-        if (kind == "tv") addRow("Yerli diziler", mine.filter { from(it, "local") })
-        addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
+        if (kind == "tv") {
+            addRow("Yerli diziler", mine.filter { from(it, "local") })
+            addRow("Yabancı diziler", mine.filter { !from(it, "local") })
+        } else {
+            addRow("Yerli filmler", mine.filter { from(it, "local") })
+            addRow("Yabancı filmler", mine.filter { !from(it, "local") })
+        }
+        val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") }
+            .distinctBy { seenKey(it) }.filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+        addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }.take(12)
         for (g in genres) {
