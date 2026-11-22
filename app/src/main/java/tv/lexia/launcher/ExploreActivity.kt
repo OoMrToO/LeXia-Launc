@@ -41,6 +41,8 @@ class ExploreActivity : Activity() {
     private var searchTerm = ""
     /** Source-based Turkish/foreign toggle: local source is the feed's Turkish section. */
     private var origin = ""
+    /** TMDB production/origin country filter (ISO-3166 code). */
+    private var country = ""
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
     private lateinit var tabBar: LinearLayout
@@ -196,7 +198,7 @@ class ExploreActivity : Activity() {
     }
 
     /** Anything chosen under "Süz": the page is a grid then, not rows. */
-    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty() || searchTerm.isNotEmpty() || origin.isNotEmpty()
+    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty() || searchTerm.isNotEmpty() || origin.isNotEmpty() || country.isNotEmpty()
 
     private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
 
@@ -217,7 +219,8 @@ class ExploreActivity : Activity() {
             (genre.isEmpty() || genre in p.genres) &&
             (minScore <= 0 || p.imdb >= minScore) &&
             matchesYears(p) &&
-            (origin.isEmpty() || (origin == "local") == from(p, "local"))
+            (origin.isEmpty() || (origin == "local") == from(p, "local")) &&
+            (country.isEmpty() || country in p.countries || TmdbDiscover.hasCountry(kind, p.id, country))
 
     private fun openSearch() {
         val prefsSearch = getSharedPreferences("lexia_explore_search", MODE_PRIVATE)
@@ -293,7 +296,8 @@ class ExploreActivity : Activity() {
             "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
             sortName().takeIf { sort.isNotEmpty() },
             "Ara: $searchTerm".takeIf { searchTerm.isNotEmpty() },
-            if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null
+            if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null,
+            country.takeIf { it.isNotEmpty() }?.let { "Ülke: $it" }
         )
         val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
@@ -301,7 +305,7 @@ class ExploreActivity : Activity() {
         if (chosen.isNotEmpty()) {
             val clear = ui.pill("Temizle", 58, 21)
             clear.setOnClickListener {
-                genre = ""; minScore = 0.0; years = ""; sort = ""; origin = ""
+                genre = ""; minScore = 0.0; years = ""; sort = ""; origin = ""; country = ""
                 buildFilters()
                 show()
                 filterBar.getChildAt(2)?.requestFocus()
@@ -342,7 +346,8 @@ class ExploreActivity : Activity() {
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
             "Sırala" to sortName(),
-            "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" }
+            "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" },
+            "Yapım ülkesi" to country.ifEmpty { "Tüm ülkeler" }
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
@@ -370,6 +375,21 @@ class ExploreActivity : Activity() {
                     val v = listOf("", "score", "new", "az")
                     Dialogs.chooseOne(this, "Sırala", listOf("Önerilen", "En yüksek puan", "En yeni", "Ada göre (A–Z)"), v.indexOf(sort).coerceAtLeast(0)) {
                         sort = v[it]; apply()
+                    }
+                }
+                4 -> {
+                    val codes = listOf("", "TR", "US", "GB", "FR", "DE", "IT", "ES", "JP", "KR", "IN", "CA", "AU")
+                    val labels = listOf("Tüm ülkeler", "Türkiye", "ABD", "Birleşik Krallık", "Fransa", "Almanya", "İtalya", "İspanya", "Japonya", "Güney Kore", "Hindistan", "Kanada", "Avustralya")
+                    Dialogs.chooseOne(this, "Yapım ülkesi", labels, codes.indexOf(country).coerceAtLeast(0)) { selected ->
+                        country = codes[selected]
+                        if (country.isEmpty()) apply()
+                        else {
+                            Glass.toast(this, "Ülke bilgileri yükleniyor…")
+                            Thread {
+                                all.filter { ofKind(it) && it.id > 0 }.forEach { TmdbDiscover.countries(kind, it.id) }
+                                runOnUiThread { buildFilters(); show(); openFilters() }
+                            }.start()
+                        }
                     }
                 }
                 else -> {
