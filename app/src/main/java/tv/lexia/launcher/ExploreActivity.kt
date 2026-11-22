@@ -38,6 +38,7 @@ class ExploreActivity : Activity() {
     private var minScore = 0.0
     /** Years: "" any, "2020" the 2020s, "2010", "2000", "old" before 2000. */
     private var years = ""
+    private var searchTerm = ""
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
     private lateinit var tabBar: LinearLayout
@@ -197,11 +198,43 @@ class ExploreActivity : Activity() {
 
     private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
 
+    private fun matchesSearch(p: Pick): Boolean {
+        if (searchTerm.isBlank()) return true
+        val q = searchTerm.trim().lowercase(tr)
+        return p.title.lowercase(tr).contains(q) ||
+            p.director.lowercase(tr).contains(q) ||
+            p.cast.any { it.name.lowercase(tr).contains(q) }
+    }
+
     private fun matches(p: Pick): Boolean =
         ofKind(p) &&
+            matchesSearch(p) &&
             (genre.isEmpty() || genre in p.genres) &&
             (minScore <= 0 || p.imdb >= minScore) &&
             matchesYears(p)
+
+    private fun openSearch() {
+        val prefsSearch = getSharedPreferences("lexia_explore_search", MODE_PRIVATE)
+        val history = prefsSearch.getStringSet("history", emptySet()).orEmpty().toList().take(5)
+        Dialogs.input(this, "Film, dizi, oyuncu veya yönetmen ara", searchTerm) { query ->
+            searchTerm = query
+            if (query.isNotBlank()) {
+                prefsSearch.edit().putStringSet("history", (history + query).distinct().take(10).toSet()).apply()
+            }
+            buildFilters()
+            show()
+        }
+    }
+
+    private fun randomPick() {
+        val candidates = all.filter { ofKind(it) && !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
+        if (candidates.isEmpty()) {
+            Glass.toast(this, "Rastgele öneri bulunamadı")
+            return
+        }
+        val picked = candidates.random()
+        DetailActivity.open(this, picked, surprise = true, why = "Keşfet'ten rastgele seçildi")
+    }
 
     /** The tabs, "Süz" (with what is chosen) and the marathon. */
     private fun buildFilters() {
@@ -219,11 +252,18 @@ class ExploreActivity : Activity() {
         }
         tab("Filmler", "movie")
         tab("Diziler", "tv")
+        val search = ui.iconPill("Ara", R.drawable.ic_search)
+        search.setOnClickListener { openSearch() }
+        filterBar.addView(search, ui.ll(ui.wrap, ui.u(64), left = 14))
+        val random = ui.iconPill("🎲 Rastgele", R.drawable.ic_film)
+        random.setOnClickListener { randomPick() }
+        filterBar.addView(random, ui.ll(ui.wrap, ui.u(64), left = 8))
         val chosen = listOfNotNull(
             genre.takeIf { it.isNotEmpty() },
             yearsName().takeIf { years.isNotEmpty() },
             "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
-            sortName().takeIf { sort.isNotEmpty() }
+            sortName().takeIf { sort.isNotEmpty() },
+            "Ara: $searchTerm".takeIf { searchTerm.isNotEmpty() }
         )
         val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
@@ -392,6 +432,8 @@ class ExploreActivity : Activity() {
             TmdbDiscover.page(kind, it, minScore = 8.0)
         }
         addRow("Yerli yapımlar", mine.filter { from(it, "local") })
+        if (kind == "tv") addRow("Yerli diziler", mine.filter { from(it, "local") })
+        addRow("Yabancı yapımlar", mine.filter { !from(it, "local") })
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }.take(12)
         for (g in genres) {
