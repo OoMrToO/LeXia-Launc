@@ -1129,6 +1129,10 @@ class MediaSourcePickerActivity : Activity() {
     private fun addSourceSummary() {
         val tags = streams.map { it.tags }
         val providers = streams.map { it.addonName.trim() }.filter { it.isNotBlank() }.distinct().size
+        // The existing preference-aware source score provides a TV-specific quality estimate.
+        val ranked = streams.map { score(it) }.sortedDescending()
+        val topScore = ranked.firstOrNull() ?: 0
+        val topCount = ranked.count { it >= topScore - 80 }
         val fourK = tags.count { it.resolution >= 2160 }
         val fullHd = tags.count { it.resolution in 1080..2159 }
         val hdr = tags.count { it.hdr.isNotBlank() }
@@ -1148,6 +1152,9 @@ class MediaSourcePickerActivity : Activity() {
             "$atmos Atmos",
             "$surround surround ses"
         ).joinToString("  ·  ")
+        val scoreLine = if (ranked.isNotEmpty()) {
+            "En iyi eşleşme skoru: $topScore  ·  Bu seviyeye yakın: $topCount kaynak"
+        } else ""
         val sizeLine = if (knownSizes.isNotEmpty()) {
             "Boyutu bilinen ${knownSizes.size} kaynağın toplamı: " +
                 String.format(Locale.forLanguageTag("tr-TR"), "%.1f GB", totalSize / (1024.0 * 1024.0 * 1024.0))
@@ -1169,6 +1176,12 @@ class MediaSourcePickerActivity : Activity() {
             setTextColor(Color.rgb(190, 200, 225))
             setLineSpacing(0f, 1.15f)
             setPadding(0, dp(8), 0, 0)
+        })
+        if (scoreLine.isNotBlank()) card.addView(TextView(this).apply {
+            text = scoreLine
+            textSize = 13f
+            setTextColor(Color.rgb(140, 155, 185))
+            setPadding(0, dp(6), 0, 0)
         })
         if (sizeLine.isNotBlank()) card.addView(TextView(this).apply {
             text = sizeLine
