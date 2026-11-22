@@ -229,6 +229,24 @@ class DetailActivity : Activity() {
             val line = ui.text("İzlenebileceği yer:  " + platforms.joinToString("  ·  "), 21, C.TEXT2, 600)
             top.addView(line, ui.ll(w, w, top = 14))
         }
+        // Free / ad-supported services are shown separately so subscription availability isn't confused with free viewing.
+        val freePlatforms = film.free.distinct()
+        if (freePlatforms.isNotEmpty()) {
+            val freeCard = ui.vbox()
+            freeCard.setPadding(ui.u(18), ui.u(12), ui.u(18), ui.u(12))
+            freeCard.background = GradientDrawable().apply {
+                setColor(Color.argb(150, 22, 34, 29))
+                cornerRadius = ui.uf(16)
+                setStroke(ui.u(1), Color.argb(100, 100, 220, 160))
+            }
+            val freeTitle = ui.text("ÜCRETSİZ İZLEME", 14, Color.parseColor("#9BE6B9"), 800)
+            freeTitle.letterSpacing = 0.08f
+            freeCard.addView(freeTitle)
+            val freeLine = ui.text(freePlatforms.joinToString("  ·  "), 20, C.TEXT, 600)
+            freeLine.maxLines = 2
+            freeCard.addView(freeLine, ui.ll(w, w, top = 6))
+            top.addView(freeCard, ui.ll(w, w, top = 12))
+        }
         if (film.overview.isNotBlank()) {
             val storyLabel = ui.text("HİKÂYE", 13, C.ACCENT, 800)
             storyLabel.letterSpacing = 0.14f
@@ -247,8 +265,7 @@ class DetailActivity : Activity() {
             top.addView(story, ui.ll(w, w, top = 10))
         }
         if (film.director.isNotEmpty()) {
-            val role = if (film.isSeries) "Yaratıcı" else "Yönetmen"
-            val d = ui.text("$role: ${film.director}", 20, C.TEXT2, 500)
+            val role = if (film.isSeries) "Yaratıcı" else "Yönetmen"            val d = ui.text("$role: ${film.director}", 20, C.TEXT2, 500)
             top.addView(d, ui.ll(w, w, top = 16))
         }
         val buttons = ui.hbox()
@@ -497,8 +514,7 @@ class DetailActivity : Activity() {
         }
         // Their page: photo, a few lines, everything they made.
         photo.isClickable = true
-        photo.setOnClickListener { PersonActivity.open(this, c.name, directing = c.role == "Yönetmen" || c.role == "Yaratıcı") }
-        col.addView(photo, ui.ll(ui.u(140), ui.u(140)))
+        photo.setOnClickListener { PersonActivity.open(this, c.name, directing = c.role == "Yönetmen" || c.role == "Yaratıcı") }        col.addView(photo, ui.ll(ui.u(140), ui.u(140)))
         val name = ui.text(c.name, 19, C.TEXT, 600)
         name.gravity = Gravity.CENTER
         name.maxLines = 1
@@ -747,8 +763,7 @@ class DetailActivity : Activity() {
 
     /** Plans the film for tonight; if it is already planned, change the time or cancel. */
     private fun planNight() {
-        val plan = nightPlan()
-        if (plan == null) {
+        val plan = nightPlan()        if (plan == null) {
             MovieNight.choose(this, film) { updateNightBtn() }
             return
         }
@@ -997,7 +1012,6 @@ class DetailActivity : Activity() {
         updatePlayBtn()
         renderEpisodes()
     }
-
     /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */
     private var continueEpisode = ""
 
