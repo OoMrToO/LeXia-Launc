@@ -284,7 +284,8 @@ class DetailActivity : Activity() {
             top.addView(story, ui.ll(w, w, top = 10))
         }
         if (film.director.isNotEmpty()) {
-            val role = if (film.isSeries) "Yaratıcı" else "Yönetmen"            val d = ui.text("$role: ${film.director}", 20, C.TEXT2, 500)
+            val role = if (film.isSeries) "Yaratıcı" else "Yönetmen"
+            val d = ui.text("$role: ${film.director}", 20, C.TEXT2, 500)
             top.addView(d, ui.ll(w, w, top = 16))
         }
         val buttons = ui.hbox()
@@ -533,7 +534,8 @@ class DetailActivity : Activity() {
         }
         // Their page: photo, a few lines, everything they made.
         photo.isClickable = true
-        photo.setOnClickListener { PersonActivity.open(this, c.name, directing = c.role == "Yönetmen" || c.role == "Yaratıcı") }        col.addView(photo, ui.ll(ui.u(140), ui.u(140)))
+        photo.setOnClickListener { PersonActivity.open(this, c.name, directing = c.role == "Yönetmen" || c.role == "Yaratıcı") }
+        col.addView(photo, ui.ll(ui.u(140), ui.u(140)))
         val name = ui.text(c.name, 19, C.TEXT, 600)
         name.gravity = Gravity.CENTER
         name.maxLines = 1
