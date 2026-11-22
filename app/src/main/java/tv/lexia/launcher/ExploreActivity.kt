@@ -377,7 +377,7 @@ class ExploreActivity : Activity() {
                         sort = v[it]; apply()
                     }
                 }
-                4 -> {
+                5 -> {
                     val codes = listOf("", "TR", "US", "GB", "FR", "DE", "IT", "ES", "JP", "KR", "IN", "CA", "AU")
                     val labels = listOf("Tüm ülkeler", "Türkiye", "ABD", "Birleşik Krallık", "Fransa", "Almanya", "İtalya", "İspanya", "Japonya", "Güney Kore", "Hindistan", "Kanada", "Avustralya")
                     Dialogs.chooseOne(this, "Yapım ülkesi", labels, codes.indexOf(country).coerceAtLeast(0)) { selected ->
