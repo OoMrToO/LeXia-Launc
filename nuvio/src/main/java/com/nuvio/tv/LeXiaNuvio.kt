@@ -97,9 +97,7 @@ import com.nuvio.tv.data.repository.StreamRepositoryImpl
 import com.nuvio.tv.data.trailer.InAppYouTubeExtractor
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.StreamRepository
-import com.nuvio.tv.ui.screens.plugin.PluginViewModel
 import kotlinx.coroutines.flow.first
-import com.nuvio.tv.ui.screens.stream.StreamScreenViewModel
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -274,39 +272,6 @@ object LeXiaNuvio {
         ).also { streams = it }
     }
 
-    private fun streamViewModel(context: Context, args: Map<String, String?>): StreamScreenViewModel {
-        val app = context.applicationContext
-        val stores = dataStoreFactory(app)
-        val badgeSettings = StreamBadgeSettingsDataStore(stores, profileManager)
-        return StreamScreenViewModel(
-            app,
-            streamRepository(app),
-            addonRepository(app),
-            pluginManager(app),
-            LeXiaMetaRepository(),
-            PlayerSettingsDataStore(stores, profileManager, app),
-            StreamLinkCacheDataStore(stores, profileManager),
-            StreamBadgePresentation(badgeSettings),
-            badgeSettings,
-            BingeGroupCacheDataStore(stores, profileManager),
-            TorrentSettings(app),
-            LeXiaWatchProgressRepository(),
-            TrackingScrobbleCoordinator(TrackingProviderRegistry(emptyList<TrackingProvider>())),
-            DirectDebridResolver(),
-            DirectDebridStreamPreparer(),
-            debridPresentation,
-            YouTubeStreamResolver(InAppYouTubeExtractor()),
-            ExternalPlaybackTracker(),
-            LeXiaSubtitleRepository(),
-            SubtitleFileCache(app, addonClient(app)),
-            TorrentService(),
-            serverStreams,
-            ServerPlayback(),
-            PartyRepository(),
-            profileManager,
-            SavedStateHandle(args)
-        )
-    }
 
     private val playerClient: OkHttpClient by lazy { OkHttpClient.Builder().dns(IPv4FirstDns()).build() }
 
@@ -504,8 +469,6 @@ object LeXiaNuvio {
         return object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T = when (modelClass) {
-                PluginViewModel::class.java -> PluginViewModel(pluginManager(app), profileManager, app)
-                StreamScreenViewModel::class.java -> streamViewModel(app, navigationArguments(context))
                 else -> throw IllegalArgumentException("No Nuvio view model for ${modelClass.name}")
             } as T
         }

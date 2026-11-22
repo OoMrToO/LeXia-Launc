@@ -133,40 +133,6 @@ internal class NuvioJsRepository(context: Context) {
         runBlocking { store(appContext).setScraperSettings(scraperId, map) }
     }
 
-    /**
-     * Runs Nuvio's enabled scrapers for a title (PluginManager.executeScrapersStreaming).
-     * [mediaId] is a TMDB id, or "<tmdb id>:<season>:<episode>" for an episode. [onPartial]
-     * gets each scraper's sources as soon as that scraper is done (on a background thread).
-     */
-    fun fetchStreams(
-        mediaId: String,
-        mediaType: String,
-        season: Int? = null,
-        episode: Int? = null,
-        onPartial: ((List<MediaStream>) -> Unit)? = null
-    ): List<MediaStream> = runBlocking {
-        startMigration(appContext)
-        migration?.join()
-        val idParts = mediaId.split(':')
-        val hasEpisodeSuffix = idParts.size >= 3 &&
-            idParts[idParts.lastIndex - 1].toIntOrNull() != null && idParts.last().toIntOrNull() != null
-        val resolvedSeason = if (hasEpisodeSuffix) idParts[idParts.lastIndex - 1].toInt() else season
-        val resolvedEpisode = if (hasEpisodeSuffix) idParts.last().toInt() else episode
-        val tmdbId = (if (hasEpisodeSuffix) idParts.dropLast(2).joinToString(":") else mediaId).removePrefix("tmdb:")
-
-        val found = SearchNotes()
-        notes = found
-        found.asked.set(manager.enabledScrapers.first().count { it.supportsType(mediaType) })
-        val all = ArrayList<MediaStream>()
-        manager.executeScrapersStreaming(tmdbId, mediaType, resolvedSeason, resolvedEpisode).collect { (scraper, results) ->
-            if (results.isNotEmpty()) found.answered.incrementAndGet()
-            val part = results.mapNotNull { r -> toMediaStream(scraper, r) ?: run { found.unplayable.incrementAndGet(); null } }
-            all += part
-            if (part.isNotEmpty()) onPartial?.invoke(part)
-        }
-        if (found.answered.get() == 0) found.errors = nuvioErrors()
-        all.distinctBy { it.url }
-    }
 
     /**
      * The last errors Nuvio's copied plugin code wrote to the log (it logs them and goes on, so
@@ -208,34 +174,6 @@ internal class NuvioJsRepository(context: Context) {
         supportsExternalPlayer = false
     )
 
-    /** A scraper result as LeXia's source list and player take it; null when it is no video address. */
-    private fun toMediaStream(scraper: ScraperInfo, r: LocalScraperResult): MediaStream? {
-        if (r.url.toHttpUrlOrNull() == null) return null
-        val name = r.name.orEmpty()
-        return MediaStream(
-            addonName = scraper.name,
-            // Scrapers put the provider and quality in "name" ("Vidsrc - 1080p") and the film or
-            // file in "title"; both are shown.
-            name = name.ifBlank { r.title }.ifBlank { scraper.name }.take(120),
-            description = listOf(r.title.takeIf { it != name }.orEmpty(), r.quality.orEmpty())
-                .filter { it.isNotBlank() }.distinct().joinToString(" · ").take(300),
-            url = r.url,
-            headers = r.headers.orEmpty(),
-            subtitles = r.subtitles.mapNotNull { sub ->
-                if (sub.url.toHttpUrlOrNull() == null) null else MediaSubtitle(sub.url, sub.lang, sub.lang.uppercase())
-            },
-            quality = r.quality.orEmpty(),
-            language = r.language.orEmpty(),
-            server = r.provider.orEmpty(),
-            size = r.size.orEmpty(),
-            streamType = r.type.orEmpty(),
-            seeders = r.seeders,
-            peers = r.peers,
-            infoHash = r.infoHash.orEmpty(),
-            audioDelayMs = r.audioDelayMs?.toLong(),
-            audioDelayLanguage = r.audioDelayLanguage.orEmpty()
-        )
-    }
 
     companion object {
         private const val TAG = "NuvioJsRepository"
