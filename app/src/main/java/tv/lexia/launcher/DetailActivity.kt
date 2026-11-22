@@ -229,6 +229,24 @@ class DetailActivity : Activity() {
             val line = ui.text("İzlenebileceği yer:  " + platforms.joinToString("  ·  "), 21, C.TEXT2, 600)
             top.addView(line, ui.ll(w, w, top = 14))
         }
+        // Free / ad-supported services are shown separately so subscription availability isn't confused with free viewing.
+        val freePlatforms = film.free.distinct()
+        if (freePlatforms.isNotEmpty()) {
+            val freeCard = ui.vbox()
+            freeCard.setPadding(ui.u(18), ui.u(12), ui.u(18), ui.u(12))
+            freeCard.background = GradientDrawable().apply {
+                setColor(Color.argb(150, 22, 34, 29))
+                cornerRadius = ui.uf(16)
+                setStroke(ui.u(1), Color.argb(100, 100, 220, 160))
+            }
+            val freeTitle = ui.text("ÜCRETSİZ İZLEME", 14, Color.parseColor("#9BE6B9"), 800)
+            freeTitle.letterSpacing = 0.08f
+            freeCard.addView(freeTitle)
+            val freeLine = ui.text(freePlatforms.joinToString("  ·  "), 20, C.TEXT, 600)
+            freeLine.maxLines = 2
+            freeCard.addView(freeLine, ui.ll(w, w, top = 6))
+            top.addView(freeCard, ui.ll(w, w, top = 12))
+        }
         if (film.overview.isNotBlank()) {
             val storyLabel = ui.text("HİKÂYE", 13, C.ACCENT, 800)
             storyLabel.letterSpacing = 0.14f
@@ -239,10 +257,29 @@ class DetailActivity : Activity() {
             story.ellipsize = TextUtils.TruncateAt.END
             story.setLineSpacing(0f, 1.35f)
             story.setPadding(ui.u(20), ui.u(16), ui.u(20), ui.u(16))
-            story.background = GradientDrawable().apply {
-                setColor(Color.argb(178, 13, 18, 27))
-                cornerRadius = ui.uf(18)
-                setStroke(ui.u(1), Color.argb(90, 255, 255, 255))
+            story.isFocusable = true
+            story.isClickable = true
+            story.contentDescription = "Hikâye. Açmak veya kapatmak için OK tuşuna bas"
+            fun styleStory(focused: Boolean) {
+                story.background = GradientDrawable().apply {
+                    setColor(if (focused) Color.argb(218, 20, 28, 42) else Color.argb(178, 13, 18, 27))
+                    cornerRadius = ui.uf(18)
+                    setStroke(ui.u(if (focused) 3 else 1), if (focused) C.ACCENT else Color.argb(90, 255, 255, 255))
+                }
+                story.scaleX = if (focused) 1.015f else 1f
+                story.scaleY = if (focused) 1.015f else 1f
+            }
+            styleStory(false)
+            story.setOnFocusChangeListener { v, focused ->
+                styleStory(focused)
+                ui.lift(v, focused, 1.015f, 14)
+            }
+            story.setOnClickListener {
+                val expanded = story.maxLines == Integer.MAX_VALUE
+                story.maxLines = if (expanded) 6 else Integer.MAX_VALUE
+                story.ellipsize = if (expanded) TextUtils.TruncateAt.END else null
+                story.contentDescription = if (expanded) "Hikâye kısaltıldı. Açmak için OK tuşuna bas" else "Hikâye tamamı gösteriliyor. Kapatmak için OK tuşuna bas"
+                story.text = film.overview
             }
             top.addView(story, ui.ll(w, w, top = 10))
         }
@@ -1002,7 +1039,6 @@ class DetailActivity : Activity() {
         updatePlayBtn()
         renderEpisodes()
     }
-
     /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */
     private var continueEpisode = ""
 
