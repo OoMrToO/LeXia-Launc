@@ -2408,12 +2408,27 @@ class MainActivity : Activity() {
     }
 
     private fun askWhatToWatch() {
-        val films = (allPicks + top10 + genrePools.flatMap { it.second }).filter { it.key !in skipNow }
+        val films = (allPicks + top10 + genrePools.flatMap { it.second }).filter { it.key !in skipNow && watchableTonight(it) }
         if (films.isEmpty()) {
             Glass.toast(this, "Film listesi henüz yüklenmedi")
             return
         }
         Surprise.ask(this, films, prefs.genres)
+    }
+
+    /**
+     * A film that can be watched at home tonight: out already (not "coming soon"), and if it is
+     * still only in cinemas, out on a platform or digitally too. Series are not suggested here.
+     */
+    private fun watchableTonight(p: Pick): Boolean {
+        if (p.isSeries) return false
+        val thisYear = Calendar.getInstance().get(Calendar.YEAR)
+        if ((p.year.take(4).toIntOrNull() ?: 0) > thisYear) return false
+        if ((daysUntil(p.release) ?: 0) > 0) return false
+        val inCinemaOnly = cinema.any { it.key == p.key } || soon.any { it.key == p.key }
+        if (!inCinemaOnly) return true
+        val digitalOut = daysUntil(p.digital)?.let { it <= 0 } == true
+        return digitalOut || p.where.isNotEmpty() || p.provider.isNotEmpty()
     }
 
     /** Google TV's own search (voice or typed). */
@@ -3103,9 +3118,11 @@ class MainActivity : Activity() {
         stopHeroTrailer()
         idle = true
         styleAmbient()
-        // Screensaver plays films in cinemas and coming soon, one of each in turn.
-        val list = saverFilms()
-        if (list.isNotEmpty()) {
+        // Screensaver plays films in cinemas and coming soon, one of each in turn; it starts on the
+        // film that was on the screen, so the picture does not jump to another one.
+        val onScreen = picks.getOrNull(pickIndex)?.takeIf { it.backdrop.isNotEmpty() }
+        val list = (listOfNotNull(onScreen) + saverFilms()).distinctBy { it.key }
+        if (list.size > 1) {
             savedPicks = picks
             savedIndex = pickIndex
             picks = list
@@ -3305,7 +3322,7 @@ class MainActivity : Activity() {
             }
             val got = HashMap<String, Bitmap>()
             // Title logos for the films the hero will show (today's films, and the others when chosen).
-            val heroFilms = if (prefs.heroSource == "picks") list else list + plat.take(24) + nowList
+            val heroFilms = (if (prefs.heroSource == "picks") list else list + plat.take(24) + nowList) + topTv
             for (p in heroFilms) {
                 if (p.logo.isEmpty() || logos.containsKey(p.logo)) continue
                 Net.bitmap("https://image.tmdb.org/t/p/w500" + p.logo, logoWidth, false)
@@ -3461,21 +3478,34 @@ class MainActivity : Activity() {
         else -> "${min / 60} saat ${min % 60} dakikada"
     }
 
-    /** The films behind the home screen, as chosen in Ayarlar › Görünüm › Ana ekrandaki filmler. */
+    /**
+     * The films and series behind the home screen, as chosen in Ayarlar › Görünüm › Ana ekrandaki
+     * filmler. Series of the week take turns with the films, and well-liked films of the genre rows
+     * fill in, in another order each day, so the same few do not keep coming back.
+     */
     private fun heroPool(): List<Pick> {
         val now = cinema.filter { it.backdrop.isNotEmpty() }
         val stream = streamingFirst()
+        // Today's films that are out (an old list may still hold ones coming later).
+        val films = allPicks.filter { (daysUntil(it.release) ?: 0) <= 0 }.ifEmpty { allPicks }
+        val series = top10tv.filter { it.backdrop.isNotEmpty() && !Remote.isHidden(it) }
+        val day = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        fun daily(l: List<Pick>): List<Pick> = if (l.size < 2) l else (day % l.size).let { k -> l.drop(k) + l.take(k) }
+        val more = genrePools.flatMap { it.second }
+            .filter { it.backdrop.isNotEmpty() && !it.isSeries && it.imdb >= 7.0 && (daysUntil(it.release) ?: 0) <= 0 }
+            .distinctBy { it.key }
+            .shuffled(java.util.Random(day.toLong()))
+        fun turns(vararg lists: List<Pick>, max: Int): List<Pick> {
+            val out = ArrayList<Pick>()
+            for (i in 0 until lists.maxOf { it.size }) for (l in lists) l.getOrNull(i)?.let { out.add(it) }
+            return out.distinctBy { it.key }.take(max)
+        }
         return when (prefs.heroSource) {
-            "cinema" -> now.ifEmpty { allPicks }
-            "platform" -> stream.ifEmpty { allPicks }
-            "mix" -> {
-                // One of each in turn: today's film, one in cinemas, one new on streaming.
-                val out = ArrayList<Pick>()
-                val lists = listOf(allPicks, now, stream)
-                for (i in 0 until lists.maxOf { it.size }) for (l in lists) l.getOrNull(i)?.let { out.add(it) }
-                out.distinctBy { it.key }.take(30)
-            }
-            else -> allPicks
+            "cinema" -> now.ifEmpty { films }
+            "platform" -> turns(stream, daily(series), max = 40).ifEmpty { films }
+            // One of each in turn: today's film, a series, one in cinemas, one new on streaming, one more.
+            "mix" -> turns(daily(films), daily(series), now, stream, more, max = 48)
+            else -> turns(daily(films), daily(series), more, max = 40)
         }
     }
 
@@ -3609,7 +3639,17 @@ class MainActivity : Activity() {
                     if (i % 2 == 1 && s < stream.size) out.add(stream[s++])
                 }
                 while (s < stream.size && s < 6) out.add(stream[s++])
-                out
+                // This week's series take turns with the films too.
+                val series = top10tv.filter { it.backdrop.isNotEmpty() && !Remote.isHidden(it) }
+                if (series.isEmpty()) return out
+                val mixed = ArrayList<Pick>()
+                var t = 0
+                for ((i, p) in out.withIndex()) {
+                    mixed.add(p)
+                    if (i % 3 == 2 && t < series.size) mixed.add(series[t++])
+                }
+                while (t < series.size && t < 4) mixed.add(series[t++])
+                mixed
             }
             else -> emptyList()
         }
@@ -3709,6 +3749,7 @@ class MainActivity : Activity() {
                 p.key == moodFilmKey && pickIndex != 0 -> "HAVAYA GÖRE"
                 // The platform's name is on the coloured badge under the title.
                 p.provider.isNotEmpty() -> "PLATFORMLARDA YENİ"
+                p.isSeries -> "HAFTANIN DİZİLERİ"
                 prefs.heroSource != "picks" && cinema.any { it.key == p.key } -> "ŞU AN SİNEMADA"
                 pickIndex == 0 -> "GÜNÜN FİLMİ"
                 else -> "BU HAFTA ÖNE ÇIKANLAR"
@@ -4095,10 +4136,13 @@ class MainActivity : Activity() {
         Fx.lite = prefs.lite
         NightSleep.schedule(this)
         Fx.zoomReset(frame)
+        // Rows drawn again (the film just opened moves to "Son baktıkların"): the remote stays on its film.
+        val spot = FocusKeep.save(this)
         refreshMarks()
         refreshContinue()
         refreshRecent()
         refreshShelf()
+        if (spot != null && FocusKeep.save(this)?.key != spot.key) FocusKeep.restore(this, spot)
         // Films put in Listem by older versions get a date now, for "Listende 3 haftadır bekliyor".
         if (prefs.listAdded.isEmpty() && prefs.watchlist.isNotEmpty()) prefs.watchlist = prefs.watchlist
         handler.removeCallbacks(morningCheck)

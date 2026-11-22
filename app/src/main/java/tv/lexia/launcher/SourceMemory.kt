@@ -57,18 +57,37 @@ internal class SourceMemory(context: Context) {
         return File(dir, "$hash.json")
     }
 
+    private fun toJson(s: MediaStream): JSONObject = JSONObject()
+        .put("addon", s.addonName).put("name", s.name).put("description", s.description).put("url", s.url)
+        .put("headers", JSONObject(s.headers))
+        .put("subtitles", JSONArray().apply {
+            s.subtitles.forEach { put(JSONObject().put("url", it.url).put("language", it.language).put("label", it.label)) }
+        })
+        .put("fileName", s.fileName).put("sizeBytes", s.sizeBytes)
+
+    private fun fromJson(s: JSONObject): MediaStream? {
+        val headers = s.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty()
+        val subs = s.optJSONArray("subtitles")?.let { a ->
+            (0 until a.length()).mapNotNull { j ->
+                a.optJSONObject(j)?.let { MediaSubtitle(it.optString("url"), it.optString("language"), it.optString("label")) }
+            }
+        }.orEmpty()
+        return MediaStream(
+            addonName = s.optString("addon"),
+            name = s.optString("name"),
+            description = s.optString("description"),
+            url = s.optString("url").takeIf { it.isNotBlank() } ?: return null,
+            headers = headers,
+            subtitles = subs,
+            fileName = s.optString("fileName"),
+            sizeBytes = s.optLong("sizeBytes")
+        )
+    }
+
     fun keep(key: String, streams: List<MediaStream>) {
         if (key.isBlank() || streams.isEmpty()) return
         val list = JSONArray()
-        streams.take(MAX_KEPT).forEach { s ->
-            list.put(JSONObject()
-                .put("addon", s.addonName).put("name", s.name).put("description", s.description).put("url", s.url)
-                .put("headers", JSONObject(s.headers))
-                .put("subtitles", JSONArray().apply {
-                    s.subtitles.forEach { put(JSONObject().put("url", it.url).put("language", it.language).put("label", it.label)) }
-                })
-                .put("fileName", s.fileName).put("sizeBytes", s.sizeBytes))
-        }
+        streams.take(MAX_KEPT).forEach { list.put(toJson(it)) }
         try {
             fileOf(key).writeText(JSONObject().put("at", System.currentTimeMillis()).put("streams", list).toString())
         } catch (_: Exception) {
@@ -85,24 +104,47 @@ internal class SourceMemory(context: Context) {
         }
         if (System.currentTimeMillis() - o.optLong("at") > KEEP_MS) return emptyList()
         val list = o.optJSONArray("streams") ?: return emptyList()
-        return (0 until list.length()).mapNotNull { i ->
-            val s = list.optJSONObject(i) ?: return@mapNotNull null
-            val headers = s.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty()
-            val subs = s.optJSONArray("subtitles")?.let { a ->
-                (0 until a.length()).mapNotNull { j ->
-                    a.optJSONObject(j)?.let { MediaSubtitle(it.optString("url"), it.optString("language"), it.optString("label")) }
-                }
-            }.orEmpty()
-            MediaStream(
-                addonName = s.optString("addon"),
-                name = s.optString("name"),
-                description = s.optString("description"),
-                url = s.optString("url").takeIf { it.isNotBlank() } ?: return@mapNotNull null,
-                headers = headers,
-                subtitles = subs,
-                fileName = s.optString("fileName"),
-                sizeBytes = s.optLong("sizeBytes")
-            )
+        return (0 until list.length()).mapNotNull { i -> list.optJSONObject(i)?.let { fromJson(it) } }
+    }
+
+    // ---------- The source a film or episode last played from ----------
+
+    private val lastDir = File(app.filesDir, "last_source").apply { mkdirs() }
+
+    private fun lastFile(key: String): File {
+        val hash = MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
+        return File(lastDir, "$hash.json")
+    }
+
+    /** [stream] is what [key] (a film, or an episode "tt…:2:5") plays from now: "Devam et" starts it again. */
+    fun playedFrom(key: String, stream: MediaStream) {
+        if (key.isBlank()) return
+        try {
+            lastFile(key).writeText(JSONObject().put("at", System.currentTimeMillis()).put("stream", toJson(stream)).toString())
+            // Old ones go: a month is plenty to come back to something.
+            val old = System.currentTimeMillis() - LAST_MS
+            lastDir.listFiles()?.filter { it.lastModified() < old }?.forEach { it.delete() }
+        } catch (_: Exception) {
+        }
+    }
+
+    /** The source [key] last played from, if within a month; null when none (or it stopped playing). */
+    fun lastPlayed(key: String): MediaStream? {
+        if (key.isBlank()) return null
+        val o = try {
+            JSONObject(lastFile(key).readText())
+        } catch (e: Exception) {
+            return null
+        }
+        if (System.currentTimeMillis() - o.optLong("at") > LAST_MS) return null
+        return o.optJSONObject("stream")?.let { fromJson(it) }
+    }
+
+    /** The last source would not open again (its address expired): the next "Devam et" searches. */
+    fun forgetPlayed(key: String) {
+        try {
+            lastFile(key).delete()
+        } catch (_: Exception) {
         }
     }
 
@@ -118,6 +160,7 @@ internal class SourceMemory(context: Context) {
         /** Sources found less than three hours ago still play (their addresses carry tokens that expire). */
         private const val KEEP_MS = 3 * 60 * 60 * 1000L
         private const val MAX_KEPT = 80
+        private const val LAST_MS = 30L * 24 * 60 * 60 * 1000
         private val LOCK = Any()
     }
 }

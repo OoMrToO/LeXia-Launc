@@ -87,6 +87,73 @@ internal object TmdbDiscover {
         )
     }
 
+    /**
+     * What a title found on TMDB (Keşfet's "Daha fazla", a person's films) lacks next to today's
+     * list: its trailers, title logo, length, cast, director and IMDb id, from its full TMDB page.
+     * Null when TMDB cannot be reached or the title has no id.
+     */
+    fun complete(p: Pick): Pick? {
+        if (p.id <= 0) return null
+        val kind = if (p.isSeries) "tv" else "movie"
+        val o = get("$kind/${p.id}", mapOf(
+            "append_to_response" to "videos,images,external_ids,credits",
+            "include_video_language" to "tr,en,null",
+            "include_image_language" to "tr,en,null"
+        )) ?: return null
+        val out = p.toJson()
+        // Trailers on YouTube: Turkish first, then the original; trailers before teasers.
+        val videos = o.optJSONObject("videos")?.optJSONArray("results")
+        val list = (0 until (videos?.length() ?: 0)).mapNotNull { videos!!.optJSONObject(it) }
+            .filter { it.optString("site") == "YouTube" && it.optString("key").isNotBlank() && it.optString("type") in setOf("Trailer", "Teaser") }
+            .sortedWith(compareBy({ if (it.optString("iso_639_1") == "tr") 0 else 1 }, { if (it.optString("type") == "Trailer") 0 else 1 }, { if (it.optBoolean("official")) 0 else 1 }))
+            .take(6)
+        if (list.isNotEmpty() && p.trailer.isEmpty()) {
+            out.put("trailer", list[0].optString("key"))
+            out.put("trailers", org.json.JSONArray(list.map {
+                val turkish = it.optString("iso_639_1") == "tr"
+                val teaser = it.optString("type") == "Teaser"
+                org.json.JSONObject().put("k", it.optString("key")).put("n", when {
+                    turkish && teaser -> "Türkçe tanıtım"
+                    turkish -> "Türkçe fragman"
+                    teaser -> "Tanıtım"
+                    else -> "Orijinal fragman"
+                })
+            }))
+        }
+        if (p.logo.isEmpty()) {
+            val logos = o.optJSONObject("images")?.optJSONArray("logos")
+            val all = (0 until (logos?.length() ?: 0)).mapNotNull { logos!!.optJSONObject(it) }
+            (all.firstOrNull { it.optString("iso_639_1") == "tr" } ?: all.firstOrNull { it.optString("iso_639_1") == "en" } ?: all.firstOrNull())
+                ?.optString("file_path")?.takeIf { it.startsWith("/") }?.let { out.put("logo", it) }
+        }
+        if (p.runtime <= 0) {
+            val minutes = if (kind == "tv") o.optJSONArray("episode_run_time")?.optInt(0) ?: 0 else o.optInt("runtime")
+            if (minutes > 0) out.put("runtime", minutes)
+        }
+        if (p.overview.isBlank()) out.put("overview", o.optString("overview"))
+        if (p.tagline.isBlank()) out.put("tagline", o.optString("tagline"))
+        if (kind == "tv" && p.seasons <= 0) out.put("seasons", o.optInt("number_of_seasons"))
+        if (p.imdbId.isBlank()) {
+            o.optJSONObject("external_ids")?.optString("imdb_id")?.takeIf { it.startsWith("tt") }?.let { out.put("imdb_id", it) }
+        }
+        val credits = o.optJSONObject("credits")
+        if (p.cast.isEmpty()) {
+            val cast = credits?.optJSONArray("cast")
+            out.put("cast", org.json.JSONArray((0 until minOf(10, cast?.length() ?: 0)).mapNotNull { i ->
+                cast!!.optJSONObject(i)?.let {
+                    org.json.JSONObject().put("name", it.optString("name")).put("role", it.optString("character"))
+                        .put("photo", it.optString("profile_path"))
+                }
+            }))
+        }
+        if (p.director.isBlank()) {
+            val name = if (kind == "tv") o.optJSONArray("created_by")?.optJSONObject(0)?.optString("name")
+            else credits?.optJSONArray("crew")?.let { c -> (0 until c.length()).mapNotNull { c.optJSONObject(it) }.firstOrNull { it.optString("job") == "Director" }?.optString("name") }
+            if (!name.isNullOrBlank()) out.put("director", name)
+        }
+        return try { Pick.from(out) } catch (e: Exception) { null }
+    }
+
     /** A person (actor, director) by name: TMDB's page, with every film and series they made. */
     fun person(name: String, directing: Boolean): org.json.JSONObject? {
         val found = get("search/person", mapOf("query" to name))?.optJSONArray("results") ?: return null

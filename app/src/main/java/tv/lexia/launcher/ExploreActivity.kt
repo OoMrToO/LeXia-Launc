@@ -134,8 +134,10 @@ class ExploreActivity : Activity() {
             seenChanges = MediaPlaybackStore.changes
             val focus = currentFocus
             if (!filtering()) {
+                // The same poster keeps the remote, not the page's top or a tab.
+                val spot = FocusKeep.save(this)
                 show()
-                if (focus != null) filterBar.getChildAt(if (kind == "movie") 0 else 1)?.requestFocus()
+                if (!FocusKeep.restore(this, spot) && focus != null) filterBar.getChildAt(if (kind == "movie") 0 else 1)?.requestFocus()
             }
         }
     }

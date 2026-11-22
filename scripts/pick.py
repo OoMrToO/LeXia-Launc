@@ -372,8 +372,9 @@ def choose(cands):
     def score(c):
         return (c.get("imdb") or c["rating"]) * 10 + min(c["popularity"], 400) / 20
 
-    picks = sorted(pool, key=lambda c: -score(c))[:COUNT]
-    return picks or cands[:COUNT]
+    # Twice as many as needed: films not out in Turkey yet are dropped once their dates are known.
+    picks = sorted(pool, key=lambda c: -score(c))[:COUNT * 2]
+    return picks or cands[:COUNT * 2]
 
 
 def cinema(today):
@@ -668,7 +669,9 @@ def main():
     soon = sorted((e for e in soon if e.get("release", "") > today), key=lambda e: e["release"])
     out = {
         "date": now.strftime("%Y-%m-%d"),
-        "picks": [full(c) for c in picks],
+        # Today's films are suggestions to watch: none whose Turkish release is still ahead
+        # (those are in "soon"); TMDB's worldwide date can come months before Turkey's.
+        "picks": [e for e in (full(c) for c in picks) if not e.get("release") or e["release"] <= today][:COUNT],
         "top10": [full(c) for c in top],
         "top10tv": [full(c) for c in shows],
         "cinema": [full(c) for c in playing],

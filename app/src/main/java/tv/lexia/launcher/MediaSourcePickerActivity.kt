@@ -125,6 +125,8 @@ class MediaSourcePickerActivity : Activity() {
     private var listShown = false
     private var auto = Auto.NO
     private val autoDeadline = Runnable { playBestNow() }
+    /** "Devam et": the source the film or episode last played from, started again without a list. */
+    private var resumeTry: MediaStream? = null
 
     private val screenHeight by lazy {
         @Suppress("DEPRECATION")
@@ -783,12 +785,16 @@ class MediaSourcePickerActivity : Activity() {
         status.text = message
         clearContent()
 
+        // Left half way: it goes on where it stopped, from the source it played on, with no list and
+        // no waiting. Should that source no longer open, the search below finds another by itself.
+        resumeTry = null
+        val resumeFrom = if (playback.resumePositionMs(key) > 0) memory.lastPlayed(key) else null
         // Sources found for this a little while ago: on the page (and the best one started) at
         // once; the fresh search below adds what is new.
         val kept = memory.kept(key)
         if (kept.isNotEmpty()) {
             addStreams(kept)
-            if (this.auto != Auto.NO) playBestNow()
+            if (this.auto != Auto.NO && resumeFrom == null) playBestNow()
         }
 
         var open = 2
@@ -820,6 +826,11 @@ class MediaSourcePickerActivity : Activity() {
                 finished()
             }
         })
+        if (resumeFrom != null) {
+            status.text = "Kaldığın yerden açılıyor  ·  ${sourceName(resumeFrom)}"
+            resumeTry = resumeFrom
+            play(resumeFrom)
+        }
     }
 
     private fun addStreams(part: List<MediaStream>) {
@@ -934,6 +945,9 @@ class MediaSourcePickerActivity : Activity() {
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
         auto = Auto.NO
+        // "Devam et" starts this one again next time.
+        val playedKey = mediaKey
+        worker.submit { memory.playedFrom(playedKey, stream) }
         com.nuvio.tv.LeXiaCinema.enabled = prefs.cinemaMode
         // İzlediklerim: the title, kept with its page data.
         val keep = film
@@ -1053,11 +1067,26 @@ class MediaSourcePickerActivity : Activity() {
             WatchHistory(applicationContext).finished(film, mediaKey)
             Sleep.playbackFinished(applicationContext)
         }
+        val resumed = resumeTry
+        resumeTry = null
         when (resultCode) {
             PlayerActivity.RESULT_FAILED -> {
                 if (stream != null) {
                     failed.add(stream.url)
                     if (remembered("choices") == signature(stream)) remember("choices", "")
+                }
+                if (stream != null && resumed != null && stream.url == resumed.url) {
+                    // The last source no longer opens (its address expired): another one goes on
+                    // from the same minute by itself, as soon as the search has one.
+                    val key = mediaKey
+                    worker.submit { memory.forgetPlayed(key) }
+                    auto = Auto.BEST
+                    if (streams.any { it.url !in failed }) {
+                        playBestNow()
+                        return
+                    }
+                    if (!searching) auto = Auto.NO
+                    status.text = if (searching) "Son kaynak açılmadı  ·  Başka kaynak aranıyor…" else status.text
                 }
                 if (streams.isNotEmpty()) renderStreams()
             }
