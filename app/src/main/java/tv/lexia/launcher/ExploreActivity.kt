@@ -196,7 +196,7 @@ class ExploreActivity : Activity() {
     }
 
     /** Anything chosen under "Süz": the page is a grid then, not rows. */
-    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty()
+    private fun filtering() = genre.isNotEmpty() || minScore > 0 || years.isNotEmpty() || sort.isNotEmpty() || searchTerm.isNotEmpty() || origin.isNotEmpty()
 
     private fun ofKind(p: Pick) = (kind == "tv") == p.isSeries
 
@@ -459,7 +459,7 @@ class ExploreActivity : Activity() {
         }
         addRow("Yerli yapımlar", mine.filter { from(it, "local") })
         if (kind == "tv") addRow("Yerli diziler", mine.filter { from(it, "local") })
-        addRow("Yabancı yapımlar", mine.filter { !from(it, "local") })
+        addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }.take(12)
         for (g in genres) {
