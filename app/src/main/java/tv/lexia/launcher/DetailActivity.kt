@@ -257,10 +257,29 @@ class DetailActivity : Activity() {
             story.ellipsize = TextUtils.TruncateAt.END
             story.setLineSpacing(0f, 1.35f)
             story.setPadding(ui.u(20), ui.u(16), ui.u(20), ui.u(16))
-            story.background = GradientDrawable().apply {
-                setColor(Color.argb(178, 13, 18, 27))
-                cornerRadius = ui.uf(18)
-                setStroke(ui.u(1), Color.argb(90, 255, 255, 255))
+            story.isFocusable = true
+            story.isClickable = true
+            story.contentDescription = "Hikâye. Açmak veya kapatmak için OK tuşuna bas"
+            fun styleStory(focused: Boolean) {
+                story.background = GradientDrawable().apply {
+                    setColor(if (focused) Color.argb(218, 20, 28, 42) else Color.argb(178, 13, 18, 27))
+                    cornerRadius = ui.uf(18)
+                    setStroke(ui.u(if (focused) 3 else 1), if (focused) C.ACCENT else Color.argb(90, 255, 255, 255))
+                }
+                story.scaleX = if (focused) 1.015f else 1f
+                story.scaleY = if (focused) 1.015f else 1f
+            }
+            styleStory(false)
+            story.setOnFocusChangeListener { v, focused ->
+                styleStory(focused)
+                ui.lift(v, focused, 1.015f, 14)
+            }
+            story.setOnClickListener {
+                val expanded = story.maxLines == Integer.MAX_VALUE
+                story.maxLines = if (expanded) 6 else Integer.MAX_VALUE
+                story.ellipsize = if (expanded) TextUtils.TruncateAt.END else null
+                story.contentDescription = if (expanded) "Hikâye kısaltıldı. Açmak için OK tuşuna bas" else "Hikâye tamamı gösteriliyor. Kapatmak için OK tuşuna bas"
+                story.text = film.overview
             }
             top.addView(story, ui.ll(w, w, top = 10))
         }
@@ -763,7 +782,8 @@ class DetailActivity : Activity() {
 
     /** Plans the film for tonight; if it is already planned, change the time or cancel. */
     private fun planNight() {
-        val plan = nightPlan()        if (plan == null) {
+        val plan = nightPlan()
+        if (plan == null) {
             MovieNight.choose(this, film) { updateNightBtn() }
             return
         }
