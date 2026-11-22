@@ -368,7 +368,7 @@ class ExploreActivity : Activity() {
             "Durum" to stateName(),
             "Sırala" to sortName(),
             "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" },
-            "Yapım ülkesi" to country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler"
+            "Yapım ülkesi" to (country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler")
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
