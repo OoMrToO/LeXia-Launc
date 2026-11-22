@@ -14,6 +14,14 @@ object LeXiaCinema {
     @Volatile
     var playing = false
 
+    /** The film's own colour (ARGB, 0 = none): the player's bar and highlights take it. */
+    @Volatile
+    var accent = 0
+
+    /** Light mode (weaker TVs): the player leaves out the heavier touches. */
+    @Volatile
+    var light = false
+
     /** Quiet: sinema modu is on and something plays. */
     val quiet: Boolean get() = enabled && playing
 }
