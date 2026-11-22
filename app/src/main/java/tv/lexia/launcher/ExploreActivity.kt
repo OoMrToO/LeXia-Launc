@@ -219,7 +219,7 @@ class ExploreActivity : Activity() {
     private fun openSearch() {
         val prefsSearch = getSharedPreferences("lexia_explore_search", MODE_PRIVATE)
         val history = prefsSearch.getStringSet("history", emptySet()).orEmpty().toList().take(5)
-        Dialogs.input(this, "Film, dizi, oyuncu veya yönetmen ara", searchTerm) { query ->
+        fun runQuery(query: String) {
             searchTerm = query
             if (query.isNotBlank()) {
                 prefsSearch.edit().putStringSet("history", (history + query).distinct().take(10).toSet()).apply()
@@ -241,6 +241,14 @@ class ExploreActivity : Activity() {
                 buildFilters()
                 show()
             }
+        }
+        if (history.isNotEmpty()) {
+            Dialogs.list(this, "Arama", listOf("Yeni arama" to "") + history.map { it to "Son arama" }, subtitle = "Son aramalar") { choice ->
+                if (choice == 0) Dialogs.input(this, "Film, dizi, oyuncu veya yönetmen ara", searchTerm) { runQuery(it) }
+                else runQuery(history[choice - 1])
+            }
+        } else {
+            Dialogs.input(this, "Film, dizi, oyuncu veya yönetmen ara", searchTerm) { runQuery(it) }
         }
     }
 
