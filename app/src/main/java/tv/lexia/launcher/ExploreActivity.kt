@@ -269,6 +269,22 @@ class ExploreActivity : Activity() {
     }
 
     /** The tabs, "Süz" (with what is chosen) and the marathon. */
+    private fun countryName(code: String) = when (code) {
+        "TR" -> "Türkiye"
+        "US" -> "ABD"
+        "GB" -> "Birleşik Krallık"
+        "FR" -> "Fransa"
+        "DE" -> "Almanya"
+        "IT" -> "İtalya"
+        "ES" -> "İspanya"
+        "JP" -> "Japonya"
+        "KR" -> "Güney Kore"
+        "IN" -> "Hindistan"
+        "CA" -> "Kanada"
+        "AU" -> "Avustralya"
+        else -> code
+    }
+
     private fun buildFilters() {
         filterBar.removeAllViews()
         fun tab(label: String, value: String) {
@@ -297,7 +313,7 @@ class ExploreActivity : Activity() {
             sortName().takeIf { sort.isNotEmpty() },
             "Ara: $searchTerm".takeIf { searchTerm.isNotEmpty() },
             if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null,
-            country.takeIf { it.isNotEmpty() }?.let { "Ülke: $it" }
+            country.takeIf { it.isNotEmpty() }?.let { "Ülke: ${countryName(it)}" }
         )
         val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
@@ -347,7 +363,7 @@ class ExploreActivity : Activity() {
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
             "Sırala" to sortName(),
             "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" },
-            "Yapım ülkesi" to country.ifEmpty { "Tüm ülkeler" }
+            "Yapım ülkesi" to country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler"
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
