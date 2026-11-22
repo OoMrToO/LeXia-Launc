@@ -368,6 +368,22 @@ object LeXiaNuvio {
 
     private const val PLAYER_DEFAULTS = 2
 
+    /**
+     * LeXia's own language choices (Ayarlar › Oynatma ve Takip) for Nuvio's player: the audio and
+     * subtitle language it picks by itself. Empty = the TV's language (Nuvio's default).
+     */
+    fun syncLanguages(context: Context, audio: String, subtitle: String) {
+        val store = playerSettingsStore(context)
+        val now = playerSettings(context)
+        kotlinx.coroutines.runBlocking {
+            val a = audio.ifBlank { com.nuvio.tv.data.local.AudioLanguageOption.DEVICE }
+            if (now.preferredAudioLanguage != a) store.setPreferredAudioLanguage(a)
+            if (subtitle.isNotBlank() && subtitle != "off" && now.subtitleStyle.preferredLanguage != subtitle) {
+                store.setSubtitlePreferredLanguage(subtitle)
+            }
+        }
+    }
+
     private fun playerSettingsStore(context: Context) =
         PlayerSettingsDataStore(dataStoreFactory(context.applicationContext), profileManager, context.applicationContext)
 

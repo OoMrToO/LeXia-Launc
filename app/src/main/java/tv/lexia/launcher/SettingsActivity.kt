@@ -572,6 +572,8 @@ class SettingsActivity : Activity() {
                 value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" },
                 action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
             ),
+            sub("Bildirimler", "Zilde hangi bildirimler çıksın.", { noticesPage() },
+                value = { prefs.noticeOff.size.let { if (it == 0) "Hepsi açık" else "$it tür kapalı" } }),
             sub("Platformlar", "Netflix, Disney+ gibi hangi platformların yeni yapımları gelsin.", { platformsPage() },
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
@@ -887,11 +889,36 @@ class SettingsActivity : Activity() {
     }
 
     /** Platforms in today's film list: which ones the home screen, the screensaver and the bell follow. */
+    private val FIXED_PLATFORMS = listOf("Netflix", "Disney+", "Prime Video", "Max", "Apple TV+", "TV+", "TOD", "MUBI", "Tabii", "Exxen", "Gain", "puhutv", "BluTV")
+
+    private fun noticesPage() = Page("Bildirimler", R.drawable.ic_bell, keys = listOf("noticeOff")) {
+        val items = ArrayList<Item>()
+        items.add(Note("Zildeki bildirimlerden istemediğini kapat. Kapalı türler zilde ve kırmızı noktada görünmez."))
+        val kinds = listOf(
+            Triple("new", "Yeni bölüm çıktı", "İzlediğin dizilerin bu hafta çıkan bölümleri."),
+            Triple("ep", "Yaklaşan bölümler", "Listem'deki dizilerin yeni bölüm günleri."),
+            Triple("rel", "Hatırlattığın filmler", "Hatırlat dediğin film vizyona girince."),
+            Triple("soon", "Yakında vizyonda", "Önümüzdeki günlerde vizyona girecek filmler."),
+            Triple("plat", "Platformlara gelenler", "Seçtiğin platformların yeni yapımları."),
+            Triple("now", "Artık platformda", "Listem'deki bir film bir platforma gelince."),
+            Triple("night", "Film gecesi", "Planladığın film gecesine kalan süre."),
+            Triple("listold", "Listende bekleyenler", "Hafta sonu, Listem'de uzun süredir bekleyen bir film.")
+        )
+        for ((id, title, desc) in kinds) {
+            items.add(toggle(title, desc, { id !in prefs.noticeOff }, { on ->
+                prefs.noticeOff = if (on) prefs.noticeOff - id else prefs.noticeOff + id
+            }))
+        }
+        items
+    }
+
     private fun platformsPage() = Page("Platformlar", R.drawable.ic_tv, keys = listOf("platforms")) {
         val items = ArrayList<Item>()
         val names = try {
             val a = org.json.JSONObject(java.io.File(filesDir, "pick.json").readText()).optJSONArray("platforms")
             (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it).optString("provider") }.filter { it.isNotEmpty() }.distinct()
+                // The main platforms in Turkey every day, not only those with something new today.
+                .let { (it + FIXED_PLATFORMS).distinct() }
         } catch (e: Exception) {
             emptyList()
         }

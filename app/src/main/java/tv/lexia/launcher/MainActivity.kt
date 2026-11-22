@@ -1187,7 +1187,9 @@ class MainActivity : Activity() {
             out.add(Notice("soon:${p.key}:${p.release}", R.drawable.ic_film, t + p.title,
                 p.genres.take(2).joinToString(", ")) { openDetail(p, null, null) })
         }
-        return out
+        // Kinds turned off in Ayarlar › Bildirimler.
+        val off = prefs.noticeOff
+        return if (off.isEmpty()) out else out.filter { it.id.substringBefore(':') !in off }
     }
 
     private fun todayStr() = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
@@ -2485,6 +2487,8 @@ class MainActivity : Activity() {
         val said = queries.firstOrNull().orEmpty()
         when {
             found.size == 1 -> openDetail(found[0], null, null)
+            // Everything else: every film, series and person TMDB knows (Turkish series and platforms' too).
+            BuildConfig.TMDB_API_KEY.isNotBlank() -> SearchAll.run(this, said, pool)
             found.isNotEmpty() -> Dialogs.list(
                 this, "“$said”", found.map { it.title to listOf(if (it.isSeries) "Dizi" else "Film", it.year).filter { s -> s.isNotEmpty() }.joinToString(" · ") },
                 "LeXia'nın bugünkü listesinden", R.drawable.ic_search

@@ -87,6 +87,60 @@ internal object TmdbDiscover {
         )
     }
 
+    /** Any discover list: [params] are TMDB's own (with_genres by Turkish name via [genre]). */
+    fun discover(kind: String, page: Int, params: Map<String, String>, genre: String = ""): List<Pick> {
+        val all = HashMap(params)
+        all["page"] = page.toString()
+        all["include_adult"] = "false"
+        if (genre.isNotEmpty()) {
+            val names = genreIds(kind)
+            val ids = genre.split(',').mapNotNull { names[it.trim()] }
+            if (ids.isEmpty()) return emptyList()
+            all["with_genres"] = ids.joinToString(",")
+        }
+        val results = get("discover/$kind", all)?.optJSONArray("results") ?: return emptyList()
+        return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
+    }
+
+    private fun today() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
+    /** Coming out from today on, the most awaited first. */
+    fun upcoming(kind: String, page: Int): List<Pick> = discover(kind, page, mapOf(
+        (if (kind == "tv") "first_air_date.gte" else "primary_release_date.gte") to today(),
+        "sort_by" to "popularity.desc",
+        "region" to "TR"
+    ))
+
+    /** TMDB's "if you liked this" for a title. */
+    fun similar(p: Pick, page: Int = 1): List<Pick> {
+        if (p.id <= 0) return emptyList()
+        val kind = if (p.isSeries) "tv" else "movie"
+        val results = get("$kind/${p.id}/recommendations", mapOf("page" to page.toString()))?.optJSONArray("results") ?: return emptyList()
+        return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
+    }
+
+    /** A search over every film, series and person TMDB knows; persons come as names. */
+    class Found(val pick: Pick?, val person: String = "", val directing: Boolean = false, val known: String = "")
+
+    fun search(query: String): List<Found> {
+        val results = get("search/multi", mapOf("query" to query, "include_adult" to "false"))?.optJSONArray("results") ?: return emptyList()
+        return (0 until results.length()).mapNotNull { i ->
+            val o = results.optJSONObject(i) ?: return@mapNotNull null
+            when (o.optString("media_type")) {
+                "movie" -> pickOf(o, "movie")?.let { Found(it) }
+                "tv" -> pickOf(o, "tv")?.let { Found(it) }
+                "person" -> o.optString("name").takeIf { it.isNotBlank() }?.let {
+                    val known = o.optJSONArray("known_for")
+                    val titles = (0 until minOf(2, known?.length() ?: 0)).mapNotNull { j ->
+                        known!!.optJSONObject(j)?.let { k -> k.optString("title").ifBlank { k.optString("name") } }
+                    }
+                    Found(null, it, o.optString("known_for_department") == "Directing", titles.joinToString(", "))
+                }
+                else -> null
+            }
+        }
+    }
+
     /**
      * What a title found on TMDB (Keşfet's "Daha fazla", a person's films) lacks next to today's
      * list: its trailers, title logo, length, cast, director and IMDb id, from its full TMDB page.

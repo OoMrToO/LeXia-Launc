@@ -401,6 +401,7 @@ def cinema(today):
 PLATFORM_NAMES = {
     "Disney Plus": "Disney+", "Amazon Prime Video": "Prime Video", "Apple TV Store": "Apple TV",
     "Apple TV Plus": "Apple TV+", "TOD TV": "TOD", "HBO Max": "Max", "Netflix basic with Ads": "Netflix",
+    "MUBI Amazon Channel": "MUBI", "Amazon Prime Video with Ads": "Prime Video", "BluTV": "Max",
 }
 
 
@@ -418,7 +419,7 @@ def platforms(today):
     now = today.strftime("%Y-%m-%d")
     out, seen, used = [], set(), 0
     for p in provs:
-        if used >= 8:
+        if used >= 12:
             break
         pid, pname = p.get("provider_id"), (p.get("provider_name") or "").strip()
         pname = PLATFORM_NAMES.get(pname, pname)

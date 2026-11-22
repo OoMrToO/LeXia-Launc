@@ -282,13 +282,37 @@ class WatchHistoryActivity : Activity() {
         poster.setOnClickListener { play(e) }
         poster.isLongClickable = true
         poster.setOnLongClickListener {
-            val rows = listOf("Film sayfasını aç" to "", "Listeden kaldır" to "Kaldığın yer de silinir")
+            // Fixing a wrong record: what was marked by mistake goes back.
+            val last = store.last(p.key)
+            val finished = last.isNotBlank() && store.isFinished(last)
+            val rows = ArrayList<Pair<String, String>>()
+            val acts = ArrayList<() -> Unit>()
+            fun add(title: String, sub: String, act: () -> Unit) { rows.add(title to sub); acts.add(act) }
+            add("Film sayfasını aç", "") { DetailActivity.open(this, p) }
+            if (finished) add("İzlendi işaretini geri al", "Yarım kalanlara döner") {
+                store.unmarkFinished(last)
+                if (!p.isSeries) prefs.watched = prefs.watched - p.key
+            }
+            if (last.isNotBlank() && store.resumePositionMs(last) > 0) add("Baştan başlat", "Kaldığın yer sıfırlanır") { store.clear(last) }
+            if (!finished) add("İzlendi say", if (p.isSeries) "Son izlediğin bölüm bitti sayılır" else "Bitirdiklerim'e geçer") {
+                val key = last.ifBlank { p.imdbId.ifBlank { if (p.id > 0) "tmdb:${p.id}" else "" } }
+                if (key.isNotBlank()) {
+                    store.clear(key)
+                    store.markFinished(key)
+                    store.saveLast(p.key, key)
+                    history.finished(p, key)
+                }
+                if (!p.isSeries) prefs.watched = prefs.watched + p.key
+            }
+            add("Listeden kaldır", "Kaldığın yer de silinir") {
+                if (last.isNotBlank()) store.clear(last)
+                history.remove(p.key)
+            }
             Dialogs.list(this, p.title, rows) { i ->
-                if (i == 0) DetailActivity.open(this, p)
-                else {
-                    store.last(p.key).takeIf { it.isNotBlank() }?.let { store.clear(it) }
-                    history.remove(p.key)
+                acts[i]()
+                if (i > 0) {
                     entries = history.entries()
+                    summary.text = monthLine()
                     buildTabs()
                     show()
                 }
