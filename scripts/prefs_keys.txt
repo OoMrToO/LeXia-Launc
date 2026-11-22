@@ -28,6 +28,8 @@ epSeen set
 error:$address text
 fav set
 genres set
+history set
+history_ordered text
 glass int
 greet bool
 heroSource text
