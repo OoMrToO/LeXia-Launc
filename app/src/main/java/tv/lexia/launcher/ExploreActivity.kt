@@ -224,11 +224,23 @@ class ExploreActivity : Activity() {
 
     private fun openSearch() {
         val prefsSearch = getSharedPreferences("lexia_explore_search", MODE_PRIVATE)
-        val history = prefsSearch.getStringSet("history", emptySet()).orEmpty().toList().take(5)
+        val history = runCatching {
+            val json = prefsSearch.getString("history_ordered", null)
+            if (json != null) {
+                val arr = org.json.JSONArray(json)
+                (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }.distinct().take(10)
+            } else {
+                // Legacy StringSet has no recency order; sort it for deterministic migration.
+                prefsSearch.getStringSet("history", emptySet()).orEmpty().sorted()
+            }
+        }.getOrElse { prefsSearch.getStringSet("history", emptySet()).orEmpty().sorted() }.take(5)
         fun runQuery(query: String) {
             searchTerm = query
             if (query.isNotBlank()) {
-                prefsSearch.edit().putStringSet("history", (history + query).distinct().take(10).toSet()).apply()
+                val updated = (listOf(query) + history).distinct().take(10)
+                val json = org.json.JSONArray()
+                updated.forEach { json.put(it) }
+                prefsSearch.edit().putString("history_ordered", json.toString()).apply()
                 Dialogs.list(this, "Arama türü", listOf(
                     "Film ve dizilerde ara" to "Başlık, oyuncu, yönetmen",
                     "Oyuncu sayfası" to query,
