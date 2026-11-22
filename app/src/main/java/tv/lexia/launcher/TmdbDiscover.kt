@@ -76,6 +76,9 @@ internal object TmdbDiscover {
         return merged
     }
 
+    fun hasCountry(kind: String, id: Int, code: String): Boolean =
+        code in (countryCache["${if (kind == "tv") "tv" else "movie"}:$id"] ?: emptyList())
+
     /** A TMDB result (discover, a person's credits) as a page LeXia can open; null without a poster. */
     fun pickOf(o: org.json.JSONObject, kindOf: String): Pick? {
         val kind = if (kindOf == "tv") "tv" else "movie"
