@@ -673,7 +673,10 @@ class MainActivity : Activity() {
 
         val search = ui.iconButton(R.drawable.ic_search, 60)
         (search.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
-        search.setOnClickListener { findFilm() }
+        search.setOnClickListener {
+            if (BuildConfig.TMDB_API_KEY.isNotBlank()) SearchAll.ask(this, allPicks + top10 + top10tv + cinema + soon + genrePools.flatMap { it.second } + platformList)
+            else findFilm()
+        }
         // Holding it opens the TV's own search, as before.
         search.setOnLongClickListener {
             openSearch()
@@ -1664,6 +1667,12 @@ class MainActivity : Activity() {
 
     private fun refreshMarks() {
         watchedNow = prefs.watched
+        // Films watched to the end (also those finished only in the player) stay off the home screen.
+        val finished = (allPicks + top10 + top10tv + cinema + soon + localList + platformList + genrePools.flatMap { it.second })
+            .asSequence().distinctBy { it.key }
+            .filter { playback.isFinished(playback.last(it.key)) }
+            .map { it.key }.toSet()
+        watchedNow = watchedNow + finished
         skipNow = watchedNow + prefs.disliked.keys
         val sig = skipNow.sorted().joinToString("|") + "#" + prefs.liked.keys.sorted().joinToString("|") +
             "#" + MediaPlaybackStore.changes

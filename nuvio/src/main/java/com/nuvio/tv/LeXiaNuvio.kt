@@ -319,6 +319,10 @@ object LeXiaNuvio {
                 // A video that will not start in ExoPlayer is tried once more in MPV (Nuvio's setting, off by default there).
                 settings.setAutoSwitchInternalPlayerOnError(true)
             }
+            if (done < 3) {
+                // Nuvio's own TMDB lookups (the pause overlay's synopsis, localized titles) in Turkish.
+                try { com.nuvio.tv.data.local.TmdbSettingsDataStore(dataStoreFactory(app), profileManager).setLanguage("tr") } catch (_: Exception) {}
+            }
             if (done >= 1) return@runBlocking
             settings.setPreloadNextEpisodeSources(true)
             settings.setStreamAutoPlayNextEpisodeEnabled(true)
@@ -331,7 +335,7 @@ object LeXiaNuvio {
         marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
     }
 
-    private const val PLAYER_DEFAULTS = 2
+    private const val PLAYER_DEFAULTS = 3
 
     /**
      * LeXia's own language choices (Ayarlar › Oynatma ve Takip) for Nuvio's player: the audio and

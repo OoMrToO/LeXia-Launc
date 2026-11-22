@@ -409,6 +409,12 @@ class TrailerActivity : Activity() {
         playInWeb(if (nativeStarted) at else pendingStart)
     }
 
+    /** The trailer on screen is Turkish-dubbed (its catalogue label says so): then no subtitles. */
+    private fun currentTrailerDubbed(): Boolean {
+        val label = film()?.trailers?.firstOrNull { it.key == id }?.label?.lowercase(java.util.Locale("tr", "TR")) ?: return false
+        return "dublaj" in label || "türkçe" in label || "turkce" in label
+    }
+
     private fun playNative(source: TrailerSource, startSec: Int) {
         web?.let {
             it.evaluateJavascript("try{if(player)player.stopVideo();}catch(x){}", null)
@@ -453,10 +459,12 @@ class TrailerActivity : Activity() {
         val hints = HashMap<String, SubtitleHint>()
         val item = MediaItem.Builder().setUri(source.video)
         if (source.hls) item.setMimeType(MimeTypes.APPLICATION_M3U8)
+        // A Turkish-dubbed trailer needs no subtitles, even if YouTube offers a translated track.
+        val subtitleAddress = source.turkishSubtitles?.takeUnless { currentTrailerDubbed() }
         val hadSubtitles = hasSubtitles
-        hasSubtitles = source.turkishSubtitles != null
+        hasSubtitles = subtitleAddress != null
         if (hadSubtitles != hasSubtitles && buttons.findFocus() == null) bindFilm()
-        source.turkishSubtitles?.let { address ->
+        subtitleAddress?.let { address ->
             val uri = Uri.parse(address)
             hints[uri.toString()] = SubtitleHint("tr", SubtitleText.VTT)
             item.setSubtitleConfigurations(
