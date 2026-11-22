@@ -262,7 +262,10 @@ class ExploreActivity : Activity() {
             stateName().takeIf { state.isNotEmpty() },
             smart?.first
         )
-        val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
+        // Count active filter dimensions; selected genres remain grouped in the compact bar.
+        val activeCount = chosen.size
+        val filterLabel = if (activeCount == 0) "Süz" else "Süz  ·  $activeCount seçili"
+        val filter = ui.iconPill(filterLabel, R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
         filterBar.addView(filter, ui.ll(ui.wrap, ui.u(64), left = 22, right = 18))
         if (chosen.isNotEmpty()) {
