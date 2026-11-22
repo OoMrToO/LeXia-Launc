@@ -58,6 +58,24 @@ internal object TmdbDiscover {
         return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
     }
 
+    /** Cached country metadata from TMDB detail endpoints, by "movie:123" / "tv:123". */
+    private val countryCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    /** Country codes for a title. Discover results may already include them; detail is the fallback. */
+    fun countries(kind: String, id: Int): List<String> {
+        if (id <= 0) return emptyList()
+        val k = "${if (kind == "tv") "tv" else "movie"}:$id"
+        countryCache[k]?.let { return it }
+        val detail = get("${if (kind == "tv") "tv" else "movie"}/$id", emptyMap()) ?: return emptyList()
+        val arr = detail.optJSONArray("production_countries")
+        val values = (0 until (arr?.length() ?: 0)).mapNotNull { arr?.optJSONObject(it)?.optString("iso_3166_1")?.takeIf { it.isNotBlank() } }
+        val tvOrigins = detail.optJSONArray("origin_country")
+        val merged = (values + (0 until (tvOrigins?.length() ?: 0)).mapNotNull { tvOrigins?.optString(it)?.takeIf { it.isNotBlank() } })
+            .map { it.uppercase(java.util.Locale.US) }.distinct()
+        countryCache[k] = merged
+        return merged
+    }
+
     /** A TMDB result (discover, a person's credits) as a page LeXia can open; null without a poster. */
     fun pickOf(o: org.json.JSONObject, kindOf: String): Pick? {
         val kind = if (kindOf == "tv") "tv" else "movie"
@@ -83,7 +101,9 @@ internal object TmdbDiscover {
             runtime = 0,
             poster = poster,
             kind = kind,
-            id = tmdbId
+            id = tmdbId,
+            countries = (0 until (o.optJSONArray("production_countries")?.length() ?: 0)).mapNotNull { o.optJSONArray("production_countries")?.optJSONObject(it)?.optString("iso_3166_1")?.takeIf { it.isNotBlank() } } +
+                (0 until (o.optJSONArray("origin_country")?.length() ?: 0)).mapNotNull { o.optJSONArray("origin_country")?.optString(it)?.takeIf { it.isNotBlank() } }
         )
     }
 
