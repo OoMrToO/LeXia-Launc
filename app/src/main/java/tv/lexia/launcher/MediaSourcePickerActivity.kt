@@ -949,6 +949,8 @@ class MediaSourcePickerActivity : Activity() {
         val playedKey = mediaKey
         worker.submit { memory.playedFrom(playedKey, stream) }
         com.nuvio.tv.LeXiaCinema.enabled = prefs.cinemaMode
+        com.nuvio.tv.LeXiaCinema.accent = filmAccent
+        com.nuvio.tv.LeXiaCinema.light = Fx.lite
         // İzlediklerim: the title, kept with its page data.
         val keep = film
         Thread { WatchHistory(applicationContext).played(keep) }.start()
@@ -1326,7 +1328,7 @@ class MediaSourcePickerActivity : Activity() {
         Img.load(this, "w1280", film.backdrop, resources.displayMetrics.widthPixels, picture, opaque = false) { ok ->
             val bmp = if (ok) (picture.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap else null
             val c = bmp?.let { Fx.accent(it) } ?: 0
-            if (c != 0) paint(c)
+            if (c != 0) { paint(c); filmAccent = c }
         }
         return frame
     }
@@ -1336,6 +1338,9 @@ class MediaSourcePickerActivity : Activity() {
      * line under it); a name that is only the film's own ("Kurtuluş Projesi - 1080p") gives way to
      * the provider's name.
      */
+    /** The film's own colour, read from its picture; the player takes it too. */
+    private var filmAccent = 0
+
     private fun sourceName(stream: MediaStream): String {
         val tr = Locale.forLanguageTag("tr-TR")
         val quality = Regex("""(?i)\s*[-–|·]?\s*(\d{3,4}p|4k|2160p|uhd|fhd|hd|sd|cam)\b.*$""")

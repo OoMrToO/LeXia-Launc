@@ -1377,20 +1377,12 @@ fun PlayerScreen(
             )
         }
 
-        PauseOverlay(
+        // LeXia: LeXia's pause screen in place of PauseOverlay.
+        LeXiaPauseOverlay(
             visible = uiState.showPauseOverlay && uiState.error == null &&
                 !uiState.showLoadingOverlay && !postPlayRecommendationState.isVisible,
-            onClose = { viewModel.onEvent(PlayerEvent.OnDismissPauseOverlay) },
-            title = uiState.title,
-            logo = uiState.logo,
-            episodeTitle = uiState.currentEpisodeTitle,
-            season = uiState.currentSeason,
-            episode = uiState.currentEpisode,
-            year = uiState.releaseYear,
-            type = uiState.contentType,
-            description = uiState.description,
-            cast = uiState.castMembers,
-            showClock = !uiState.isLive,
+            uiState = uiState,
+            viewModel = viewModel,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2.5f)
@@ -1589,8 +1581,9 @@ fun PlayerScreen(
             !uiState.showDisplayModeInfo &&
             !postPlayRecommendationState.isVisible
 
+        // LeXia: the clock and end time are part of LeXia's controls.
         AnimatedVisibility(
-            visible = showClockOverlay,
+            visible = false && showClockOverlay,
             enter = fadeIn(animationSpec = tween(150)),
             exit = fadeOut(animationSpec = tween(150)),
             modifier = Modifier
@@ -1613,7 +1606,8 @@ fun PlayerScreen(
             modifier = playerControlsDim
         ) {
             val context = LocalContext.current
-            PlayerControlsOverlay(
+            // LeXia: LeXia's look in place of PlayerControlsOverlay (same arguments).
+            LeXiaPlayerControls(
                 uiState = uiState,
                 playerBadges = playerBadges,
                 viewModel = viewModel,
@@ -1827,11 +1821,8 @@ fun PlayerScreen(
                 .reportSubtitleClearance(subtitleClearanceGapPx) { seekClearancePx = it }
                 .then(playerControlsDim)
         ) {
-            SeekOverlayHost(
-                viewModel = viewModel,
-                chapters = uiState.chapters,
-                showChapterTitle = uiState.showChapterTitle
-            )
+            // LeXia: LeXia's look in place of SeekOverlayHost.
+            LeXiaSeekOverlay(viewModel = viewModel, chapters = uiState.chapters, playbackSpeed = uiState.playbackSpeed)
         }
 
         // Chapters side panel (slides in from right, over a scrim)
