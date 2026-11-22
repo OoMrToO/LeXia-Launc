@@ -951,6 +951,9 @@ class MediaSourcePickerActivity : Activity() {
         com.nuvio.tv.LeXiaCinema.enabled = prefs.cinemaMode
         com.nuvio.tv.LeXiaCinema.accent = filmAccent
         com.nuvio.tv.LeXiaCinema.light = Fx.lite
+        val ep = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
+        com.nuvio.tv.LeXiaCinema.description = if (film.isSeries) ep?.overview.orEmpty() else film.overview
+        com.nuvio.tv.LeXiaCinema.descriptionOf = ep?.let { "${it.season}:${it.episode}" }.orEmpty()
         // İzlediklerim: the title, kept with its page data.
         val keep = film
         Thread { WatchHistory(applicationContext).played(keep) }.start()
