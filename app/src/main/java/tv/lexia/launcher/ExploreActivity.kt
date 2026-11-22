@@ -39,6 +39,8 @@ class ExploreActivity : Activity() {
     /** Years: "" any, "2020" the 2020s, "2010", "2000", "old" before 2000. */
     private var years = ""
     private var searchTerm = ""
+    /** Source-based Turkish/foreign toggle: local source is the feed's Turkish section. */
+    private var origin = ""
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
     private lateinit var tabBar: LinearLayout
@@ -211,7 +213,8 @@ class ExploreActivity : Activity() {
             matchesSearch(p) &&
             (genre.isEmpty() || genre in p.genres) &&
             (minScore <= 0 || p.imdb >= minScore) &&
-            matchesYears(p)
+            matchesYears(p) &&
+            (origin.isEmpty() || (origin == "local") == from(p, "local"))
 
     private fun openSearch() {
         val prefsSearch = getSharedPreferences("lexia_explore_search", MODE_PRIVATE)
@@ -278,7 +281,8 @@ class ExploreActivity : Activity() {
             yearsName().takeIf { years.isNotEmpty() },
             "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
             sortName().takeIf { sort.isNotEmpty() },
-            "Ara: $searchTerm".takeIf { searchTerm.isNotEmpty() }
+            "Ara: $searchTerm".takeIf { searchTerm.isNotEmpty() },
+            if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null
         )
         val filter = ui.iconPill(if (chosen.isEmpty()) "Süz" else "Süz  ·  " + chosen.joinToString(", "), R.drawable.ic_search)
         filter.setOnClickListener { openFilters() }
@@ -286,7 +290,7 @@ class ExploreActivity : Activity() {
         if (chosen.isNotEmpty()) {
             val clear = ui.pill("Temizle", 58, 21)
             clear.setOnClickListener {
-                genre = ""; minScore = 0.0; years = ""; sort = ""
+                genre = ""; minScore = 0.0; years = ""; sort = ""; origin = ""
                 buildFilters()
                 show()
                 filterBar.getChildAt(2)?.requestFocus()
@@ -326,7 +330,8 @@ class ExploreActivity : Activity() {
             "Tür" to genre.ifEmpty { "Bütün türler" },
             "Yıl" to yearsName(),
             "Puan" to if (minScore > 0) "IMDb ${minScore.toInt()} ve üstü" else "Bütün puanlar",
-            "Sırala" to sortName()
+            "Sırala" to sortName(),
+            "Yapım ülkesi" to when (origin) { "local" -> "Yerli (listede işaretli)"; "foreign" -> "Yabancı (yerli listesi dışında)"; else -> "Tümü" }
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
@@ -350,10 +355,16 @@ class ExploreActivity : Activity() {
                         minScore = v[it]; apply()
                     }
                 }
-                else -> {
+                3 -> {
                     val v = listOf("", "score", "new", "az")
                     Dialogs.chooseOne(this, "Sırala", listOf("Önerilen", "En yüksek puan", "En yeni", "Ada göre (A–Z)"), v.indexOf(sort).coerceAtLeast(0)) {
                         sort = v[it]; apply()
+                    }
+                }
+                else -> {
+                    val v = listOf("", "local", "foreign")
+                    Dialogs.chooseOne(this, "Yapım ülkesi", listOf("Tümü", "Yerli (yerli listesinde)", "Yabancı (yerli listesi dışında)"), v.indexOf(origin).coerceAtLeast(0)) {
+                        origin = v[it]; apply()
                     }
                 }
             }
