@@ -58,6 +58,28 @@ internal object TmdbDiscover {
         return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
     }
 
+    /** Cached country metadata from TMDB detail endpoints. */
+    private val countryCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    fun countries(kind: String, id: Int): List<String> {
+        if (id <= 0) return emptyList()
+        val key = (if (kind == "tv") "tv" else "movie") + ":" + id
+        countryCache[key]?.let { return it }
+        val endpoint = (if (kind == "tv") "tv" else "movie") + "/" + id
+        val detail = get(endpoint, emptyMap()) ?: return emptyList()
+        val arr = detail.optJSONArray("production_countries")
+        val production = (0 until (arr?.length() ?: 0)).mapNotNull { arr?.optJSONObject(it)?.optString("iso_3166_1")?.takeIf { it.isNotBlank() } }
+        val origin = detail.optJSONArray("origin_country")
+        val values = (production + (0 until (origin?.length() ?: 0)).mapNotNull { origin?.optString(it)?.takeIf { it.isNotBlank() } }).map { it.uppercase(java.util.Locale.US) }.distinct()
+        countryCache[key] = values
+        return values
+    }
+
+    fun hasCountry(kind: String, id: Int, code: String): Boolean {
+        val key = (if (kind == "tv") "tv" else "movie") + ":" + id
+        return code in (countryCache[key] ?: emptyList())
+    }
+
     /** A TMDB result (discover, a person's credits) as a page LeXia can open; null without a poster. */
     fun pickOf(o: org.json.JSONObject, kindOf: String): Pick? {
         val kind = if (kindOf == "tv") "tv" else "movie"
@@ -83,7 +105,9 @@ internal object TmdbDiscover {
             runtime = 0,
             poster = poster,
             kind = kind,
-            id = tmdbId
+            id = tmdbId,
+            countries = (0 until (o.optJSONArray("production_countries")?.length() ?: 0)).mapNotNull { o.optJSONArray("production_countries")?.optJSONObject(it)?.optString("iso_3166_1")?.takeIf { it.isNotBlank() } } +
+                (0 until (o.optJSONArray("origin_country")?.length() ?: 0)).mapNotNull { o.optJSONArray("origin_country")?.optString(it)?.takeIf { it.isNotBlank() } }
         )
     }
 

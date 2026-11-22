@@ -48,7 +48,11 @@ class Pick(
     /** Where it is free to watch in Turkey (free or with ads: tabii, puhutv...); empty if nowhere known. */
     val free: List<String> = emptyList(),
     /** IMDb identifier for Stremio-compatible media add-ons; absent on older feed records. */
-    val imdbId: String = ""
+    val imdbId: String = "",
+    /** Original-language title, when the feed contains it. */
+    val originalTitle: String = "",
+    /** ISO-3166 production/origin country codes, if available. */
+    val countries: List<String> = emptyList()
 ) {
     val isSeries: Boolean get() = kind == "tv"
 
@@ -77,6 +81,7 @@ class Pick(
         .put("where", JSONArray(where)).put("digital", digital)
         .put("trailers", JSONArray(trailers.map { JSONObject().put("k", it.key).put("n", it.label) }))
         .put("free", JSONArray(free)).put("imdb_id", imdbId)
+        .put("original_title", originalTitle).put("countries", JSONArray(countries))
 
     companion object {
         private val trailerKey = Regex("^[A-Za-z0-9_-]{6,20}$")
@@ -125,7 +130,9 @@ class Pick(
                     }.distinctBy { it.key }.take(5)
                 },
                 strings(x.optJSONArray("free")).map { it.take(40) }.filter { providerName.matches(it) }.take(3),
-                safe(x.optString("imdb_id"), imdbIdPattern)
+                safe(x.optString("imdb_id"), imdbIdPattern),
+                x.optString("original_title"),
+                strings(x.optJSONArray("countries")).map { it.uppercase() }.filter { Regex("^[A-Z]{2}$").matches(it) }.distinct()
             )
         }
     }
