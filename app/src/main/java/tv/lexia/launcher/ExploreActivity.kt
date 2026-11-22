@@ -359,7 +359,7 @@ class ExploreActivity : Activity() {
         val genres = all.filter { ofKind(it) }.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
         val platforms = all.filter { ofKind(it) }.flatMap { platformsOf(it) }.groupingBy { it }.eachCount()
             .entries.sortedByDescending { it.value }.map { it.key }
-        val rows = listOf(
+        val rows = listOf<Pair<String, String>>(
             "Tür" to genre.ifEmpty { "Bütün türler" }.replace(",", " + "),
             "Nerede" to where.ifEmpty { "Her yerde" },
             "Süre" to lengthName(),
