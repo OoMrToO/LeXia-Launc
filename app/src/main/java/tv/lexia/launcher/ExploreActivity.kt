@@ -241,7 +241,7 @@ class ExploreActivity : Activity() {
                 val json = org.json.JSONArray()
                 updated.forEach { json.put(it) }
                 prefsSearch.edit().putString("history_ordered", json.toString()).apply()
-                Dialogs.list(this, "Arama türü", listOf(
+                Dialogs.list(this, "Arama türü", listOf<Pair<String, String>>(
                     "Film ve dizilerde ara" to "Başlık, oyuncu, yönetmen",
                     "Oyuncu sayfası" to query,
                     "Yönetmen sayfası" to query
