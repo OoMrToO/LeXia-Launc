@@ -280,7 +280,9 @@ internal object YouTubeStreams {
         }
         // No Turkish subtitles of its own: another language's, translated to Turkish by YouTube
         // (English first, people-made before machine-made).
-        val other = if (own != null) null else all.sortedWith(compareBy(
+        // YouTube's own speech captions in Turkish mean the trailer speaks Turkish (dubbed): no subtitles.
+        val spokenTurkish = all.any { text(it, "kind") == "asr" && text(it, "languageCode").startsWith("tr", ignoreCase = true) }
+        val other = if (own != null || spokenTurkish) null else all.sortedWith(compareBy(
             { if (text(it, "kind") == "asr") 1 else 0 },
             { if (text(it, "languageCode").startsWith("en", ignoreCase = true)) 0 else 1 }
         )).firstOrNull()
