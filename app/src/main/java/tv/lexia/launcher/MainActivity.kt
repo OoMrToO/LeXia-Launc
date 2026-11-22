@@ -1506,14 +1506,30 @@ class MainActivity : Activity() {
                 "Listem'deki dizilerin yeni bölümleri, hatırlattığın filmler ve platformlara gelenler burada görünür.", size = 0)
             box.addView(e, ui.ll(ui.match, ui.wrap, top = 40))
         }
-        for (n in list) {
-            val row = noticeRow(n.icon, n.title, n.sub, n.id !in read)
-            row.setOnClickListener {
-                closeMenu(false)
-                n.open()
+        // Keep the bell readable: related notices appear together under TV-friendly headings.
+        fun groupOf(n: Notice): String = when (n.id.substringBefore(':')) {
+            "ep", "new" -> "DİZİLER"
+            "rel", "soon", "night" -> "FİLMLER"
+            "plat", "now" -> "PLATFORMLAR"
+            else -> "DİĞER"
+        }
+        val groupOrder = listOf("DİZİLER", "FİLMLER", "PLATFORMLAR", "DİĞER")
+        for (group in groupOrder) {
+            val items = list.filter { groupOf(it) == group }
+            if (items.isEmpty()) continue
+            val heading = ui.text(group, 16, C.TEXT2, 700)
+            heading.letterSpacing = 0.12f
+            heading.setPadding(ui.u(18), ui.u(18), ui.u(18), ui.u(8))
+            box.addView(heading, ui.ll(ui.match, ui.wrap))
+            for (n in items) {
+                val row = noticeRow(n.icon, n.title, n.sub, n.id !in read)
+                row.setOnClickListener {
+                    closeMenu(false)
+                    n.open()
+                }
+                box.addView(row, ui.ll(ui.match, ui.wrap, bottom = 4))
+                if (first == null) first = row
             }
-            box.addView(row, ui.ll(ui.match, ui.wrap, bottom = 4))
-            if (first == null) first = row
         }
         panel.addView(scroll, ui.ll(ui.match, 0, weight = 1f))
 
