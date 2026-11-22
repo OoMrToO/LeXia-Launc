@@ -220,9 +220,24 @@ class ExploreActivity : Activity() {
             searchTerm = query
             if (query.isNotBlank()) {
                 prefsSearch.edit().putStringSet("history", (history + query).distinct().take(10).toSet()).apply()
+                Dialogs.list(this, "Arama türü", listOf(
+                    "Film ve dizilerde ara" to "Başlık, oyuncu, yönetmen",
+                    "Oyuncu sayfası" to query,
+                    "Yönetmen sayfası" to query
+                ), subtitle = "“$query”") { selected ->
+                    when (selected) {
+                        1 -> PersonActivity.open(this, query, directing = false)
+                        2 -> PersonActivity.open(this, query, directing = true)
+                        else -> {
+                            buildFilters()
+                            show()
+                        }
+                    }
+                }
+            } else {
+                buildFilters()
+                show()
             }
-            buildFilters()
-            show()
         }
     }
 
