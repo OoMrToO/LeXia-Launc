@@ -15,8 +15,9 @@ import java.util.Locale
 /**
  * The home screen's top half while the remote is down in the rows, as on Apple TV: the poster
  * under the remote fills the screen behind (its picture cross-fading in) and its logo, facts and
- * story stand at the top; on a platform's tile, what is new there. Back on the film at the top,
- * it all fades and the home screen's own film returns.
+ * story stand at the top; on a platform's tile, what is new there. Rest on a poster a few seconds
+ * and its picture turns into its trailer, without sound (Ayarlar › Görünüm's hero trailer setting
+ * covers it too). Back on the film at the top, it all fades and the home screen's own film returns.
  */
 internal class HomePeek(private val activity: Activity, private val ui: Ui, stage: FrameLayout, content: FrameLayout) {
 
@@ -40,11 +41,25 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     private var key = ""
     private var pending: Runnable? = null
 
+    /** The silent trailer over the picture; it starts when the remote rests on one poster. */
+    private val trailerStage = FrameLayout(activity)
+    private val trailer = HeroTrailer(activity, trailerStage)
+    private var trailerFilm: Pick? = null
+    private val trailerSoon = Runnable { startTrailer() }
+
     init {
         backs.forEach {
             it.scaleType = ImageView.ScaleType.CENTER_CROP
             it.alpha = 0f
             stage.addView(it, ui.fl(ui.match, ui.match))
+        }
+        stage.addView(trailerStage, ui.fl(ui.match, ui.match))
+        trailer.sound = false
+        trailer.onShowing = { on ->
+            backs.forEachIndexed { i, b ->
+                b.animate().cancel()
+                b.animate().alpha(if (on || i != front) 0f else 1f).setDuration(900).start()
+            }
         }
         panel.orientation = LinearLayout.VERTICAL
         panel.alpha = 0f
@@ -87,6 +102,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         strip.visibility = View.GONE
         loadLogo(p)
         picture(p.backdrop, p.key)
+        queueTrailer(p)
     }
 
     /** A platform's tile: its name, how many new, and its newest few as scene cards. */
@@ -108,7 +124,32 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         films.filter { it.backdrop.isNotEmpty() }.take(4).forEach { strip.addView(mini(it)) }
         strip.visibility = if (strip.childCount > 0) View.VISIBLE else View.GONE
         films.firstOrNull { it.backdrop.isNotEmpty() }?.let { picture(it.backdrop, it.key) }
+        stopTrailer()
     }
+
+    /** A new poster under the remote: whatever was playing goes; this one's trailer comes after a rest. */
+    private fun queueTrailer(p: Pick) {
+        stopTrailer()
+        if (p.trailer.isBlank() || Fx.lite || !Prefs(activity).heroTrailer) return
+        trailerFilm = p
+        handler.postDelayed(trailerSoon, TRAILER_AFTER_MS)
+    }
+
+    private fun startTrailer() {
+        val p = trailerFilm ?: return
+        if (!showing || key != p.key || activity.isFinishing || !activity.hasWindowFocus()) return
+        trailer.sound = false
+        trailer.start(p.trailer)
+    }
+
+    private fun stopTrailer() {
+        handler.removeCallbacks(trailerSoon)
+        trailerFilm = null
+        if (trailer.active || trailerStage.childCount > 0) trailer.stop()
+    }
+
+    /** The home screen is left or the screensaver starts: the trailer stops, the picture stays. */
+    fun pause() = stopTrailer()
 
     /** Waits a breath, so moving quickly along a row does not flash every film. */
     private fun later(id: String, fill: () -> Unit) {
@@ -133,6 +174,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     fun hide() {
         pending?.let { handler.removeCallbacks(it) }
         pending = null
+        stopTrailer()
         if (!showing) return
         showing = false
         key = ""
@@ -213,9 +255,13 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
 
     fun release() {
         handler.removeCallbacksAndMessages(null)
+        trailer.release()
     }
 
     companion object {
+        /** How long the remote rests on a poster before its trailer starts. */
+        private const val TRAILER_AFTER_MS = 3_500L
+
         /** A platform's colours for its tile: deep, then lighter (as its badge, Ui.setWhere). */
         fun colors(name: String): Pair<Int, Int> {
             val n = name.lowercase(Locale.ROOT)
