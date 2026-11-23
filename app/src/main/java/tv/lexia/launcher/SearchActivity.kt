@@ -207,6 +207,7 @@ class SearchActivity : Activity() {
             showKeyboard()
             return true
         }
+        Fx.edgeNudge(this, event, ui)
         return super.dispatchKeyEvent(event)
     }
 
@@ -320,6 +321,7 @@ class SearchActivity : Activity() {
         s.clipChildren = false
         s.clipToPadding = false
         s.isSmoothScrollingEnabled = true
+        Fx.softEdges(s, ui)
         s.addView(row)
         return s
     }

@@ -516,19 +516,42 @@ class DetailActivity : Activity() {
     }
 
     /** The film's name and line in a slim bar at the top, once the page has scrolled to the rows. */
+    /**
+     * Scrolled down: a thin strip of dark glass at the top with the film's logo (or name) and its
+     * facts, so the page never loses whose it is (as on Apple TV).
+     */
     private fun stickyTitle(): View {
-        val bar = ui.vbox()
-        bar.setPadding(ui.u(110), ui.u(44), ui.u(110), ui.u(70))
-        bar.background = ui.gradient(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            Color.argb(235, 0, 0, 0), Color.argb(160, 0, 0, 0), Color.argb(0, 0, 0, 0)
-        )
-        val t = ui.text(film.title, 34, C.TEXT, 700)
+        val bar = ui.hbox()
+        bar.gravity = Gravity.CENTER_VERTICAL
+        bar.setPadding(ui.u(110), ui.u(24), ui.u(110), ui.u(24))
+        bar.background = android.graphics.drawable.LayerDrawable(
+            arrayOf(
+                android.graphics.drawable.ColorDrawable(Color.argb(215, 14, 14, 18)),
+                ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(40, 255, 255, 255), Color.TRANSPARENT)
+            )
+        ).also { it.setLayerHeight(1, maxOf(1, ui.u(2))); it.setLayerGravity(1, Gravity.BOTTOM) }
+        val t = ui.text(film.title, 30, C.TEXT, 700)
         t.maxLines = 1
         t.ellipsize = TextUtils.TruncateAt.END
-        bar.addView(t)
-        val line = ui.text(film.details(2), 18, C.TEXT2, 500)
-        bar.addView(line, ui.ll(ui.wrap, ui.wrap, top = 6))
+        if (film.logo.isNotEmpty()) {
+            val mark = ImageView(this)
+            mark.adjustViewBounds = true
+            mark.maxHeight = ui.u(58)
+            mark.maxWidth = ui.u(300)
+            mark.scaleType = ImageView.ScaleType.FIT_START
+            mark.visibility = View.GONE
+            bar.addView(mark, ui.ll(ui.wrap, ui.wrap, right = 30))
+            Img.load(this, "w500", film.logo, ui.u(300), mark, opaque = false, skipDark = true) { ok ->
+                if (ok) {
+                    mark.visibility = View.VISIBLE
+                    t.visibility = View.GONE
+                }
+            }
+        }
+        bar.addView(t, ui.ll(ui.wrap, ui.wrap, right = 30))
+        val line = ui.text(film.details(2), 19, C.TEXT2, 500)
+        line.maxLines = 1
+        bar.addView(line, ui.ll(0, ui.wrap, weight = 1f))
         bar.alpha = 0f
         return bar
     }
@@ -572,6 +595,7 @@ class DetailActivity : Activity() {
         s.clipChildren = false
         s.clipToPadding = false
         s.setPadding(ui.u(30), ui.u(26), ui.u(30), ui.u(10))
+        Fx.softEdges(s, ui)
         s.addView(r)
         return s
     }
@@ -934,6 +958,7 @@ class DetailActivity : Activity() {
                 else -> Fx.lastDir
             }
         }
+        Fx.edgeNudge(this, event, ui)
         return super.dispatchKeyEvent(event)
     }
 

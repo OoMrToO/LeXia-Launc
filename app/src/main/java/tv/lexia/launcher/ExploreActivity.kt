@@ -236,6 +236,11 @@ class ExploreActivity : Activity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        Fx.edgeNudge(this, event, ui)
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
         Pointer.handle(this, ev) || super.dispatchGenericMotionEvent(ev)
 
@@ -824,6 +829,7 @@ class ExploreActivity : Activity() {
         hs.isHorizontalScrollBarEnabled = false
         hs.clipChildren = false
         hs.clipToPadding = false
+        Fx.softEdges(hs, ui)
         hs.addView(line)
         grid.addView(hs, ui.ll(ui.match, ui.wrap, bottom = 34))
     }
@@ -855,6 +861,7 @@ class ExploreActivity : Activity() {
         scroll.isHorizontalScrollBarEnabled = false
         scroll.clipChildren = false
         scroll.clipToPadding = false
+        Fx.softEdges(scroll, ui)
         scroll.addView(line)
         grid.addView(scroll, ui.ll(ui.match, ui.wrap, bottom = 34))
         val seen = HashSet<String>()
@@ -1203,6 +1210,7 @@ class ExploreActivity : Activity() {
         hs.isHorizontalScrollBarEnabled = false
         hs.clipChildren = false
         hs.clipToPadding = false
+        Fx.softEdges(hs, ui)
         hs.addView(line)
         grid.addView(hs, ui.ll(ui.match, ui.wrap, bottom = 34))
     }

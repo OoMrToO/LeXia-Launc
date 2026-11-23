@@ -23,6 +23,31 @@ import kotlin.random.Random
 
 /** Apple TV style touches shared by the screens. */
 object Fx {
+    /** Poster rows fade softly at their ends instead of cutting a poster in half (tvOS). */
+    fun softEdges(s: android.widget.HorizontalScrollView, ui: Ui) {
+        if (lite) return
+        s.isHorizontalFadingEdgeEnabled = true
+        s.setFadingEdgeLength(ui.u(120))
+    }
+
+    /**
+     * At a row's last poster, right does nothing: the row stretches a little and springs back,
+     * so the end is felt (tvOS). Call from dispatchKeyEvent; it never takes the key.
+     */
+    fun edgeNudge(a: android.app.Activity, e: android.view.KeyEvent, ui: Ui) {
+        if (e.action != android.view.KeyEvent.ACTION_DOWN || e.keyCode != android.view.KeyEvent.KEYCODE_DPAD_RIGHT || lite) return
+        val f = a.currentFocus ?: return
+        if (f.focusSearch(View.FOCUS_RIGHT) != null) return
+        var p = f.parent as? View
+        while (p != null && p !is android.widget.HorizontalScrollView) p = p.parent as? View
+        val row = (p as? android.widget.HorizontalScrollView)?.getChildAt(0) ?: return
+        row.animate().cancel()
+        row.animate().translationX(-ui.uf(26)).setDuration(110).setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                row.animate().translationX(0f).setDuration(360).setInterpolator(android.view.animation.OvershootInterpolator(2.2f)).start()
+            }.start()
+    }
+
     private val accents = java.util.WeakHashMap<Bitmap, Int>()
 
     /** [a] moved toward [b] by [t] (0..1), channel by channel. */

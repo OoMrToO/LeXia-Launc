@@ -611,6 +611,7 @@ class MainActivity : Activity() {
         s.clipChildren = false
         s.clipToPadding = false
         s.setPadding(ui.u(30), ui.u(44), ui.u(30), ui.u(4))
+        Fx.softEdges(s, ui)
         s.addView(r)
         return s
     }
@@ -3366,7 +3367,10 @@ class MainActivity : Activity() {
             }
             return true
         }
-        val col = moving ?: return super.dispatchKeyEvent(event)
+        val col = moving ?: run {
+            Fx.edgeNudge(this, event, ui)
+            return super.dispatchKeyEvent(event)
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> moveBy(col, -1)
