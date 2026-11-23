@@ -438,14 +438,13 @@ class MainActivity : Activity() {
         )
         boost.alpha = 0f
         frame.addView(boost, ui.fl(m, m))
-        // The light of the hour and the focused app's colour wash used to lie over the picture;
-        // they made films look washed out (the viewer asked them gone), so they stay hidden.
+        // The light of the hour used to lie over the picture and made films look washed out (the
+        // viewer asked it gone): it stays hidden. The focused app's colour stays, softer than before.
         daylight = View(this)
         daylight.visibility = View.GONE
         frame.addView(daylight, ui.fl(m, m))
         val tint = View(this)
         tint.background = tintDrawable
-        tint.visibility = View.GONE
         frame.addView(tint, ui.fl(m, m))
 
         content = FrameLayout(this)
@@ -2593,9 +2592,10 @@ class MainActivity : Activity() {
             tintColor = it.animatedValue as Int
             val al = Color.alpha(tintColor)
             val rgb = tintColor and 0xFFFFFF
+            // A low wash from the corner: a hint of the app's colour, not a filter over the film.
             tintDrawable.colors = intArrayOf(
-                ((al * 0.75f).toInt() shl 24) or rgb,
-                ((al * 0.25f).toInt() shl 24) or rgb,
+                ((al * 0.35f).toInt() shl 24) or rgb,
+                ((al * 0.1f).toInt() shl 24) or rgb,
                 0
             )
         }
