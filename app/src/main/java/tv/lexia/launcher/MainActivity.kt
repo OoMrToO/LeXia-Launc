@@ -75,6 +75,8 @@ class MainActivity : Activity() {
     private lateinit var content: FrameLayout
     private lateinit var root: LinearLayout
     private lateinit var stage: FrameLayout
+    /** The trailer taking the whole screen while the remote rests (HeroCinema). */
+    private lateinit var heroStage: HeroCinema
     private lateinit var backA: ImageView
     private lateinit var backB: ImageView
     private var front: ImageView? = null
@@ -376,7 +378,10 @@ class MainActivity : Activity() {
         frame.addView(stage, ui.fl(m, m))
         heroTrailer = HeroTrailer(this, stage).also { t ->
             t.onFinished = { schedule() }
-            t.onShowing = { on -> trailerLight(on) }
+            t.onShowing = { on ->
+                if (::heroStage.isInitialized) heroStage.trailerShowing(on)
+                trailerLight(on)
+            }
         }
 
         // Dip to black between films, like a cut in the cinema.
@@ -436,6 +441,11 @@ class MainActivity : Activity() {
 
         content = FrameLayout(this)
         frame.addView(content, ui.fl(m, m))
+        heroStage = HeroCinema(
+            this, ui, frame, content, stage, scrims,
+            film = { picks.getOrNull(pickIndex) },
+            logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } }
+        )
 
         root = ui.vbox()
         root.clipChildren = false
@@ -560,6 +570,7 @@ class MainActivity : Activity() {
         super.onDestroy()
         if (::heroTrailer.isInitialized) heroTrailer.release()
         if (::peek.isInitialized) peek.release()
+        if (::heroStage.isInitialized) heroStage.release()
         try {
             netCallback?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) }
         } catch (e: Exception) {
@@ -3214,6 +3225,27 @@ class MainActivity : Activity() {
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN) Sleep.onKey()
+        // The trailer had the whole screen: the first key brings the home screen back. OK opens
+        // the film, Back only wakes; the arrows go on and move as usual.
+        if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
+            val wasOn = heroStage.on
+            heroStage.wake()
+            if (wasOn) when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) }
+                    swallowUp = true
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    swallowUp = true
+                    return true
+                }
+            }
+        }
+        // The remote rests again: with the trailer still playing, it takes the stage once more.
+        if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_UP && ::heroTrailer.isInitialized) {
+            heroStage.rest(heroTrailer.active && level == 0 && menu == null)
+        }
         if (event.action == KeyEvent.ACTION_UP && ::topBarView.isInitialized) {
             // The bar goes quiet while the remote is elsewhere; it comes back on it, or after a pause.
             handler.post { quietBar(currentFocus?.let { isInBar(it) } != true) }
@@ -4473,6 +4505,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        if (::heroStage.isInitialized) heroStage.wake()
         stopHeroTrailer()
         if (::peek.isInitialized) peek.pause()
         handler.removeCallbacks(healthy)
