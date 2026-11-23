@@ -206,8 +206,11 @@ internal object TmdbDiscover {
     /** A search over every film, series and person TMDB knows; persons come as names. */
     class Found(val pick: Pick?, val person: String = "", val directing: Boolean = false, val known: String = "", val photo: String = "")
 
+    /** Throws when TMDB could not be reached, so "no results" and "no connection" read differently. */
     fun search(query: String): List<Found> {
-        val results = get("search/multi", mapOf("query" to query, "include_adult" to "false"))?.optJSONArray("results") ?: return emptyList()
+        val answer = get("search/multi", mapOf("query" to query, "include_adult" to "false"))
+            ?: throw java.io.IOException("TMDB cevap vermedi")
+        val results = answer.optJSONArray("results") ?: return emptyList()
         return (0 until results.length()).mapNotNull { i ->
             val o = results.optJSONObject(i) ?: return@mapNotNull null
             when (o.optString("media_type")) {

@@ -265,10 +265,23 @@ object Dialogs {
     }
 
     /** Runs [ok] right away if there is no PIN, otherwise after the right PIN. */
+    /** Wrong PINs in a row; after [PIN_TRIES] the PIN window waits [PIN_WAIT_MS] before it asks again. */
+    private var pinWrong = 0
+    private var pinLockedUntil = 0L
+    private const val PIN_TRIES = 5
+    private const val PIN_WAIT_MS = 60_000L
+
     fun pin(a: Activity, ok: () -> Unit, cancel: () -> Unit = {}) {
         val pin = Prefs(a).pin
         if (pin.isEmpty()) {
             ok()
+            return
+        }
+        // Too many wrong tries: no guessing one after another, wait a minute.
+        val wait = pinLockedUntil - android.os.SystemClock.elapsedRealtime()
+        if (wait > 0) {
+            Glass.toast(a, "Çok fazla yanlış PIN. ${(wait / 1000).coerceAtLeast(1)} saniye sonra tekrar dene")
+            cancel()
             return
         }
         val (d, ui, card) = sheet(a, R.drawable.ic_lock, "PIN girin", "")
@@ -279,8 +292,18 @@ object Dialogs {
         val check = {
             done = true
             d.dismiss()
-            if (e.text.toString() == pin) ok() else {
-                Glass.toast(a, "PIN yanlış")
+            if (e.text.toString() == pin) {
+                pinWrong = 0
+                ok()
+            } else {
+                pinWrong++
+                if (pinWrong >= PIN_TRIES) {
+                    pinWrong = 0
+                    pinLockedUntil = android.os.SystemClock.elapsedRealtime() + PIN_WAIT_MS
+                    Glass.toast(a, "PIN $PIN_TRIES kez yanlış girildi. 1 dakika sonra tekrar dene")
+                } else {
+                    Glass.toast(a, "PIN yanlış")
+                }
                 cancel()
             }
         }
