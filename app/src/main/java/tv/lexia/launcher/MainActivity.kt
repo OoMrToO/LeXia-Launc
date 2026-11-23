@@ -438,13 +438,14 @@ class MainActivity : Activity() {
         )
         boost.alpha = 0f
         frame.addView(boost, ui.fl(m, m))
-        // The light of the hour: cool in the morning, warm amber in the evening, deeper at night.
+        // The light of the hour and the focused app's colour wash used to lie over the picture;
+        // they made films look washed out (the viewer asked them gone), so they stay hidden.
         daylight = View(this)
+        daylight.visibility = View.GONE
         frame.addView(daylight, ui.fl(m, m))
-
-        // Soft colour wash taken from the focused app.
         val tint = View(this)
         tint.background = tintDrawable
+        tint.visibility = View.GONE
         frame.addView(tint, ui.fl(m, m))
 
         content = FrameLayout(this)
@@ -4028,6 +4029,15 @@ class MainActivity : Activity() {
         val (vignette, left, bottom, top) = scrims
         val time = if (on) 1400L else 600L
         vignette.animate().alpha(if (on) 0f else 1f).setDuration(time).start()
+        // Rain or snow only over the still picture: a trailer plays clean.
+        if (::weatherLayer.isInitialized) {
+            weatherLayer.animate().cancel()
+            if (on) weatherLayer.animate().alpha(0f).setDuration(600).withEndAction { weatherLayer.stop() }.start()
+            else {
+                weatherLayer.start()
+                weatherLayer.animate().alpha(1f).setDuration(600).start()
+            }
+        }
         top.animate().alpha(if (on) 0.3f else 1f).setDuration(time).start()
         left.animate().alpha(if (on) 0.7f else 1f).setDuration(time).start()
         bottom.animate().alpha(if (on) 0.8f else 1f).setDuration(time).start()
