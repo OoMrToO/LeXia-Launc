@@ -451,6 +451,8 @@ class MainActivity : Activity() {
         frame.addView(content, ui.fl(m, m))
         heroStage = HeroCinema(
             this, ui, frame, content, stage, scrims,
+            // Rain or snow, the hour's light and the app's colour wash: none of them over the film.
+            veils = listOf(weatherLayer, daylight, tint, boost),
             film = { picks.getOrNull(pickIndex) },
             logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } }
         )

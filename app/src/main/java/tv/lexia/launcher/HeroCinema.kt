@@ -30,6 +30,8 @@ internal class HeroCinema(
     private val stage: View,
     /** Vignette, left, bottom, top shades. */
     private val scrims: List<View>,
+    /** Layers over the picture that are the home screen's, not the film's: they fade away and come back. */
+    private val veils: List<View> = emptyList(),
     private val film: () -> Pick?,
     private val logo: () -> Drawable?
 ) {
@@ -48,6 +50,7 @@ internal class HeroCinema(
         private set
 
     private val enterSoon = Runnable { enter() }
+    private val veilAlpha = HashMap<View, Float>()
 
     init {
         for (b in listOf(top, bottom)) {
@@ -119,6 +122,14 @@ internal class HeroCinema(
         val ease = DecelerateInterpolator(2f)
         content.animate().cancel()
         content.animate().alpha(0f).setDuration(1200).setInterpolator(ease).start()
+        // The film in its own colours: no weather, no tint over it.
+        veilAlpha.clear()
+        for (v in veils) {
+            veilAlpha[v] = v.alpha
+            v.animate().cancel()
+            // The rain stops drawing too: the TV has the 1080p trailer to show.
+            v.animate().alpha(0f).setDuration(900).withEndAction { if (on) (v as? WeatherLayer)?.stop() }.start()
+        }
         if (scrims.size >= 4) {
             val (vignette, left, low, high) = scrims
             vignette.animate().alpha(0f).setDuration(1400).start()
@@ -155,6 +166,12 @@ internal class HeroCinema(
         val ease = DecelerateInterpolator(2f)
         content.animate().cancel()
         content.animate().alpha(1f).setDuration(450).setInterpolator(ease).start()
+        for ((v, a) in veilAlpha) {
+            v.animate().cancel()
+            (v as? WeatherLayer)?.start()
+            v.animate().alpha(a).setDuration(450).start()
+        }
+        veilAlpha.clear()
         if (trailerGoesOn && scrims.size >= 4) {
             // The same light as while the trailer plays (MainActivity.trailerLight).
             val (vignette, left, low, high) = scrims
