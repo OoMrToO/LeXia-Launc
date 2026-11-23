@@ -897,6 +897,8 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private val memory by lazy { SourceMemory(this) }
+    /** A film was watched to the end in the player just closed: "Beğendin mi?" is asked. */
+    @Volatile private var justFinished = false
 
     private fun score(stream: MediaStream) = stream.tags.score(screenHeight, screenHdr, wantDubbed)
 
@@ -1002,6 +1004,7 @@ class MediaSourcePickerActivity : Activity() {
             if (markWatched && watchKey.isNotBlank() && watchKey !in prefs.watched) prefs.watched = prefs.watched + watchKey
             WatchHistory(applicationContext).finished(film, key)
             Sleep.playbackFinished(applicationContext)
+            if (markWatched) justFinished = true
         }
         LeXiaPlayerActivity.progress = object : LeXiaProgress {
             override fun positionMs(key: String): Long = store.resumePositionMs(key)
@@ -1078,6 +1081,12 @@ class MediaSourcePickerActivity : Activity() {
             WatchHistory(applicationContext).finished(film, mediaKey)
             Sleep.playbackFinished(applicationContext)
         }
+        // A film just watched to the end: one question, so "Sana göre" learns from it.
+        if (justFinished && !film.isSeries && resultCode != PlayerActivity.RESULT_FAILED) {
+            justFinished = false
+            askLiked()
+            return
+        }
         val resumed = resumeTry
         resumeTry = null
         when (resultCode) {
@@ -1124,6 +1133,30 @@ class MediaSourcePickerActivity : Activity() {
                 loadEpisodes()
             }
             else -> if (streams.isNotEmpty()) renderStreams()
+        }
+    }
+
+    /** "Beğendin mi?" after a film; answered once per film (Beğendim / Bana önerme on its page). */
+    private fun askLiked() {
+        val key = film.key
+        if (key.isBlank() || key in prefs.liked || key in prefs.disliked) {
+            finish()
+            return
+        }
+        Dialogs.list(
+            this, "Beğendin mi?", listOf("Beğendim" to "", "Beğenmedim" to ""),
+            subtitle = film.title, icon = R.drawable.ic_heart_outline, cancel = { finish() }
+        ) { i ->
+            if (i == 0) {
+                prefs.liked = prefs.liked + (key to film.genres)
+                prefs.disliked = prefs.disliked - key
+                Glass.toast(this, "Buna benzeyen filmler artık önde")
+            } else {
+                prefs.disliked = prefs.disliked + (key to film.genres)
+                prefs.liked = prefs.liked - key
+                Glass.toast(this, "Benzerleri artık geride")
+            }
+            finish()
         }
     }
 

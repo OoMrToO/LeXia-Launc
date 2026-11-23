@@ -76,6 +76,7 @@ recentFilms text
 remind text
 remoteSeen text
 repaired bool
+reposAt long
 rotate bool
 rotateSec int
 rowOrder text

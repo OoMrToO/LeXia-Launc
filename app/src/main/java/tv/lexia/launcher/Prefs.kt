@@ -296,6 +296,8 @@ class Prefs(ctx: Context) {
         }
     /** A fresh install already looked for a backup to bring back (see [Backup.sync]). */
     var backupChecked: Boolean get() = bool("backupChecked", false); set(v) = putBool("backupChecked", v)
+    /** When the Nuvio repositories were last refreshed by themselves (Housekeeping). */
+    var reposRefreshedAt: Long get() = p.getLong("reposAt", 0L); set(v) = p.edit().putLong("reposAt", v).apply()
     var homeNudgeOff: Boolean get() = bool("homeNudgeOff", false); set(v) = putBool("homeNudgeOff", v)
 
     /** Last time each app was opened. */
