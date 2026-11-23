@@ -454,7 +454,13 @@ class MainActivity : Activity() {
             // Rain or snow, the hour's light and the app's colour wash: none of them over the film.
             veils = listOf(weatherLayer, daylight, tint, boost),
             film = { picks.getOrNull(pickIndex) },
-            logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } }
+            logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } },
+            // A trailer not known to be dubbed or original may carry Turkish subtitles in its picture.
+            wordsInPicture = {
+                val key = if (::heroTrailer.isInitialized) heroTrailer.where()?.first else null
+                val label = picks.getOrNull(pickIndex)?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+                !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
+            }
         )
 
         root = ui.vbox()

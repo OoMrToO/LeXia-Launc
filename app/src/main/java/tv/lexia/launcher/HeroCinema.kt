@@ -33,7 +33,12 @@ internal class HeroCinema(
     /** Layers over the picture that are the home screen's, not the film's: they fade away and come back. */
     private val veils: List<View> = emptyList(),
     private val film: () -> Pick?,
-    private val logo: () -> Drawable?
+    private val logo: () -> Drawable?,
+    /**
+     * The trailer playing may have words written into its picture (a subtitled one): then no
+     * bands and no slow zoom, which would cut the lines at the bottom.
+     */
+    private val wordsInPicture: () -> Boolean = { false }
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val bandH = ui.u(BAND)
@@ -137,15 +142,23 @@ internal class HeroCinema(
             low.animate().alpha(0.35f).setDuration(1400).start()
             high.animate().alpha(0f).setDuration(1400).start()
         }
-        for ((band, from) in listOf(top to -bandH.toFloat(), bottom to bandH.toFloat())) {
-            band.animate().cancel()
-            band.translationY = from
-            band.visibility = View.VISIBLE
-            band.animate().translationY(0f).setStartDelay(300).setDuration(1100).setInterpolator(ease).start()
+        val clear = wordsInPicture()
+        if (!clear) {
+            for ((band, from) in listOf(top to -bandH.toFloat(), bottom to bandH.toFloat())) {
+                band.animate().cancel()
+                band.translationY = from
+                band.visibility = View.VISIBLE
+                band.animate().translationY(0f).setStartDelay(300).setDuration(1100).setInterpolator(ease).start()
+            }
+            // The picture moves slowly closer, as a camera would.
+            stage.animate().cancel()
+            stage.animate().scaleX(ZOOM).scaleY(ZOOM).setDuration(20_000).setInterpolator(DecelerateInterpolator()).start()
         }
-        // The picture moves slowly closer, as a camera would.
-        stage.animate().cancel()
-        stage.animate().scaleX(ZOOM).scaleY(ZOOM).setDuration(20_000).setInterpolator(DecelerateInterpolator()).start()
+        // The name sits above the band, or just above the picture's own subtitle line.
+        (caption.layoutParams as? FrameLayout.LayoutParams)?.let {
+            it.bottomMargin = if (clear) ui.u(150) else bandH + ui.u(44)
+            caption.layoutParams = it
+        }
         shade.animate().cancel()
         shade.visibility = View.VISIBLE
         shade.animate().alpha(1f).setStartDelay(600).setDuration(1200).start()
