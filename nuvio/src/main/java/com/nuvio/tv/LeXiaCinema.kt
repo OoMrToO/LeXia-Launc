@@ -30,6 +30,16 @@ object LeXiaCinema {
     @Volatile
     var descriptionOf = ""
 
+    /** A scene in the credits (TMDB keywords): 1 = during them, 2 = after them, 3 = both; 0 = none or unknown. */
+    @Volatile
+    var creditsScene = 0
+
+    /** Films to offer while the credits roll ("Bunu sevdiysen"); empty for episodes. */
+    @Volatile
+    var suggestions: List<Suggestion> = emptyList()
+
+    class Suggestion(val title: String, val poster: String, val line: String)
+
     /** Quiet: sinema modu is on and something plays. */
     val quiet: Boolean get() = enabled && playing
 }

@@ -143,6 +143,20 @@ internal object TmdbDiscover {
         return (0 until results.length()).mapNotNull { i -> results.optJSONObject(i)?.let { pickOf(it, kind) } }
     }
 
+    /** A scene in the film's credits, from TMDB's keywords: 1 = during them, 2 = after them, 3 = both. */
+    fun creditsScene(p: Pick): Int {
+        if (p.id <= 0 || p.isSeries) return 0
+        val list = get("movie/${p.id}/keywords", emptyMap())?.optJSONArray("keywords") ?: return 0
+        var scene = 0
+        for (i in 0 until list.length()) {
+            when (list.optJSONObject(i)?.optString("name")) {
+                "duringcreditsstinger" -> scene = scene or 1
+                "aftercreditsstinger" -> scene = scene or 2
+            }
+        }
+        return scene
+    }
+
     /** A search over every film, series and person TMDB knows; persons come as names. */
     class Found(val pick: Pick?, val person: String = "", val directing: Boolean = false, val known: String = "")
 

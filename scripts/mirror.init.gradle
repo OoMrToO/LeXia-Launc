@@ -1,0 +1,14 @@
+// Local builds only (not CI): Maven Central through Google's mirror, which this cloud environment can reach.
+// Usage: gradle -I scripts/mirror.init.gradle <task>
+allprojects {
+    buildscript {
+        repositories {
+            maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
+            maven { url = uri("https://maven.google.com") }
+        }
+    }
+    repositories {
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
+        maven { url = uri("https://maven.google.com") }
+    }
+}

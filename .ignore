@@ -1,0 +1,15 @@
+# Search tools (ripgrep/Grep, fd) skip these; git and builds are unaffected.
+# Still readable when needed: open by path, or search with --no-ignore.
+build/
+.gradle/
+.kotlin/
+*.log
+*.aar
+*.apk
+*.p12
+pick.json
+docs/HISTORY.md
+docs/brand/
+app/src/main/res/font/
+nuvio/src/main/res/font/
+nuvio/src/main/res/raw/
