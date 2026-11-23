@@ -356,6 +356,41 @@ object LeXiaNuvio {
      * LeXia's own language choices (Ayarlar › Oynatma ve Takip) for Nuvio's player: the audio and
      * subtitle language it picks by itself. Empty = the TV's language (Nuvio's default).
      */
+    /** One shared lookup (it keeps what it found): IMDb's parents guide, as the player shows it. */
+    private val parentalGuide by lazy {
+        ParentalGuideRepository(playerRetrofit("https://api.tiffara.com/").create(ParentalGuideApi::class.java))
+    }
+
+    /**
+     * The content warnings the player shows when a film starts ("Şiddet" to "Orta"), most severe
+     * first, five at most; for LeXia's trailers. Blocks: call it off the main thread. Empty when
+     * unknown.
+     */
+    fun contentWarnings(context: Context, imdbId: String): List<Pair<String, String>> {
+        if (!imdbId.startsWith("tt")) return emptyList()
+        val guide = try {
+            kotlinx.coroutines.runBlocking { parentalGuide.getParentalGuide(imdbId) }
+        } catch (e: Exception) {
+            null
+        } ?: return emptyList()
+        val r = context.applicationContext.resources
+        val order = mapOf("severe" to 0, "moderate" to 1, "mild" to 2)
+        return listOfNotNull(
+            guide.nudity?.let { R.string.parental_nudity to it },
+            guide.violence?.let { R.string.parental_violence to it },
+            guide.profanity?.let { R.string.parental_profanity to it },
+            guide.alcohol?.let { R.string.parental_alcohol to it },
+            guide.frightening?.let { R.string.parental_frightening to it }
+        ).sortedBy { order[it.second.lowercase()] ?: 3 }.map { (label, level) ->
+            r.getString(label) to when (level.lowercase()) {
+                "severe" -> r.getString(R.string.parental_severity_severe)
+                "moderate" -> r.getString(R.string.parental_severity_moderate)
+                "mild" -> r.getString(R.string.parental_severity_mild)
+                else -> level
+            }
+        }.take(5)
+    }
+
     fun syncLanguages(context: Context, audio: String, subtitle: String) {
         val store = playerSettingsStore(context)
         val now = playerSettings(context)

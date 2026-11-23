@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
 import java.util.concurrent.Executors
 
 /**
@@ -36,6 +37,19 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
 
     /** Called with true when the trailer's first frame shows, false when the picture comes back. */
     var onShowing: ((Boolean) -> Unit)? = null
+
+    /** The sound comes up softly a few seconds after the picture (and goes softly when it stops). */
+    var sound = false
+    private var volumeRise: android.animation.ValueAnimator? = null
+    private val soundUp = Runnable {
+        val p = player ?: return@Runnable
+        volumeRise?.cancel()
+        volumeRise = android.animation.ValueAnimator.ofFloat(p.volume, SOUND_LEVEL).apply {
+            duration = 2_500
+            addUpdateListener { player?.volume = it.animatedValue as Float }
+            start()
+        }
+    }
 
     fun start(youtubeId: String) {
         stop()
@@ -69,6 +83,7 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
                 if (mine == token) {
                     texture.animate().alpha(1f).setDuration(1400).start()
                     onShowing?.invoke(true)
+                    if (sound && withSound) stage.postDelayed(soundUp, SOUND_AFTER_MS)
                 }
             }
 
@@ -83,8 +98,13 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         val item = MediaItem.Builder().setUri(source.video)
         if (source.hls) item.setMimeType(MimeTypes.APPLICATION_M3U8)
         val sources = DefaultMediaSourceFactory(YouTubeChunkedDataSource.Factory(source.userAgent))
-        // The picture is all that is needed (no sound is played, so a separate sound track is not loaded).
-        exo.setMediaSource(sources.createMediaSource(item.build()))
+        // Without sound only the picture is loaded; with it, YouTube's separate sound track too.
+        val picture = sources.createMediaSource(item.build())
+        withSound = sound && (source.audio != null || source.hls)
+        exo.setMediaSource(
+            if (withSound && source.audio != null) MergingMediaSource(picture, sources.createMediaSource(MediaItem.fromUri(source.audio)))
+            else picture
+        )
         exo.prepare()
         exo.playWhenReady = true
     }
@@ -99,8 +119,24 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     fun stop() {
         token++
         active = false
-        player?.release()
+        stage.removeCallbacks(soundUp)
+        volumeRise?.cancel()
+        volumeRise = null
+        val old = player
         player = null
+        // Sound playing: it fades out first, then the player goes.
+        if (old != null && old.volume > 0.02f) {
+            android.animation.ValueAnimator.ofFloat(old.volume, 0f).apply {
+                duration = 450
+                addUpdateListener { old.volume = it.animatedValue as Float }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) = old.release()
+                })
+                start()
+            }
+        } else {
+            old?.release()
+        }
         if (view != null) onShowing?.invoke(false)
         view?.let { v ->
             v.animate().cancel()
@@ -110,7 +146,16 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     }
 
     fun release() {
+        // Leaving for good: no fade, the player goes at once.
+        player?.volume = 0f
         stop()
         finder.shutdownNow()
+    }
+
+    private var withSound = false
+
+    private companion object {
+        const val SOUND_AFTER_MS = 4_000L
+        const val SOUND_LEVEL = 0.7f
     }
 }
