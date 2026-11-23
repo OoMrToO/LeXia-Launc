@@ -556,7 +556,7 @@ internal class MediaAddonRepository(context: Context) {
             .filter { it.isNotEmpty() }
     }
 
-    private companion object {
+    companion object {
         const val CINEMETA = "https://v3-cinemeta.strem.io"
         const val TMDB = "https://api.themoviedb.org/3"
         /** OpenSubtitles' free Stremio add-on, asked when no installed add-on gave a Turkish subtitle. */
