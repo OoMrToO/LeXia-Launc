@@ -373,6 +373,8 @@ class DetailActivity : Activity() {
             }
         }
         buttons.addView(playBtn)
+        // A film LeXia picked for tonight: "Başka öner" right beside "Oynat", no scrolling to it.
+        if (surprise) buttons.addView(another)
         buttons.addView(trailer)
         buttons.addView(listBtn)
         buttons.addView(nightBtn)
@@ -380,7 +382,6 @@ class DetailActivity : Activity() {
         buttons.addView(likeBtn)
         buttons.addView(notBtn)
         buttons.addView(remindBtn)
-        buttons.addView(another)
         top.addView(buttons, ui.ll(w, w, top = 34))
         // Opened from a row: a quiet line says the row's other films are a press away.
         val at = siblings.indexOfFirst { it.key == film.key }

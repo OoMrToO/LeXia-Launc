@@ -490,7 +490,7 @@ internal fun LeXiaPlayerControls(
                 )
         )
 
-        LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
+        LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 56.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
 
         // Top right: what you change while watching.
         Row(
@@ -527,7 +527,7 @@ internal fun LeXiaPlayerControls(
                     val root = c.findRootCoordinates().size.height
                     if (root > 0) clearance = (root - c.boundsInRoot().top).coerceAtLeast(0f)
                 }
-                .padding(start = 40.dp, end = 40.dp, bottom = 26.dp)
+                .padding(start = 56.dp, end = 56.dp, bottom = 26.dp)
         ) {
             AnimatedVisibility(uiState.activeSkipInterval == null, enter = fadeIn(tween(150)), exit = fadeOut(tween(150))) {
                 Column {
@@ -672,7 +672,7 @@ internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerC
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
-            .padding(start = 40.dp, end = 40.dp, top = 40.dp, bottom = 28.dp)
+            .padding(start = 56.dp, end = 56.dp, top = 40.dp, bottom = 28.dp)
     ) {
         Column {
             LeXiaBar(timeline.currentPosition, timeline.duration, timeline.bufferedPosition, chapters, accent, true, null)
@@ -712,7 +712,7 @@ internal fun LeXiaPauseOverlay(
                     )
                 )
         ) {
-            if (!uiState.isLive) LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
+            if (!uiState.isLive) LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 56.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
             val tag = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.7.sp, color = lerp(accent, Color.White, 0.45f))
             Column(Modifier.padding(start = 56.dp, top = 64.dp).width(430.dp)) {
                 val series = uiState.currentSeason != null && uiState.currentEpisode != null
@@ -729,7 +729,7 @@ internal fun LeXiaPauseOverlay(
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
-                uiState.description?.takeIf { it.isNotBlank() }?.let {
+                (LeXiaCinema.description.takeIf { it.isNotBlank() && LeXiaCinema.descriptionOf == (if (uiState.currentSeason != null && uiState.currentEpisode != null) "${uiState.currentSeason}:${uiState.currentEpisode}" else "") } ?: uiState.description)?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         it,
                         style = TextStyle(fontSize = 15.sp, lineHeight = 23.sp, color = Color.White.copy(alpha = 0.88f)),

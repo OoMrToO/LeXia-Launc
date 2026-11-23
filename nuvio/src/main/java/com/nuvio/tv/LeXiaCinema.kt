@@ -22,6 +22,14 @@ object LeXiaCinema {
     @Volatile
     var light = false
 
+    /** LeXia's own Turkish story of the film or episode, for the pause screen (Nuvio's may be English). */
+    @Volatile
+    var description = ""
+
+    /** Which episode [description] is about ("2:5"), "" for a film; Nuvio may move on to the next one. */
+    @Volatile
+    var descriptionOf = ""
+
     /** Quiet: sinema modu is on and something plays. */
     val quiet: Boolean get() = enabled && playing
 }

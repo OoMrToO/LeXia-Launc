@@ -24,8 +24,34 @@ object Surprise {
     /** Why the current films were chosen, shown on the detail page. */
     private var why = ""
 
+    /**
+     * Can be watched at home tonight: out already (year and Turkish release date), and not a film that
+     * is only in cinemas (out in the last 60 days with no platform and no digital release yet).
+     */
+    fun watchable(p: Pick): Boolean {
+        val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        if ((p.year.take(4).toIntOrNull() ?: 0) > thisYear) return false
+        val days = Episodes.daysUntil(p.release)
+        if ((days ?: 0) > 0) return false
+        if (p.isSeries) return true
+        val atHome = p.where.isNotEmpty() || p.provider.isNotEmpty() || Episodes.daysUntil(p.digital)?.let { it <= 0 } == true
+        return atHome || days == null || days < -60
+    }
+
+    /** "Başka öner" from a list chosen elsewhere (Keşfet's dice). */
+    fun start(a: Activity, films: List<Pick>, reason: String) {
+        pool = films.filter(::watchable).distinctBy { it.key }
+        seen.clear()
+        why = reason
+        if (pool.isEmpty()) {
+            Glass.toast(a, "Bu seçimde şu an izlenebilir film yok")
+            return
+        }
+        next(a)
+    }
+
     fun ask(a: Activity, films: List<Pick>, liked: Set<String>) {
-        val all = films.distinctBy { it.key }
+        val all = films.distinctBy { it.key }.filter(::watchable)
         if (all.isEmpty()) {
             Glass.toast(a, "Film listesi henüz yüklenmedi")
             return
