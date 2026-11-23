@@ -25,6 +25,52 @@ internal object TmdbDiscover {
         return try { JSONObject(body) } catch (e: Exception) { null }
     }
 
+    private val certs = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val US_AGE = mapOf(
+        "G" to "Genel", "PG" to "7+", "PG-13" to "13+", "R" to "18+", "NC-17" to "18+",
+        "TV-Y" to "Genel", "TV-G" to "Genel", "TV-Y7" to "7+", "TV-PG" to "7+", "TV-14" to "13+", "TV-MA" to "18+"
+    )
+
+    /** Turkish rating text as a short badge ("7+", "13+", "18+", "Genel"); scripts/pick.py's age_band. */
+    private fun ageBand(v: String?): String {
+        val t = v.orEmpty().trim().uppercase(java.util.Locale.ROOT)
+        if (t.isEmpty()) return ""
+        if (t.startsWith("GENEL") || t == "G" || t == "GA") return "Genel"
+        val digits = t.filter { it.isDigit() }.toIntOrNull() ?: return ""
+        return if (digits in 1..21) "$digits+" else ""
+    }
+
+    /**
+     * The age rating of a title, as pick.json has it: Turkey's if TMDB knows it, else the US one
+     * mapped to a Turkish band; "" when none. Blocks (asks TMDB once per title).
+     */
+    fun cert(kind: String, id: Int): String {
+        if (id <= 0) return ""
+        val k = "$kind:$id"
+        certs[k]?.let { return it }
+        val found = HashMap<String, String>()
+        if (kind == "tv") {
+            val a = get("tv/$id/content_ratings", emptyMap())?.optJSONArray("results") ?: return ""
+            for (i in 0 until a.length()) {
+                val r = a.optJSONObject(i) ?: continue
+                r.optString("rating").takeIf { it.isNotBlank() }?.let { found.putIfAbsent(r.optString("iso_3166_1"), it) }
+            }
+        } else {
+            val a = get("movie/$id/release_dates", emptyMap())?.optJSONArray("results") ?: return ""
+            for (i in 0 until a.length()) {
+                val r = a.optJSONObject(i) ?: continue
+                val dates = r.optJSONArray("release_dates") ?: continue
+                for (j in 0 until dates.length()) {
+                    dates.optJSONObject(j)?.optString("certification")?.takeIf { it.isNotBlank() }
+                        ?.let { found.putIfAbsent(r.optString("iso_3166_1"), it) }
+                }
+            }
+        }
+        val band = ageBand(found["TR"]).ifEmpty { US_AGE[found["US"].orEmpty().uppercase(java.util.Locale.ROOT)].orEmpty() }
+        certs[k] = band
+        return band
+    }
+
     private fun genreIds(kind: String): Map<String, Int> = synchronized(genres) {
         genres[kind]?.let { return it }
         val list = get("genre/$kind/list", emptyMap())?.optJSONArray("genres") ?: return emptyMap()

@@ -124,6 +124,7 @@ playAutoSource bool
 favSource text
 favSourceName text
 heroTrailer bool
+heroTrailerSound bool
 nuvioEngine bool
 nuvioPlayer bool
 choices text

@@ -57,6 +57,8 @@ import java.util.concurrent.Executors
 class TrailerActivity : Activity() {
 
     companion object {
+        /** How strongly the film's colours glow around a wide trailer. */
+        private const val GLOW_ALPHA = 0.45f
         private const val EXTRA_ID = "id"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_LIST = "list"
@@ -222,6 +224,20 @@ class TrailerActivity : Activity() {
     private var castPanel: View? = null
     /** The film's own colour on the bar and knob. */
     private var barColor = Color.WHITE
+    /** Top left as a trailer starts: age, genre, language, content warnings. */
+    private lateinit var guide: TrailerAmbience.Guide
+    /** The green card before the first trailer. */
+    private lateinit var card: TrailerAmbience.Card
+    /** The film's colours behind the picture, glowing in a wide trailer's black bands. */
+    private lateinit var glow: ImageView
+    /** What the guide says about the film on screen (found off the main thread), and for which trailer. */
+    private var guideFacts: List<Pair<String, String>>? = null
+    private var guideFactsFor = ""
+    /** The trailer whose guide was shown (once per trailer), and until when it may still come. */
+    private var guideShownFor = ""
+    private var guideDueUntil = 0L
+    /** "Filmi izle" closed the curtain: it opens again when the viewer comes back. */
+    private var curtainClosedForFilm = false
 
     private var id = ""
     private var currentTitle = ""
@@ -316,6 +332,7 @@ class TrailerActivity : Activity() {
         frame = FrameLayout(this)
         frame.setBackgroundColor(Color.BLACK)
         frame.clipChildren = false
+        glow = TrailerAmbience.glowView(ui, frame)
 
         shield = View(this)
         shield.setBackgroundColor(Color.BLACK)
@@ -350,7 +367,15 @@ class TrailerActivity : Activity() {
 
         currentTitle = title
         buildControls()
+        guide = TrailerAmbience.Guide(ui, frame)
+        card = TrailerAmbience.Card(ui, frame)
         setContentView(frame)
+        // The first trailer: the green card, as in the cinema, while it loads.
+        if (savedInstanceState == null) {
+            val first = films.firstOrNull { it.trailer == id || it.trailers.any { v -> v.key == id } }
+            card.show(first?.title ?: title, first?.cert.orEmpty())
+            if (card.showing) status.alpha = 0f
+        }
         bindFilm()
         showInfo()
         handler.post(tick)
@@ -462,7 +487,8 @@ class TrailerActivity : Activity() {
             v.useController = false
             v.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             v.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            v.setBackgroundColor(Color.BLACK)
+            // Clear around the picture: the film's colours glow there (wide trailers' bands).
+            v.setBackgroundColor(Color.TRANSPARENT)
             v.isFocusable = false
             v.descendantFocusability = FrameLayout.FOCUS_BLOCK_DESCENDANTS
             v.subtitleView?.apply {
@@ -845,6 +871,7 @@ class TrailerActivity : Activity() {
                 }
             }
             filmColor(p)
+            loadGuideFacts(p)
         }
         // Buttons: list (or remind), details, the platform's app.
         buttons.removeAllViews()
@@ -853,10 +880,7 @@ class TrailerActivity : Activity() {
             if (!upcoming(p) && p.id > 0) {
                 val watch = ui.pill(if (p.isSeries) "▶   Diziyi izle" else "▶   Filmi izle", 64, 23)
                 styleAccentAction(watch)
-                watch.setOnClickListener {
-                    pausePlayer()
-                    MediaSourcePickerActivity.open(this, p)
-                }
+                watch.setOnClickListener { toFilm(p) }
                 buttons.addView(watch)
             }
             buttons.addView(listButton(p, false))
@@ -928,7 +952,22 @@ class TrailerActivity : Activity() {
     private fun onPlaying() {
         playing = true
         paused = false
-        openCurtain()
+        if (card.showing) {
+            // The card stays long enough to be read, then goes, and the curtain parts.
+            handler.postDelayed({
+                card.hide()
+                openCurtain()
+            }, card.waitMs())
+        } else {
+            openCurtain()
+        }
+        if (guideShownFor != id) {
+            guideShownFor = id
+            guideDueUntil = System.currentTimeMillis() + 12_000
+            handler.removeCallbacks(showGuide)
+            handler.postDelayed(showGuide, if (curtainOpen) 1_200 else card.waitMs() + 1_800)
+        }
+        glow.animate().alpha(GLOW_ALPHA).setDuration(1_200).start()
         // Marathon: the next trailer waits ready in the hidden player.
         if (list.size > 1 && at + 1 < list.size) {
             val next = list[at + 1]
@@ -950,6 +989,7 @@ class TrailerActivity : Activity() {
 
     private fun onPaused() {
         paused = true
+        guide.hide(quick = true)
         center.scaleX = 0.8f
         center.scaleY = 0.8f
         center.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(D.MED).start()
@@ -1052,6 +1092,7 @@ class TrailerActivity : Activity() {
     }
 
     private fun enterButtons() {
+        guide.hide(quick = true)
         onButtons = true
         setButtonsFocusable(true)
         showInfo()
@@ -1144,6 +1185,7 @@ class TrailerActivity : Activity() {
 
     /** The trailer is over: the film's picture dimmed, what to do next and, in a marathon, the next one in 5 s. */
     private fun showEnd() {
+        guide.hide(quick = true)
         if (done || endCard != null) return
         prefs.trailerAt = prefs.trailerAt - id
         hideCast()
@@ -1221,10 +1263,7 @@ class TrailerActivity : Activity() {
             // Streaming/source discovery stays inside LeXia; no external platform is shown.
             if (!upcoming(p) && p.id > 0) {
                 val watch = ui.pill("▶   Filmi izle", 68, 24, primary = true)
-                watch.setOnClickListener {
-                    pausePlayer()
-                    MediaSourcePickerActivity.open(this, p)
-                }
+                watch.setOnClickListener { toFilm(p) }
                 row.addView(watch)
             } else {
                 row.addView(listButton(p, primary = true))
@@ -1372,6 +1411,7 @@ class TrailerActivity : Activity() {
 
     /** Marathon: the next trailer in the same player. */
     private fun nextTrailer() {
+        guide.hide(quick = true)
         if (done) return
         removeEnd()
         if (at >= list.size - 1) {
@@ -1430,6 +1470,7 @@ class TrailerActivity : Activity() {
 
     /** Sound falls, the curtain closes, then the screen goes; the place is kept for next time. */
     private fun close() {
+        guide.hide(quick = true)
         if (done) return
         done = true
         savePlace()
@@ -1471,6 +1512,76 @@ class TrailerActivity : Activity() {
         }
     }
 
+    private val showGuide = Runnable { tryShowGuide() }
+
+    /** The guide, once per trailer, when its facts are in and nothing else is on screen. */
+    private fun tryShowGuide() {
+        if (guideShownFor != id || System.currentTimeMillis() > guideDueUntil) return
+        if (!playing || paused || onButtons || endCard != null || castPanel != null || done) return
+        val facts = guideFacts?.takeIf { guideFactsFor == id } ?: return
+        val language = when (trailerLanguage()) {
+            "dub" -> "Türkçe dublaj"
+            "sub" -> "Türkçe altyazılı"
+            "orig" -> "Orijinal ses"
+            else -> ""
+        }
+        val rows = ArrayList(facts)
+        if (language.isNotEmpty()) rows.add(rows.indexOfFirst { it.first == "Tür" }.let { if (it < 0) minOf(1, rows.size) else it + 1 }, "Dil" to language)
+        if (rows.isEmpty()) return
+        guideDueUntil = 0L
+        guide.show(rows, barColor)
+    }
+
+    /** Age, genre and IMDb's content warnings of [p], looked up once per trailer, off the main thread. */
+    private fun loadGuideFacts(p: Pick) {
+        val key = id
+        if (guideFactsFor == key) return
+        guideFacts = null
+        guideFactsFor = key
+        val app = applicationContext
+        finder.execute {
+            val cert = p.cert.ifBlank { try { TmdbDiscover.cert(p.kind, p.id) } catch (e: Exception) { "" } }
+            val imdb = p.imdbId.ifBlank { try { MediaAddonRepository(app).imdbId(p.kind, p.id) } catch (e: Exception) { "" } }
+            val warnings = try { com.nuvio.tv.LeXiaNuvio.contentWarnings(app, imdb) } catch (e: Exception) { emptyList() }
+            val facts = ArrayList<Pair<String, String>>()
+            if (cert.isNotEmpty()) facts.add("Yaş sınırı" to if (cert == "Genel") "Genel izleyici" else cert)
+            if (p.genres.isNotEmpty()) facts.add("Tür" to p.genres.take(3).joinToString(", "))
+            facts.addAll(warnings)
+            runOnUiThread {
+                if (isFinishing || guideFactsFor != key) return@runOnUiThread
+                guideFacts = facts
+                tryShowGuide()
+            }
+        }
+    }
+
+    /**
+     * "Filmi izle": the sound falls and the curtain closes over the trailer, then the film's
+     * sources open, whose player parts its own curtain: one screen flowing into the next.
+     */
+    private fun toFilm(p: Pick) {
+        guide.hide(quick = true)
+        if (Fx.lite) {
+            pausePlayer()
+            MediaSourcePickerActivity.open(this, p)
+            return
+        }
+        if (nativeMode) fadeVolume(0f, 420) else web?.evaluateJavascript("fadeTo(0,420)", null)
+        for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
+            v.animate().cancel()
+            v.visibility = View.VISIBLE
+            v.translationY = dir * v.height
+            v.animate().translationY(0f).setStartDelay(0).setDuration(420)
+                .setInterpolator(android.view.animation.AccelerateInterpolator(1.4f)).start()
+        }
+        curtainClosedForFilm = true
+        handler.postDelayed({
+            if (isFinishing) return@postDelayed
+            pausePlayer()
+            MediaSourcePickerActivity.open(this, p)
+        }, 460)
+    }
+
     /** The first time a trailer plays, the curtain parts from the middle. */
     private fun openCurtain() {
         if (curtainOpen) return
@@ -1488,6 +1599,7 @@ class TrailerActivity : Activity() {
 
     /** Another trailer of the same film (dubbed, subtitled, original, teaser), in the same player. */
     private fun chooseTrailer(p: Pick) {
+        guide.hide(quick = true)
         val cur = p.trailers.indexOfFirst { it.key == id }
         Dialogs.list(this, "Fragmanlar", p.trailers.map { it.label to "" }, subtitle = p.title,
             icon = R.drawable.ic_film, current = cur) { i ->
@@ -1514,6 +1626,7 @@ class TrailerActivity : Activity() {
 
     /** The cast down the right side, with their photos; the trailer goes on behind. */
     private fun toggleCast(p: Pick) {
+        guide.hide(quick = true)
         if (castPanel != null) {
             hideCast()
             return
@@ -1573,10 +1686,12 @@ class TrailerActivity : Activity() {
         Thread {
             val b = Net.bitmap("https://image.tmdb.org/t/p/w300" + p.backdrop, 300, true)
             val c = b?.let { Fx.accent(it) } ?: 0
+            val soft = if (Fx.lite) null else b?.let { TrailerAmbience.glow(it) }
             runOnUiThread {
                 if (isFinishing || key != id) return@runOnUiThread
                 barColor = if (c == 0) Color.WHITE else Fx.blend(c, Color.WHITE, 0.3f)
                 applyAccent()
+                soft?.let { glow.setImageBitmap(it) }
             }
         }.start()
     }
@@ -1634,6 +1749,13 @@ class TrailerActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (curtainClosedForFilm) {
+            curtainClosedForFilm = false
+            exo?.volume = 1f
+            web?.evaluateJavascript("try{if(player)player.setVolume(100);}catch(x){}", null)
+            curtainOpen = false
+            openCurtain()
+        }
         if (nativeMode && resumeOnReturn && !done && endCard == null) exo?.playWhenReady = true
         resumeOnReturn = false
         web?.onResume()

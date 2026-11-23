@@ -3742,6 +3742,7 @@ class MainActivity : Activity() {
         if (p.trailer.isBlank()) return
         handler.removeCallbacks(rotate)
         progressAnim?.cancel()
+        heroTrailer.sound = prefs.heroTrailerSound
         heroTrailer.start(p.trailer)
     }
 

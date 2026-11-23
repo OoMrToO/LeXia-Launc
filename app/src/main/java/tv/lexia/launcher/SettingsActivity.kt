@@ -746,7 +746,7 @@ class SettingsActivity : Activity() {
     }
     private fun lookPage() = Page(
         "Görünüm", R.drawable.ic_brush,
-        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "heroTrailer", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
+        keys = listOf("bg", "card", "appShape", "heroSource", "greet", "clock24", "weather", "ambience", "heroTrailer", "heroTrailerSound", "navSound", "soundSet", "morningCard", "lite", "bigText", "glass"),
         preview = "home"
     ) {
         listOf(
@@ -803,6 +803,11 @@ class SettingsActivity : Activity() {
                 "Ana ekranda sessiz fragman",
                 "Bir film birkaç saniye ekranda kalınca arka plandaki görseli sessiz fragmanına döner; fragman bitince sıradaki filme geçer. Hafif modda kapalıdır.",
                 { prefs.heroTrailer }, { prefs.heroTrailer = it }
+            ),
+            toggle(
+                "Ana ekran fragmanında ses",
+                "Film birkaç saniye seçili kalınca fragmanın sesi yavaşça açılır; başka yere geçince yavaşça kısılır.",
+                { prefs.heroTrailerSound }, { prefs.heroTrailerSound = it }
             ),
             toggle(
                 "Hava ambiyansı", "Dışarıda yağmur ya da kar varsa ekranda çok hafif yağmur damlaları veya kar taneleri.",
