@@ -238,6 +238,17 @@ object LeXiaNuvio {
         api ?: retrofit("https://placeholder.nuvio.tv/", addonClient(context)).create(AddonApi::class.java).also { api = it }
     }
 
+    /**
+     * One for the whole app, as Hilt's @Singleton gives Nuvio: a second one on the same file made
+     * DataStore throw "multiple DataStores active" and closed LeXia the second time a film was opened.
+     */
+    @Volatile
+    private var devicePrefs: DeviceLocalPlayerPreferences? = null
+
+    private fun deviceLocalPlayerPreferences(context: Context): DeviceLocalPlayerPreferences = devicePrefs ?: synchronized(this) {
+        devicePrefs ?: DeviceLocalPlayerPreferences(context.applicationContext).also { devicePrefs = it }
+    }
+
     private fun dataStoreFactory(context: Context): ProfileDataStoreFactory = factory ?: synchronized(this) {
         factory ?: ProfileDataStoreFactory(context.applicationContext).also { factory = it }
     }
@@ -406,7 +417,7 @@ object LeXiaNuvio {
             traktEpisodeMappingService = TraktEpisodeMappingService(),
             skipIntroRepository = skipIntroRepository(app),
             playerSettingsDataStore = PlayerSettingsDataStore(stores, profileManager, app),
-            deviceLocalPlayerPreferences = DeviceLocalPlayerPreferences(app),
+            deviceLocalPlayerPreferences = deviceLocalPlayerPreferences(app),
             streamLinkCacheDataStore = StreamLinkCacheDataStore(stores, profileManager),
             streamBadgeSettingsDataStore = badgeSettings,
             bingeGroupCacheDataStore = BingeGroupCacheDataStore(stores, profileManager),

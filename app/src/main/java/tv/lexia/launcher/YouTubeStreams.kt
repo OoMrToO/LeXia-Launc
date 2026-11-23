@@ -22,7 +22,11 @@ internal class TrailerSource(
     val userAgent: String,
     /** A Turkish subtitle file (WebVTT), when the trailer has one. */
     val turkishSubtitles: String?,
-    val height: Int
+    val height: Int,
+    /** The video's own title on YouTube ("… Türkçe Altyazılı Fragman"): tells what it really is. */
+    val title: String = "",
+    /** A Turkish sound track was found among the video's dubs and is the one chosen. */
+    val turkishAudio: Boolean = false
 )
 
 /**
@@ -237,10 +241,16 @@ internal object YouTubeStreams {
         val pictures = adaptive
             .filter { text(it, "mimeType").startsWith("video/") && (hdr || !isHdr(it)) && it.optInt("height") > 0 }
             .filter { canDecode(codecOf(text(it, "mimeType"))) }
-        val sounds = adaptive.filter { text(it, "mimeType").startsWith("audio/") }
-            // A trailer with several dubs lists each; the one marked as the video's own is wanted.
-            .filter { it.optJSONObject("audioTrack")?.optBoolean("audioIsDefault", true) ?: true }
-            .filter { !it.optBoolean("isDrc", false) }
+        val title = answer.optJSONObject("videoDetails")?.let { text(it, "title") }.orEmpty()
+        val allSounds = adaptive.filter { text(it, "mimeType").startsWith("audio/") }.filter { !it.optBoolean("isDrc", false) }
+        // A trailer with several dubs lists each: the Turkish one when there is one, else the video's own.
+        val turkish = allSounds.filter { a ->
+            val t = a.optJSONObject("audioTrack") ?: return@filter false
+            text(t, "id").startsWith("tr") || text(t, "displayName").lowercase().let { "türk" in it || "turk" in it }
+        }
+        val sounds = turkish.ifEmpty {
+            allSounds.filter { it.optJSONObject("audioTrack")?.optBoolean("audioIsDefault", true) ?: true }
+        }
         if (pictures.isNotEmpty() && sounds.isNotEmpty()) {
             val fitting = pictures.filter { it.optInt("height") <= maxHeight && it.optInt("width") <= maxHeight * 16 / 9 }
             val picture = (fitting.ifEmpty { pictures.filter { it.optInt("height") == pictures.minOf { p -> p.optInt("height") } } })
@@ -256,17 +266,17 @@ internal object YouTubeStreams {
                 compareBy<JSONObject> { if (text(it, "mimeType").startsWith("audio/mp4")) 0 else 1 }
                     .thenByDescending { it.optLong("bitrate") }
             ).first()
-            return TrailerSource(text(picture, "url"), text(sound, "url"), false, userAgent, subtitles, picture.optInt("height"))
+            return TrailerSource(text(picture, "url"), text(sound, "url"), false, userAgent, subtitles, picture.optInt("height"), title, turkish.isNotEmpty())
         }
 
         val list = text(data, "hlsManifestUrl")
-        if (list.startsWith("https://")) return TrailerSource(list, null, true, userAgent, subtitles, 0)
+        if (list.startsWith("https://")) return TrailerSource(list, null, true, userAgent, subtitles, 0, title)
 
         val single = items(data.optJSONArray("formats"))
             .filter { text(it, "url").startsWith("https://") && text(it, "mimeType").startsWith("video/mp4") }
             .maxByOrNull { it.optInt("height") }
             ?: return null
-        return TrailerSource(text(single, "url"), null, false, userAgent, subtitles, single.optInt("height"))
+        return TrailerSource(text(single, "url"), null, false, userAgent, subtitles, single.optInt("height"), title)
     }
 
     /** The trailer's own Turkish subtitles (not machine-made ones), as a WebVTT address. */
