@@ -55,6 +55,9 @@ class MainActivity : Activity() {
         private const val SHELF_H = 330
         private const val TOP_H = 420
         private const val POSTER_H = 470
+        private const val PLAT_H = 300
+        /** After this long without a key, the quiet top bar is fully back. */
+        private const val BAR_WAKE_MS = 8_000L
         /** Tag of the "Tüm uygulamalar" card at the end of the app row. */
         private const val ALL_APPS = "__all_apps"
         private const val REQ_VOICE = 41
@@ -177,6 +180,15 @@ class MainActivity : Activity() {
 
     /** "Son baktıkların": film pages opened lately and not yet in Listem. */
     private lateinit var contShelf: LinearLayout
+    /** "Platformlar": one tile per streaming platform; a tile shows what is new there. */
+    private lateinit var platShelf: LinearLayout
+    private lateinit var platRow: LinearLayout
+    private var platSig = "-"
+    /** The top half while the remote is in the rows: the poster under it, as on Apple TV. */
+    private lateinit var peek: HomePeek
+    /** The bar at the top (greeting, weather, clock…): it goes quiet while the remote is elsewhere. */
+    private lateinit var topBarView: View
+    private val barWake = Runnable { quietBar(false) }
     private lateinit var contRow: LinearLayout
     private var contSig = "-"
     private lateinit var recentShelf: LinearLayout
@@ -337,6 +349,7 @@ class MainActivity : Activity() {
         }
         ui = Ui(this)
         prefs = Prefs(this)
+        prefs.homeV2()
         val m = ui.match
         val w = ui.wrap
         screenH = resources.displayMetrics.heightPixels
@@ -432,6 +445,7 @@ class MainActivity : Activity() {
 
         // At least 76 high, taller when the greeting needs it (big text, small TVs): the date never gets cut off.
         val bar = topBar()
+        topBarView = bar
         bar.minimumHeight = ui.u(76)
         root.addView(bar, ui.ll(m, w))
         root.addView(View(this), ui.ll(m, 0, weight = 1f))
@@ -478,11 +492,17 @@ class MainActivity : Activity() {
         contShelf = cont.first
         contRow = cont.second
         root.addView(contShelf, ui.ll(m, ui.u(POSTER_H)))
+        val plat = topBlock("PLATFORMLAR")
+        platShelf = plat.first
+        platRow = plat.second
+        root.addView(platShelf, ui.ll(m, ui.u(PLAT_H)))
         val seen = topBlock("SON BAKTIKLARIN")
         recentShelf = seen.first
         recentRow = seen.second
         root.addView(recentShelf, ui.ll(m, ui.u(POSTER_H)))
         root.addView(shelfBlock(), ui.ll(m, ui.u(SHELF_H)))
+
+        peek = HomePeek(this, ui, stage, content)
 
         edgeTab = edgeHandle()
         content.addView(edgeTab, ui.fl(ui.u(44), ui.u(150), Gravity.START or Gravity.CENTER_VERTICAL))
@@ -539,6 +559,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         if (::heroTrailer.isInitialized) heroTrailer.release()
+        if (::peek.isInitialized) peek.release()
         try {
             netCallback?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) }
         } catch (e: Exception) {
@@ -858,6 +879,7 @@ class MainActivity : Activity() {
             if (f) {
                 shiftTo(levelOf(rowId))
                 tintTo(0)
+                peek.film(p, rowTitle(rowId).orEmpty())
             }
         }
         poster.setTag(R.id.lexia_pick, p)
@@ -903,9 +925,147 @@ class MainActivity : Activity() {
         localShelf.visibility = vis("local", localList.isNotEmpty() && on)
         likeShelf.visibility = vis("like", likeList.size >= 4 && on)
         contShelf.visibility = vis("cont", contRow.childCount > 0)
+        platShelf.visibility = vis("plat", platRow.childCount > 0 && on)
         recentShelf.visibility = vis("recent", recentRow.childCount > 0)
         updateRootHeight()
         fadeRows()
+    }
+
+    private var barQuiet = false
+
+    private fun isInBar(v: View): Boolean {
+        var x: View? = v
+        while (x != null) {
+            if (x === topBarView) return true
+            x = x.parent as? View
+        }
+        return false
+    }
+
+    /** Apple TV's quiet top bar: dimmed while the remote is on the films, full on it. */
+    private fun quietBar(quiet: Boolean) {
+        if (quiet == barQuiet) return
+        barQuiet = quiet
+        topBarView.animate().alpha(if (quiet) 0.32f else 1f).setDuration(if (quiet) 500L else 350L).start()
+    }
+
+    /** One tile per platform with new titles today, the user's own platforms first. */
+    private fun refreshPlatforms() {
+        val pool = (platformList + allPicks + localList).distinctBy { it.key }
+        val by = LinkedHashMap<String, MutableList<Pick>>()
+        for (p in platformList) if (p.provider.isNotEmpty()) by.getOrPut(p.provider) { ArrayList() }.add(p)
+        for (p in pool) for (name in p.where) {
+            val list = by.getOrPut(name) { ArrayList() }
+            if (list.none { it.key == p.key }) list.add(p)
+        }
+        val mineFirst = prefs.platforms
+        val order = by.entries.filter { it.value.size >= 2 }
+            .sortedWith(compareByDescending<Map.Entry<String, MutableList<Pick>>> { it.key in mineFirst }.thenByDescending { it.value.size })
+        val sig = order.joinToString("|") { it.key + ":" + it.value.size }
+        if (sig == platSig) return
+        platSig = sig
+        platRow.removeAllViews()
+        for ((name, films) in order.take(12)) {
+            val fresh = films.sortedByDescending { it.release }
+            platRow.addView(platformTile(name, fresh))
+        }
+        showTopRows()
+    }
+
+    /** A platform's tile: its colours over its newest film's picture, its name large. */
+    private fun platformTile(name: String, films: List<Pick>): View {
+        val box = FrameLayout(this)
+        box.isFocusable = true
+        box.isClickable = true
+        val (deep, light) = HomePeek.colors(name)
+        box.background = ui.round(deep, D.CARD)
+        box.clipToOutline = true
+        films.firstOrNull { it.backdrop.isNotEmpty() }?.let { f ->
+            val img = ImageView(this)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            box.addView(img, ui.fl(ui.match, ui.match))
+            Img.load(this, "w500", f.backdrop, ui.u(330), img)
+        }
+        val wash = View(this)
+        wash.background = ui.gradient(GradientDrawable.Orientation.BL_TR,
+            Color.argb(245, Color.red(deep), Color.green(deep), Color.blue(deep)),
+            Color.argb(175, Color.red(light), Color.green(light), Color.blue(light)))
+        box.addView(wash, ui.fl(ui.match, ui.match))
+        val label = ui.vbox()
+        val nameView = ui.text(name, 32, Color.WHITE, 800)
+        nameView.maxLines = 1
+        nameView.ellipsize = TextUtils.TruncateAt.END
+        label.addView(nameView)
+        label.addView(ui.text("${films.size} yapım", 17, Color.argb(210, 255, 255, 255), 600), ui.ll(ui.wrap, ui.wrap, top = 2))
+        val lp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        lp.setMargins(ui.u(22), 0, ui.u(16), ui.u(18))
+        box.addView(label, lp)
+        val ring = View(this)
+        ring.background = ui.round(Color.TRANSPARENT, D.CARD, 4, Color.WHITE)
+        ring.alpha = 0f
+        box.addView(ring, ui.fl(ui.match, ui.match))
+        box.setOnFocusChangeListener { v, f ->
+            ui.lift(v, f, 1.07f, 30)
+            ring.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            if (f) {
+                shiftTo(levelOf("plat"))
+                tintTo(0)
+                peek.platform(name, films)
+            }
+        }
+        box.setOnClickListener { ExploreActivity.openPlatform(this, name, films.count { it.isSeries } > films.size / 2) }
+        box.isLongClickable = true
+        box.setOnLongClickListener {
+            rowMenu("plat", box)
+            true
+        }
+        box.layoutParams = ui.ll(ui.u(330), ui.u(186), right = 24)
+        return box
+    }
+
+    /** A scene card (16:9) for "Yarım kalanlar": the film's picture, its name, the bar where it was left. */
+    private fun wideCard(p: Pick, rowId: String): View {
+        val col = ui.vbox()
+        col.clipChildren = false
+        val box = FrameLayout(this)
+        box.isFocusable = true
+        box.isClickable = true
+        box.background = ui.round(C.CARD, D.CARD)
+        box.clipToOutline = true
+        val img = ImageView(this)
+        img.scaleType = ImageView.ScaleType.CENTER_CROP
+        box.addView(img, ui.fl(ui.match, ui.match))
+        Img.load(this, "w780", p.backdrop, ui.u(420), img)
+        val shade = View(this)
+        shade.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(210, 0, 0, 0), Color.TRANSPARENT)
+        box.addView(shade, ui.fl(ui.match, ui.u(140), Gravity.BOTTOM))
+        val name = ui.text(p.title, 24, C.TEXT, 800)
+        name.maxLines = 1
+        name.ellipsize = TextUtils.TruncateAt.END
+        val nlp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        nlp.setMargins(ui.u(18), 0, ui.u(18), ui.u(30))
+        box.addView(name, nlp)
+        WatchMarks.add(ui, box, WatchMarks.of(playback, p))
+        val fx = Fx.decorate(ui, box, D.CARD)
+        box.setOnFocusChangeListener { v, f ->
+            ui.lift(v, f, 1.06f, 30)
+            fx(f)
+            if (f) {
+                shiftTo(levelOf(rowId))
+                tintTo(0)
+                peek.film(p, rowTitle(rowId).orEmpty())
+            }
+        }
+        box.setTag(R.id.lexia_pick, p)
+        box.setOnClickListener { openDetail(p, box, img) }
+        box.isLongClickable = true
+        box.setOnLongClickListener {
+            rowMenu(rowId, box)
+            true
+        }
+        col.addView(box, ui.ll(ui.u(420), ui.u(236)))
+        col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 26)
+        return col
     }
 
     private fun shelfOf(id: String): Pair<View, Int> = when (id) {
@@ -919,6 +1079,7 @@ class MainActivity : Activity() {
         "local" -> localShelf to ui.u(POSTER_H)
         "like" -> likeShelf to ui.u(POSTER_H)
         "cont" -> contShelf to ui.u(POSTER_H)
+        "plat" -> platShelf to ui.u(PLAT_H)
         "recent" -> recentShelf to ui.u(POSTER_H)
         else -> shelf to ui.u(SHELF_H)
     }
@@ -983,17 +1144,21 @@ class MainActivity : Activity() {
         val title = ui.text(p.title, 18, C.TEXT, 600)
         title.maxLines = 1
         title.ellipsize = TextUtils.TruncateAt.END
-        title.alpha = 0.75f
+        // Apple TV's quiet rows: the name and the line under a poster show only while it has the remote.
+        title.alpha = 0f
         val sub = ui.text(line, 15, C.TEXT3, 500)
         sub.maxLines = 1
         sub.ellipsize = TextUtils.TruncateAt.END
+        sub.alpha = 0f
         poster.setOnFocusChangeListener { v, f ->
             ui.lift(v, f, 1.08f, 30)
             fx(f)
-            title.animate().alpha(if (f) 1f else 0.75f).setDuration(D.FAST).start()
+            title.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            sub.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
             if (f) {
                 shiftTo(levelOf(rowId))
                 tintTo(0)
+                peek.film(p, rowTitle(rowId).orEmpty())
             }
         }
         poster.setTag(R.id.lexia_pick, p)
@@ -1649,7 +1814,7 @@ class MainActivity : Activity() {
         if (sig == contSig) return
         contSig = sig
         contRow.removeAllViews()
-        for (p in list) contRow.addView(posterCard(p, "cont", "", scoreLine(p)))
+        for (p in list) contRow.addView(if (p.backdrop.isNotEmpty()) wideCard(p, "cont") else posterCard(p, "cont", "", scoreLine(p)))
         showTopRows()
     }
 
@@ -2730,7 +2895,9 @@ class MainActivity : Activity() {
         if (target > 0) stopHeroTrailer() else queueHeroTrailer()
         root.animate().translationY(-extraBelow(target).toFloat()).setDuration(450)
             .setInterpolator(DecelerateInterpolator(2f)).start()
-        hero.animate().alpha(if (target > 0) 0.15f else 1f).setDuration(D.MED).start()
+        // Down in the rows the top half is the poster's (HomePeek); back up, the film of the day returns.
+        hero.animate().alpha(if (target > 0) 0f else 1f).setDuration(D.MED).start()
+        if (target <= 0) peek.hide()
         fadeRows()
     }
 
@@ -2746,10 +2913,11 @@ class MainActivity : Activity() {
         for (id in order) {
             val v = shelfOf(id).first
             val o = visible.indexOf(id) + 1
-            val on = t > 0 && (o == t || o == t - 1)
+            // Only the row with the remote: the top half above it tells about the poster (HomePeek).
+            val on = t > 0 && o == t
             v.animate().alpha(if (on) 1f else 0f).setDuration(D.MED).start()
         }
-        scroller.animate().alpha(if (t <= 1) 1f else 0f).setDuration(D.MED).start()
+        scroller.animate().alpha(if (t == 0) 1f else 0f).setDuration(D.MED).start()
     }
 
     // ---------- Menus and panel ----------
@@ -3046,6 +3214,12 @@ class MainActivity : Activity() {
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN) Sleep.onKey()
+        if (event.action == KeyEvent.ACTION_UP && ::topBarView.isInitialized) {
+            // The bar goes quiet while the remote is elsewhere; it comes back on it, or after a pause.
+            handler.post { quietBar(currentFocus?.let { isInBar(it) } != true) }
+            handler.removeCallbacks(barWake)
+            handler.postDelayed(barWake, BAR_WAKE_MS)
+        }
         if (swallowUp && event.action == KeyEvent.ACTION_UP) {
             swallowUp = false
             return true
@@ -3375,6 +3549,7 @@ class MainActivity : Activity() {
                     refreshDock()
                 }
                 if (localTitles.isNotEmpty()) localList = localTitles
+                refreshPlatforms()
                 mine = have
                 if (top.isNotEmpty() || topTv.isNotEmpty() || nowList.isNotEmpty() || soonList.isNotEmpty()) {
                     top10 = top
@@ -3398,6 +3573,7 @@ class MainActivity : Activity() {
                     allPicks = list
                     genreSig = "-"
                     applyGenres()
+                    refreshPlatforms()
                 }
             }
         }
