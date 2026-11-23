@@ -1469,16 +1469,13 @@ class TrailerActivity : Activity() {
         if (done) return
         done = true
         savePlace()
-        if (nativeMode) fadeVolume(0f, 420) else web?.evaluateJavascript("fadeTo(0,420)", null)
-        if (Fx.lite) {
-            handler.postDelayed({ finish() }, 150)
-            return
-        }
-        for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
-            v.translationY = dir * v.height
-            v.animate().translationY(0f).setDuration(420).setInterpolator(android.view.animation.AccelerateInterpolator(1.4f)).start()
-        }
-        handler.postDelayed({ finish() }, 460)
+        // The sound fades, then the player is let go before the page leaves, so the home screen
+        // comes back smoothly instead of waiting on a black screen while the video shuts down.
+        if (nativeMode) fadeVolume(0f, 250) else web?.evaluateJavascript("fadeTo(0,250)", null)
+        handler.postDelayed({
+            releasePlayers()
+            finish()
+        }, if (Fx.lite) 120L else 260L)
     }
 
     @Deprecated("Deprecated in Java")
@@ -1754,6 +1751,19 @@ class TrailerActivity : Activity() {
         if (nativeMode && resumeOnReturn && !done && endCard == null) exo?.playWhenReady = true
         resumeOnReturn = false
         web?.onResume()
+    }
+
+    /** The video and its decoder go now (on the way out), not after the page has left. */
+    private fun releasePlayers() {
+        handler.removeCallbacksAndMessages(null)
+        volumeFade?.cancel()
+        playerView?.player = null
+        exo?.let {
+            it.removeListener(nativeListener)
+            it.release()
+        }
+        exo = null
+        web?.loadUrl("about:blank")
     }
 
     override fun onDestroy() {

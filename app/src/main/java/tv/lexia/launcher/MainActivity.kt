@@ -625,11 +625,20 @@ class MainActivity : Activity() {
         col.addView(dateText, ui.ll(ui.wrap, ui.wrap, top = 6))
         // The greeting takes all the free space on the left, so it is never cut short.
         bar.addView(col, ui.ll(0, ui.wrap, weight = 1f))
+        // Apple TV's top bar: at rest only the weather and the clock (and what needs a look: an
+        // update, no internet, a new notice); the buttons open beside the clock when the remote
+        // comes up to the bar, one after another, and close again when it leaves.
+        val cluster = ui.hbox()
+        cluster.gravity = Gravity.CENTER_VERTICAL
+        barCluster = cluster
+        val tools = ui.hbox()
+        tools.gravity = Gravity.CENTER_VERTICAL
+        barTools = tools
 
         remindPill = ui.pill("", 56, 20, primary = true)
         (remindPill.layoutParams as LinearLayout.LayoutParams).rightMargin = ui.u(18)
         remindPill.visibility = View.GONE
-        bar.addView(remindPill)
+        cluster.addView(remindPill)
 
         // Until the Home button opens LeXia: a quiet reminder for the first five days.
         homePill = ui.iconPill("Ana Sayfa tuşunu ayarla", R.drawable.ic_tv, 56, 20)
@@ -644,10 +653,10 @@ class MainActivity : Activity() {
             }
             true
         }
-        bar.addView(homePill)
+        cluster.addView(homePill)
 
         updatePill = ui.pill("Güncelleme geldi", 56, 20, primary = true)
-        (updatePill.layoutParams as LinearLayout.LayoutParams).apply { rightMargin = 0; leftMargin = ui.u(18) }
+        (updatePill.layoutParams as LinearLayout.LayoutParams).apply { rightMargin = ui.u(18); leftMargin = 0 }
         updatePill.visibility = View.GONE
         updatePill.setOnClickListener { startUpdate() }
         val pillStyle = updatePill.onFocusChangeListener
@@ -662,21 +671,17 @@ class MainActivity : Activity() {
             }
         }
 
-        val ask = ui.pill("Ne izlesem?", 56, 20)
-        val dice = resources.getDrawable(R.drawable.ic_dice, theme).mutate()
-        dice.setBounds(0, 0, ui.u(26), ui.u(26))
-        ask.setCompoundDrawables(dice, null, null, null)
-        ask.compoundDrawablePadding = ui.u(12)
-        dice.setTint(C.TEXT)
-        val askStyle = ask.onFocusChangeListener
-        ask.setOnFocusChangeListener { v, f ->
-            askStyle?.onFocusChange(v, f)
-            dice.setTint(if (f) C.INK else C.TEXT)
-        }
-        (ask.layoutParams as LinearLayout.LayoutParams).rightMargin = ui.u(30)
-        ask.setOnClickListener { askWhatToWatch() }
-        bar.addView(ask)
-        askPill = ask
+        // An update waiting: in sight even at rest.
+        cluster.addView(updatePill)
+
+        // No internet: the network button shows (it opens the TV's network settings); online it is not needed.
+        val net = ui.iconButton(R.drawable.ic_wifi, 60)
+        (net.layoutParams as LinearLayout.LayoutParams).rightMargin = ui.u(24)
+        netImg = net.getChildAt(0) as ImageView
+        net.setOnClickListener { SystemSettings.open(this, SystemSettings.Screen.NETWORK) }
+        net.visibility = View.GONE
+        netButton = net
+        cluster.addView(net)
 
         weatherBox = ui.hbox()
         weatherBox.visibility = View.GONE
@@ -688,13 +693,27 @@ class MainActivity : Activity() {
         val sep = View(this)
         sep.setBackgroundColor(C.STROKE)
         weatherBox.addView(sep, ui.ll(maxOf(1, ui.u(2)), ui.u(30), left = 26, right = 26))
-        bar.addView(weatherBox)
+        cluster.addView(weatherBox)
 
         barClock = rollingClock(34, 500)
-        bar.addView(barClock)
+        cluster.addView(barClock)
+        // A new notice: a small pink dot beside the clock; the bell itself opens with the buttons.
+        newDot = View(this)
+        newDot.background = ui.round(Color.parseColor("#FF4D8D"), 6)
+        newDot.visibility = View.GONE
+        cluster.addView(newDot, ui.ll(ui.u(12), ui.u(12), left = 14))
+        bar.addView(cluster)
+
+        // "Ne izlesem?": a die among the buttons.
+        val ask = ui.iconButton(R.drawable.ic_dice, 60)
+        (ask.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(30)
+        ask.setOnClickListener { askWhatToWatch() }
+        ask.contentDescription = "Ne izlesem?"
+        tools.addView(ask)
+        askPill = ask
 
         bell = ui.iconButton(R.drawable.ic_bell, 60)
-        (bell.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(30)
+        (bell.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         bell.setOnClickListener { openNotices() }
         bellDot = View(this)
         bellDot.background = ui.round(Color.parseColor("#FF4D8D"), 6, 2, Color.argb(220, 12, 12, 16))
@@ -702,47 +721,63 @@ class MainActivity : Activity() {
         val dlp = ui.fl(ui.u(15), ui.u(15), Gravity.TOP or Gravity.END)
         dlp.setMargins(0, ui.u(10), ui.u(10), 0)
         bell.addView(bellDot, dlp)
-        bar.addView(bell)
+        tools.addView(bell)
 
-        val search = ui.iconButton(R.drawable.ic_search, 60)
-        (search.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
-        search.setOnClickListener {
-            if (BuildConfig.TMDB_API_KEY.isNotBlank()) SearchAll.ask(this, allPicks + top10 + top10tv + cinema + soon + genrePools.flatMap { it.second } + platformList)
-            else findFilm()
-        }
-        // Holding it opens the TV's own search, as before.
-        search.setOnLongClickListener {
-            openSearch()
-            true
-        }
-        bar.addView(search)
+        // Search lives in Keşfet (its search button opens the search page); the bar keeps fewer buttons.
 
         // Keşfet: every film of the day, with filters.
         val explore = ui.iconButton(R.drawable.ic_film, 60)
         (explore.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         explore.setOnClickListener { openExplore() }
-        bar.addView(explore)
+        tools.addView(explore)
 
         // İzlediklerim: what was left half way, the series and where they are, what was finished.
         val watched = ui.iconButton(R.drawable.ic_history, 60)
         (watched.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         watched.setOnClickListener { openHistory() }
-        bar.addView(watched)
-
-        val net = ui.iconButton(R.drawable.ic_wifi, 60)
-        (net.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
-        netImg = net.getChildAt(0) as ImageView
-        net.setOnClickListener { SystemSettings.open(this, SystemSettings.Screen.NETWORK) }
-        bar.addView(net)
+        tools.addView(watched)
 
         val g = ui.iconButton(R.drawable.ic_gear, 60)
         (g.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         g.setOnClickListener { openPanel() }
-        bar.addView(g)
+        tools.addView(g)
         gear = g
-        // Far right, where it is easy to spot.
-        bar.addView(updatePill)
+        bar.addView(tools)
+        // At rest the buttons are closed: once measured, the clock moves over to the right edge.
+        tools.post { setBarOpen(false, animate = false) }
+        bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now -> setBarOpen(now != null && isInBar(now)) }
         return bar
+    }
+
+    private lateinit var barCluster: LinearLayout
+    private lateinit var barTools: LinearLayout
+    private lateinit var netButton: View
+    private lateinit var newDot: View
+    private var barOpen = true
+
+    /** Opens the top bar's buttons beside the clock (one after another), or closes them. */
+    private fun setBarOpen(open: Boolean, animate: Boolean = true) {
+        if (!::barTools.isInitialized || (open == barOpen && animate)) return
+        barOpen = open
+        val w = barTools.width.toFloat()
+        val ease = DecelerateInterpolator(2f)
+        barCluster.animate().cancel()
+        if (!animate || Fx.lite) barCluster.translationX = if (open) 0f else w
+        else barCluster.animate().translationX(if (open) 0f else w).setDuration(if (open) 380L else 450L).setInterpolator(ease).start()
+        for (i in 0 until barTools.childCount) {
+            val c = barTools.getChildAt(i)
+            c.animate().cancel()
+            if (!animate || Fx.lite) {
+                c.alpha = if (open) 1f else 0f
+                c.translationX = 0f
+            } else if (open) {
+                c.alpha = 0f
+                c.translationX = -ui.uf(18)
+                c.animate().alpha(1f).translationX(0f).setStartDelay(60L + i * 45L).setDuration(300).setInterpolator(ease).start()
+            } else {
+                c.animate().alpha(0f).setStartDelay(0).setDuration(220).start()
+            }
+        }
     }
 
     private fun heroBlock(): View {
@@ -1608,7 +1643,9 @@ class MainActivity : Activity() {
     private fun updateBell() {
         if (!::bellDot.isInitialized) return
         val read = prefs.noticesRead
-        bellDot.visibility = if (notices().any { it.id !in read }) View.VISIBLE else View.GONE
+        val unread = notices().any { it.id !in read }
+        bellDot.visibility = if (unread) View.VISIBLE else View.GONE
+        if (::newDot.isInitialized) newDot.visibility = bellDot.visibility
     }
 
     private fun openNotices() {
@@ -1720,6 +1757,7 @@ class MainActivity : Activity() {
         // Seen now: the dot goes; old ids drop out so the list stays small.
         prefs.noticesRead = list.map { it.id }.toSet()
         bellDot.visibility = View.GONE
+        if (::newDot.isInitialized) newDot.visibility = View.GONE
     }
 
     /** A notice: icon, title and a small line under it; a dot when it's new. */
@@ -4289,6 +4327,8 @@ class MainActivity : Activity() {
         val wired = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
         netImg.setImageResource(if (wired) R.drawable.ic_ethernet else R.drawable.ic_wifi)
         netImg.alpha = if (online) 1f else 0.35f
+        // Online the network button is not needed; without internet it shows, to open the settings.
+        if (::netButton.isInitialized) netButton.visibility = if (online) View.GONE else View.VISIBLE
     }
 
     private fun watchNetwork() {
@@ -4375,6 +4415,8 @@ class MainActivity : Activity() {
         handler.postDelayed(healthy, 20_000L)
         handler.removeCallbacks(liteCheck)
         if (!prefs.lite && !prefs.liteAsked) handler.postDelayed(liteCheck, 25_000L)
+        // Keşfet's list read ahead, quietly, so it opens at once.
+        handler.postDelayed({ ExploreActivity.warm(this) }, 4_000L)
         Fx.lite = prefs.lite
         NightSleep.schedule(this)
         Fx.zoomReset(frame)
