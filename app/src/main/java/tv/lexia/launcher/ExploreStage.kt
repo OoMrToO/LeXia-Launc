@@ -296,6 +296,9 @@ internal class ExploreStage(private val activity: Activity, private val ui: Ui, 
         trailer.start(p.homeTrailer)
     }
 
+    /** The trailer playing behind the showcase now, and where: "Fragman" carries on from there. */
+    fun trailerAt(): Pair<String, Int>? = if (trailer.active) trailer.where() else null
+
     /** The page is left (another page on top): no trailer, no turning. */
     fun pause() {
         handler.removeCallbacks(turn)

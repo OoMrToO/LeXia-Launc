@@ -155,7 +155,7 @@ class ExploreActivity : Activity() {
         stage = ExploreStage(this, ui, frame)
         stage.onPlay = { p -> MediaSourcePickerActivity.open(this, p) }
         stage.onTrailer = { p ->
-            if (p.trailer.isNotBlank()) TrailerActivity.open(this, p) else Glass.toast(this, "Bu yapımın fragmanı yok")
+            if (p.trailer.isNotBlank()) TrailerActivity.open(this, p, stage.trailerAt()) else Glass.toast(this, "Bu yapımın fragmanı yok")
         }
         stage.onDetails = { p -> DetailActivity.open(this, p) }
 

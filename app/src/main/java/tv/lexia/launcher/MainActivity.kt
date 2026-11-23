@@ -48,6 +48,8 @@ import kotlin.math.roundToInt
 class MainActivity : Activity() {
 
     companion object {
+        /** How long the greeting stays when the home screen opens. */
+        private const val GREETING_MS = 6_000L
         /** "Short" for a weeknight: ends within an hour and 45 minutes. */
         private const val SHORT_MIN = 105
         /** How long a film is on screen before its trailer starts (without sound). */
@@ -456,6 +458,7 @@ class MainActivity : Activity() {
         // At least 76 high, taller when the greeting needs it (big text, small TVs): the date never gets cut off.
         val bar = topBar()
         topBarView = bar
+        bar.post { sayHello() }
         bar.minimumHeight = ui.u(76)
         root.addView(bar, ui.ll(m, w))
         root.addView(View(this), ui.ll(m, 0, weight = 1f))
@@ -615,6 +618,7 @@ class MainActivity : Activity() {
     private fun topBar(): View {
         val bar = ui.hbox()
         val col = ui.vbox()
+        greetingBox = col
         greeting = ui.text("", 34, C.TEXT, 600)
         greeting.letterSpacing = -0.01f
         greeting.maxLines = 1
@@ -747,6 +751,32 @@ class MainActivity : Activity() {
         tools.post { setBarOpen(false, animate = false) }
         bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now -> setBarOpen(now != null && isInBar(now)) }
         return bar
+    }
+
+    private lateinit var greetingBox: View
+    private val greetingAway = Runnable { hideGreeting() }
+
+    /**
+     * "İyi akşamlar, Mert" and the date say hello when the home screen opens (and when it wakes
+     * from the screensaver), then slide up and fade away; they do not stay taking room.
+     */
+    private fun sayHello() {
+        if (!::greetingBox.isInitialized) return
+        handler.removeCallbacks(greetingAway)
+        greetingBox.animate().cancel()
+        greetingBox.visibility = View.VISIBLE
+        greetingBox.alpha = 0f
+        greetingBox.translationY = ui.uf(14)
+        greetingBox.animate().alpha(1f).translationY(0f).setDuration(600).setInterpolator(DecelerateInterpolator(2f)).start()
+        handler.postDelayed(greetingAway, GREETING_MS)
+    }
+
+    private fun hideGreeting() {
+        if (!::greetingBox.isInitialized) return
+        greetingBox.animate().cancel()
+        greetingBox.animate().alpha(0f).translationY(-ui.uf(18)).setDuration(700)
+            .setInterpolator(android.view.animation.AccelerateInterpolator(1.4f))
+            .withEndAction { greetingBox.visibility = View.INVISIBLE }.start()
     }
 
     private lateinit var barCluster: LinearLayout
@@ -2759,7 +2789,9 @@ class MainActivity : Activity() {
     }
 
     private fun trailer(p: Pick) {
-        if (p.trailer.isNotEmpty()) TrailerActivity.open(this, p)
+        // The home screen's trailer is playing this film: the trailer page carries on from there.
+        val at = if (::heroTrailer.isInitialized && heroTrailer.active && picks.getOrNull(pickIndex)?.key == p.key) heroTrailer.where() else null
+        if (p.trailer.isNotEmpty()) TrailerActivity.open(this, p, at)
         else Glass.toast(this, "Fragman bulunamadı")
     }
 
@@ -3449,6 +3481,7 @@ class MainActivity : Activity() {
                 .withEndAction { if (!idle) ambient.visibility = View.GONE }.start()
         }
         updateGreeting()
+        sayHello()
         resetIdle()
     }
 

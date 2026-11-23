@@ -72,10 +72,19 @@ class TrailerActivity : Activity() {
         private var pendingFilms: List<Pick> = emptyList()
 
         /** Opens the trailer of [p], with its film known (Listeme ekle, Çıkınca haber ver, Detaylar). */
-        fun open(a: Activity, p: Pick) {
+        /**
+         * The film's trailer (the dubbed one first). [at] is a trailer already playing behind the
+         * page (its key and second): it carries on from there instead of starting again.
+         */
+        fun open(a: Activity, p: Pick, at: Pair<String, Int>? = null) {
             pendingFilms = listOf(p)
-            open(a, p.trailer, p.title)
+            val key = at?.first?.takeIf { ID.matches(it) } ?: bestTrailer(p)
+            pendingStart = if (at != null && at.first == key) at.second else 0
+            open(a, key, p.title)
         }
+
+        /** The second the next trailer page starts at (a preview carried on); read once. */
+        @Volatile private var pendingStart = 0
 
         /** A film's trailer to show first: Turkish-dubbed, then the film's main one. */
         fun bestTrailer(p: Pick): String {
@@ -375,9 +384,13 @@ class TrailerActivity : Activity() {
         showInfo()
         handler.post(tick)
 
+        // Opened from a trailer already playing behind the page: it carries on, no question asked.
+        val goOn = pendingStart.also { pendingStart = 0 }
         // A trailer left half way: carry on from there, or start again (a marathon always starts at the top).
         val saved = if (list.size <= 1) prefs.trailerAt[id] ?: 0 else 0
-        if (saved >= 8) {
+        if (goOn > 0 && savedInstanceState == null) {
+            startTrailer(goOn)
+        } else if (saved >= 8) {
             Dialogs.list(
                 this, "Kaldığın yerden?", listOf("Kaldığın yerden devam et" to clock(saved.toDouble()), "Baştan başla" to ""),
                 subtitle = title, icon = R.drawable.ic_film, cancel = { startTrailer(0) }
