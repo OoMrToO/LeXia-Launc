@@ -88,6 +88,15 @@ class DetailActivity : Activity() {
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
         Pointer.handle(this, ev) || super.dispatchGenericMotionEvent(ev)
 
+    /** The film's own colour, read from its picture (0 until it is in). */
+    private var filmAccent = 0
+    /** The "watched so far" bars on episode cards. */
+    private val progressFills = ArrayList<View>()
+
+    /** The bar's colour: the film's light, lifted a little; soft white before the picture is in. */
+    private fun barColor(): Int =
+        if (filmAccent != 0) Fx.blend(filmAccent, Color.WHITE, 0.3f) else Color.argb(230, 255, 255, 255)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = Ui(this)
@@ -128,6 +137,9 @@ class DetailActivity : Activity() {
             bmp?.let { Fx.blurred(it) }?.let { frost.setImageBitmap(it) }
             val c = bmp?.let { Fx.accent(it) } ?: 0
             if (c != 0) {
+                filmAccent = c
+                // Episode cards drawn before the picture came in take the film's colour now.
+                progressFills.forEach { it.setBackgroundColor(barColor()) }
                 tint.background = ui.gradient(
                     GradientDrawable.Orientation.BL_TR,
                     Color.argb(95, Color.red(c), Color.green(c), Color.blue(c)),
@@ -689,6 +701,7 @@ class DetailActivity : Activity() {
         if (!::episodeRow.isInitialized || episodeList.isEmpty()) return
         val focusedTag = (currentFocus?.tag as? String)?.takeIf { it.startsWith("episode:") }
         episodeRow.removeAllViews()
+        progressFills.clear()
         episodeList.filter { it.season == shownSeason }.forEach { episodeRow.addView(episodeCard(it)) }
         focusedTag?.let { tag -> episodeRow.findViewWithTag<View>(tag)?.requestFocus() }
         enrichSeason(shownSeason)
@@ -742,7 +755,8 @@ class DetailActivity : Activity() {
             val track = FrameLayout(this)
             track.setBackgroundColor(Color.argb(110, 0, 0, 0))
             val fill = View(this)
-            fill.setBackgroundColor(Color.rgb(125, 151, 255))
+            fill.setBackgroundColor(barColor())
+            progressFills.add(fill)
             track.addView(fill, ui.fl(0, ui.match))
             card.addView(track, ui.fl(ui.match, ui.u(6), Gravity.BOTTOM))
             track.post { fill.layoutParams = fill.layoutParams.apply { width = (track.width * progress.coerceAtLeast(0.03f)).toInt() } }

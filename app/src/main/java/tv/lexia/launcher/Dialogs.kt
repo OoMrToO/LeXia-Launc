@@ -1,7 +1,6 @@
 package tv.lexia.launcher
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.PorterDuff
@@ -21,30 +20,114 @@ import android.widget.Toast
 
 /** Small TV-friendly input dialogs. */
 object Dialogs {
-    private const val THEME = android.R.style.Theme_DeviceDefault_Dialog_Alert
+    /** Asks for one line of text, on the LeXia glass window; OK on the keyboard confirms. */
+    fun input(
+        a: Activity, title: String, start: String, numeric: Boolean = false,
+        subtitle: String = "", hint: String = "", done: (String) -> Unit
+    ) {
+        val (d, ui, card) = sheet(a, 0, title, subtitle)
+        val e = field(a, ui, start, hint, numeric, secret = numeric)
+        card.addView(e, ui.ll(ui.match, ui.wrap, left = 24, right = 24, top = 30))
+        val ok = {
+            d.dismiss()
+            done(e.text.toString().trim())
+        }
+        bar(ui, card, "Tamam" to ok, "Vazgeç" to { d.dismiss() })
+        e.setOnEditorActionListener { _, id, _ ->
+            if (id == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { ok(); true } else false
+        }
+        d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+        show(d, card, e)
+    }
 
-    /** Asks for one line of text. */
-    fun input(a: Activity, title: String, start: String, numeric: Boolean = false, done: (String) -> Unit) {
+    /** A text box on dark glass: a white edge while the remote is on it. */
+    fun field(a: Activity, ui: Ui, start: String = "", hint: String = "", numeric: Boolean = false, secret: Boolean = false): EditText {
         val e = EditText(a)
         e.setText(start)
         e.setSelection(start.length)
         e.isSingleLine = true
-        if (numeric) {
-            e.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        e.hint = hint
+        e.setTextColor(C.TEXT)
+        e.setHintTextColor(C.TEXT3)
+        e.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.uf(28))
+        e.typeface = ui.font(500)
+        e.setPadding(ui.u(28), ui.u(20), ui.u(28), ui.u(20))
+        e.inputType = when {
+            numeric && secret -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            numeric -> InputType.TYPE_CLASS_NUMBER
+            else -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
-        val box = FrameLayout(a)
-        val pad = (24 * a.resources.displayMetrics.density).toInt()
-        box.setPadding(pad, pad / 2, pad, 0)
-        box.addView(e)
-        val d = AlertDialog.Builder(a, THEME)
-            .setTitle(title)
-            .setView(box)
-            .setPositiveButton("Tamam") { _, _ -> done(e.text.toString().trim()) }
-            .setNegativeButton("Vazgeç", null)
-            .create()
-        d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-        d.show()
-        e.requestFocus()
+        e.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        val idle = ui.round(Color.argb(26, 255, 255, 255), 18, 1, Color.argb(40, 255, 255, 255))
+        val on = ui.round(Color.argb(40, 255, 255, 255), 18, 2, Color.WHITE)
+        e.background = idle
+        e.setOnFocusChangeListener { _, f -> e.background = if (f) on else idle }
+        return e
+    }
+
+    /**
+     * A message on the LeXia glass window with one or two buttons (the first is the main one).
+     * Back or a press outside counts as [cancel]. Long texts scroll.
+     */
+    fun message(
+        a: Activity, title: String, text: String, primary: String = "Tamam", secondary: String? = null,
+        cancel: () -> Unit = {}, onSecondary: () -> Unit = cancel, onPrimary: () -> Unit = {}
+    ) {
+        val (d, ui, card) = sheet(a, 0, title, "", wide = text.length > 400)
+        var chose = false
+        d.setOnDismissListener { if (!chose) cancel() }
+        val long = text.length > 600
+        val t = ui.text(text, if (long) 19 else 23, C.TEXT2, 400)
+        t.setLineSpacing(0f, 1.25f)
+        if (long) {
+            val scroll = ScrollView(a)
+            scroll.isVerticalScrollBarEnabled = false
+            // Focusable, so the arrows scroll the text before they move on to the buttons.
+            scroll.isFocusable = true
+            scroll.addView(t)
+            card.addView(scroll, ui.ll(ui.match, ui.u(520), left = 24, right = 24, top = 20))
+        } else {
+            card.addView(t, ui.ll(ui.match, ui.wrap, left = 24, right = 24, top = 20))
+        }
+        val buttons = ArrayList<Pair<String, () -> Unit>>()
+        buttons.add(primary to { chose = true; d.dismiss(); onPrimary() })
+        if (secondary != null) buttons.add(secondary to { chose = true; d.dismiss(); onSecondary() })
+        val first = bar(ui, card, *buttons.toTypedArray())
+        show(d, card, first)
+    }
+
+    /**
+     * A window with fields or rows of its own: [build] fills the content and returns what the
+     * remote starts on; [ok] runs on the main button and says whether the window may close.
+     */
+    fun form(
+        a: Activity, title: String, subtitle: String, okLabel: String, wide: Boolean = false,
+        build: (Ui, LinearLayout) -> View?, ok: () -> Boolean
+    ) {
+        val (d, ui, card) = sheet(a, 0, title, subtitle, wide)
+        val content = ui.vbox()
+        content.clipChildren = false
+        content.clipToPadding = false
+        val focus = build(ui, content)
+        card.addView(content, ui.ll(ui.match, ui.wrap, left = 24, right = 24, top = 24))
+        bar(ui, card, okLabel to { if (ok()) d.dismiss() }, "Vazgeç" to { d.dismiss() })
+        d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+        show(d, card, focus)
+    }
+
+    /** The window's buttons in a row, the first one the main one; returns the first. */
+    private fun bar(ui: Ui, card: LinearLayout, vararg buttons: Pair<String, () -> Unit>): View? {
+        val row = ui.hbox()
+        var first: View? = null
+        for ((i, b) in buttons.withIndex()) {
+            val p = ui.pill(b.first, 64, 23, primary = i == 0)
+            p.setOnClickListener { b.second() }
+            row.addView(p)
+            if (i == 0) first = p
+        }
+        (row.getChildAt(row.childCount - 1)?.layoutParams as? LinearLayout.LayoutParams)?.rightMargin = 0
+        card.addView(row, ui.ll(ui.wrap, ui.wrap, left = 24, top = 34))
+        return first
     }
 
     /** Picks one item from a list. */
@@ -135,7 +218,7 @@ object Dialogs {
     }
 
     /** A full-screen window with the dark glass card in the middle and its heading. */
-    private fun sheet(a: Activity, icon: Int, title: String, subtitle: String): Triple<Dialog, Ui, LinearLayout> {
+    private fun sheet(a: Activity, icon: Int, title: String, subtitle: String, wide: Boolean = false): Triple<Dialog, Ui, LinearLayout> {
         val ui = Ui(a)
         val d = Dialog(a, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
         val root = FrameLayout(a)
@@ -162,7 +245,7 @@ object Dialogs {
             st.setLineSpacing(0f, 1.2f)
             card.addView(st, ui.ll(ui.match, ui.wrap, left = 24, right = 24, top = 12))
         }
-        root.addView(card, FrameLayout.LayoutParams(ui.u(760), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        root.addView(card, FrameLayout.LayoutParams(ui.u(if (wide) 1100 else 760), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         d.setContentView(root)
         d.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         d.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
@@ -188,28 +271,25 @@ object Dialogs {
             ok()
             return
         }
-        val e = EditText(a)
-        e.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-        e.isSingleLine = true
-        val box = FrameLayout(a)
-        val pad = (24 * a.resources.displayMetrics.density).toInt()
-        box.setPadding(pad, pad / 2, pad, 0)
-        box.addView(e)
-        val d = AlertDialog.Builder(a, THEME)
-            .setTitle("PIN girin")
-            .setView(box)
-            .setPositiveButton("Tamam") { _, _ ->
-                if (e.text.toString() == pin) ok() else {
-                    Glass.toast(a, "PIN yanlış")
-                    cancel()
-                }
+        val (d, ui, card) = sheet(a, R.drawable.ic_lock, "PIN girin", "")
+        val e = field(a, ui, "", "PIN", numeric = true, secret = true)
+        card.addView(e, ui.ll(ui.match, ui.wrap, left = 24, right = 24, top = 30))
+        var done = false
+        d.setOnDismissListener { if (!done) cancel() }
+        val check = {
+            done = true
+            d.dismiss()
+            if (e.text.toString() == pin) ok() else {
+                Glass.toast(a, "PIN yanlış")
+                cancel()
             }
-            .setNegativeButton("Vazgeç") { _, _ -> cancel() }
-            .setOnCancelListener { cancel() }
-            .create()
-        d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-        d.show()
-        e.requestFocus()
+        }
+        bar(ui, card, "Tamam" to check, "Vazgeç" to { d.dismiss() })
+        e.setOnEditorActionListener { _, id, _ ->
+            if (id == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { check(); true } else false
+        }
+        d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+        show(d, card, e)
     }
 }
 
