@@ -95,6 +95,8 @@ def trailers_of(c):
                     continue
                 seen.add(key)
                 out.append({"k": key, "n": video_label(v, lang[:2])})
+    # A Turkish-dubbed trailer, when there is one, is the main one (the user's wish, 23 Nov 2026).
+    out.sort(key=lambda t: 0 if t["n"].startswith("Türkçe dublaj") else 1)
     # Two trailers of the same kind read the same; number them so the choice is clear.
     names = [t["n"] for t in out]
     for t in out:

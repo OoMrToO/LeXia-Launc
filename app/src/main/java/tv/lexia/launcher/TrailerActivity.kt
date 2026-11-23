@@ -75,11 +75,20 @@ class TrailerActivity : Activity() {
             open(a, p.trailer, p.title)
         }
 
-        /** A marathon of these films' trailers. */
+        /** A film's trailer to show first: Turkish-dubbed, then the film's main one. */
+        fun bestTrailer(p: Pick): String {
+            val tr = java.util.Locale("tr", "TR")
+            return p.trailers.firstOrNull { v ->
+                val l = v.label.lowercase(tr)
+                "dubla" in l && "altyaz" !in l && ID.matches(v.key)
+            }?.key ?: p.trailer
+        }
+
+        /** A marathon of these films' trailers (each film's dubbed one first). */
         fun marathon(a: Activity, films: List<Pick>) {
             val ok = films.filter { ID.matches(it.trailer) }
             pendingFilms = ok
-            marathon(a, ok.map { it.trailer }, ok.map { it.title })
+            marathon(a, ok.map { bestTrailer(it) }, ok.map { it.title })
         }
 
         /** Several trailers one after another ("Fragman maratonu"); a trailer that cannot play is skipped. */
@@ -293,6 +302,8 @@ class TrailerActivity : Activity() {
         prefs = Prefs(this)
         films = pendingFilms
         pendingFilms = emptyList()
+        // A film's main trailer asked for: its Turkish-dubbed one first, when it has one.
+        films.firstOrNull { it.trailer == id }?.let { id = bestTrailer(it) }
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
         list = intent.getStringArrayListExtra(EXTRA_LIST)?.filter { ID.matches(it) } ?: emptyList()
         titles = intent.getStringArrayListExtra(EXTRA_TITLES) ?: emptyList()
@@ -409,13 +420,40 @@ class TrailerActivity : Activity() {
         playInWeb(if (nativeStarted) at else pendingStart)
     }
 
-    /** The trailer on screen is Turkish-dubbed (its catalogue label says so): then no subtitles. */
-    private fun currentTrailerDubbed(): Boolean {
-        val label = film()?.trailers?.firstOrNull { it.key == id }?.label?.lowercase(java.util.Locale("tr", "TR")) ?: return false
-        return "dublaj" in label || "türkçe" in label || "turkce" in label
+    /** What the trailer on screen was found to be, once its streams are known (its YouTube title, its dubs). */
+    private var shownSource: TrailerSource? = null
+
+    /**
+     * The trailer's language: "dub" Turkish-dubbed, "sub" Turkish subtitles (in the picture),
+     * "orig" original sound, "tr" Turkish but not known which, "" unknown. The video itself is
+     * believed first (a Turkish sound track, its YouTube title), then the catalogue label: TMDB
+     * sometimes calls a subtitled trailer dubbed, and "Türkçe altyazılı" is not a dub.
+     */
+    private fun trailerLanguage(): String {
+        val tr = java.util.Locale("tr", "TR")
+        val source = shownSource
+        if (source?.turkishAudio == true) return "dub"
+        val title = source?.title?.lowercase(tr).orEmpty()
+        if ("dubla" in title) return "dub"
+        if ("altyaz" in title || "subtitle" in title) return "sub"
+        val label = film()?.trailers?.firstOrNull { it.key == id }?.label?.lowercase(tr) ?: return ""
+        return when {
+            "altyaz" in label || "subtitled" in label -> "sub"
+            "dubla" in label -> "dub"
+            "orijinal" in label || "original" in label -> "orig"
+            "türkçe" in label || "turkish" in label -> "tr"
+            else -> ""
+        }
     }
 
+    /** The trailer on screen is Turkish-dubbed: then no subtitles. */
+    private fun currentTrailerDubbed(): Boolean = trailerLanguage() == "dub"
+
     private fun playNative(source: TrailerSource, startSec: Int) {
+        // Now the video itself is known: its badge says what it really is.
+        val before = trailerLanguage()
+        shownSource = source
+        if (trailerLanguage() != before && buttons.findFocus() == null) bindFilm()
         web?.let {
             it.evaluateJavascript("try{if(player)player.stopVideo();}catch(x){}", null)
             it.visibility = View.INVISIBLE
@@ -785,10 +823,11 @@ class TrailerActivity : Activity() {
             // Identify both the trailer format and its language using the catalogue label.
             p.trailers.firstOrNull { it.key == id }?.let { v ->
                 val l = v.label.lowercase(java.util.Locale("tr", "TR"))
-                val language = when {
-                    "dublaj" in l || "turkish" in l || "türkçe" in l -> "TÜRKÇE DUBLAJ"
-                    "altyaz" in l || "subtitled" in l || "sub " in l -> "TÜRKÇE ALTYAZILI"
-                    "original" in l || "orijinal" in l -> "ORİJİNAL SES"
+                val language = when (trailerLanguage()) {
+                    "dub" -> "TÜRKÇE DUBLAJ"
+                    "sub" -> "TÜRKÇE ALTYAZILI"
+                    "orig" -> "ORİJİNAL SES"
+                    "tr" -> "TÜRKÇE"
                     else -> "DİL BELİRTİLMEMİŞ"
                 }
                 val kind = when {
@@ -854,7 +893,7 @@ class TrailerActivity : Activity() {
             nextCard.visibility = View.VISIBLE
             nextTitle.text = titles.getOrElse(next) { "" }
             nextThumb.setImageDrawable(null)
-            films.firstOrNull { it.trailer == list[next] }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
+            films.firstOrNull { it.trailer == list[next] || it.trailers.any { v -> v.key == list[next] } }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
                 Thread {
                     val b = Net.bitmap("https://image.tmdb.org/t/p/w300$path", ui.u(150), true)
                     runOnUiThread { if (b != null && !isFinishing) nextThumb.setImageBitmap(b) }
@@ -1279,7 +1318,7 @@ class TrailerActivity : Activity() {
         action.letterSpacing = 0.08f
         txt.addView(action, ui.ll(ui.wrap, ui.wrap, top = 12))
         box.addView(txt)
-        films.firstOrNull { it.trailer == list[next] }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
+        films.firstOrNull { it.trailer == list[next] || it.trailers.any { v -> v.key == list[next] } }?.backdrop?.takeIf { it.isNotEmpty() }?.let { path ->
             Thread {
                 val b = Net.bitmap("https://image.tmdb.org/t/p/w780$path", ui.u(480), true)
                 runOnUiThread { if (b != null && !isFinishing) img.setImageBitmap(b) }
@@ -1342,6 +1381,7 @@ class TrailerActivity : Activity() {
         if (onButtons) leaveButtons()
         at++
         id = list[at]
+        shownSource = null
         playing = false
         paused = false
         shieldTo(1f)
@@ -1456,6 +1496,7 @@ class TrailerActivity : Activity() {
             removeEnd()
             leaveButtons()
             id = v.key
+            shownSource = null
             playing = false
             paused = false
             shieldTo(1f)
