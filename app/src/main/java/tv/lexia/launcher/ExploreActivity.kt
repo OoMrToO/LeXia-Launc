@@ -1073,7 +1073,7 @@ class ExploreActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         box.addView(img, ui.fl(ui.match, ui.match))
-        loadInto(img, "w780", p.backdrop, WIDE_W)
+        loadInto(img, "w1280", p.backdrop, WIDE_W)
         val shade = View(this)
         shade.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(200, 0, 0, 0), Color.TRANSPARENT)
         box.addView(shade, ui.fl(ui.match, ui.u(130), Gravity.BOTTOM))

@@ -339,7 +339,7 @@ class SearchActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w342", p.poster, ui.u(cw), img)
+        Img.load(this, "w500", p.poster, ui.u(cw), img)
         val fx = Fx.decorate(ui, poster, D.CARD)
         val title = ui.text(p.title, 19, C.TEXT2, 500)
         title.maxLines = 1

@@ -32,6 +32,17 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     var active = false
         private set
 
+    /**
+     * The picture's height: 720 is light for weaker TVs; the home screen asks 1080 (its trailer
+     * takes the whole screen) until the TV is seen to drop frames, see [onStutter].
+     */
+    var height = 720
+
+    /** Called once when this TV drops many frames playing the trailer, so the next ones go lighter. */
+    var onStutter: (() -> Unit)? = null
+    private var dropped = 0
+    private var stutterSaid = false
+
     /** Called when the trailer ends or fails, so the hero can carry on. */
     var onFinished: (() -> Unit)? = null
 
@@ -69,7 +80,7 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         finder.execute {
             val source = try {
                 // 720p: sharp enough under the dimmed home screen, light for weaker TVs (1080p made them stutter).
-                YouTubeStreams.find(youtubeId, 720, TrailerDecoders::canDecode)
+                YouTubeStreams.find(youtubeId, height, TrailerDecoders::canDecode)
             } catch (_: Exception) {
                 null
             }
@@ -88,6 +99,17 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         player = exo
         exo.volume = 0f
         exo.setVideoTextureView(texture)
+        // The safeguard: a TV that drops many frames at this size is told so (once) and goes lighter next time.
+        dropped = 0
+        exo.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                dropped += droppedFrames
+                if (height > 720 && dropped >= STUTTER_FRAMES && !stutterSaid && mine == token) {
+                    stutterSaid = true
+                    onStutter?.invoke()
+                }
+            }
+        })
         exo.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 if (mine == token) {
@@ -167,5 +189,7 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     private companion object {
         const val SOUND_AFTER_MS = 4_000L
         const val SOUND_LEVEL = 0.7f
+        /** Dropped frames that mean this TV cannot keep up with the bigger picture. */
+        const val STUTTER_FRAMES = 40
     }
 }

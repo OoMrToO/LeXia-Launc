@@ -777,7 +777,7 @@ class DetailActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         card.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w300", e.thumbnail.ifBlank { film.backdrop }, ui.u(360), img)
+        Img.load(this, "w780", e.thumbnail.ifBlank { film.backdrop }, ui.u(360), img)
         val progress = playback.progress(e.id)
         val finished = progress == null && playback.isFinished(e.id)
         if (progress != null) {

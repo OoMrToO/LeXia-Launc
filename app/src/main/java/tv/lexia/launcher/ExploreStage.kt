@@ -269,7 +269,9 @@ internal class ExploreStage(private val activity: Activity, private val ui: Ui, 
         pictureFor = p.key
         val key = p.key
         Thread {
-            val b: Bitmap? = Net.bitmap("https://image.tmdb.org/t/p/w1280" + p.backdrop, ui.u(1920), true)
+            // The full picture on screens wider than 1280: no soft upscaling.
+            val size = if (activity.resources.displayMetrics.widthPixels > 1280) "original" else "w1280"
+            val b: Bitmap? = Net.bitmap("https://image.tmdb.org/t/p/$size" + p.backdrop, activity.resources.displayMetrics.widthPixels, true)
             activity.runOnUiThread {
                 if (b == null || activity.isFinishing || pictureFor != key) return@runOnUiThread
                 val next = 1 - front
