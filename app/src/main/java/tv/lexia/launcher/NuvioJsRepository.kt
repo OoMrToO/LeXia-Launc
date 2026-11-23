@@ -116,6 +116,16 @@ internal class NuvioJsRepository(context: Context) {
 
     fun removeRepository(repositoryId: String) = runBlocking { manager.removeRepository(repositoryId) }
 
+    /**
+     * Nuvio's own test: the provider is asked for a well-known film (The Matrix). How many sources
+     * it found, and the error it hit when it found none.
+     */
+    fun testScraper(scraperId: String): Pair<Int, String> = runBlocking {
+        val result = manager.testScraper(scraperId)
+        val pair = result.getOrNull() ?: return@runBlocking 0 to (result.exceptionOrNull()?.message ?: "")
+        pair.first.size to (pair.second.steps.lastOrNull { it.startsWith("Exception") }?.substringAfter(": ").orEmpty())
+    }
+
     /** Scraper ids are Nuvio's own ("<repository id>:<scraper id>"). */
     fun setScraperEnabled(repositoryId: String, scraperId: String, enabled: Boolean) =
         runBlocking { manager.toggleScraper(scraperId, enabled) }

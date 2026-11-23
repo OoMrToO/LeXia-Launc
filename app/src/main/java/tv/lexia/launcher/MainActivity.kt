@@ -3320,6 +3320,7 @@ class MainActivity : Activity() {
             return
         }
         stopHeroTrailer()
+        if (::peek.isInitialized) peek.pause()
         idle = true
         styleAmbient()
         // Screensaver plays films in cinemas and coming soon, one of each in turn; it starts on the
@@ -4473,6 +4474,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         stopHeroTrailer()
+        if (::peek.isInitialized) peek.pause()
         handler.removeCallbacks(healthy)
         handler.removeCallbacks(liteCheck)
         handler.removeCallbacks(rotate)

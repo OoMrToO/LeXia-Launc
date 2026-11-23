@@ -2,4 +2,5 @@
 <resources>
     <!-- A poster's film, for moving between a row's films on the film page. -->
     <item name="lexia_pick" type="id" />
+    <item name="lexia_idle_ink" type="id" />
 </resources>
