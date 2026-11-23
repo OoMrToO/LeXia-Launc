@@ -228,7 +228,7 @@ object Dialogs {
         card.isClickable = true
         card.clipChildren = false
         card.clipToPadding = false
-        card.background = ui.round(Color.parseColor("#EB1E1E24"), D.PANEL)
+        card.background = ui.round(Color.parseColor("#FA1C1C21"), D.PANEL, 1, Color.argb(30, 255, 255, 255))
         card.elevation = ui.uf(40)
         card.setPadding(ui.u(50), ui.u(56), ui.u(50), ui.u(46))
         val head = ui.hbox()

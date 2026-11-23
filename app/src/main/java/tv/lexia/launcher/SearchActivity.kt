@@ -132,7 +132,7 @@ class SearchActivity : Activity() {
         page.addView(field, ui.ll(ui.u(1160), ui.u(96)))
 
         status = ui.text("", 21, C.TEXT3, 500)
-        page.addView(status, ui.ll(w, w, left = 34, top = 16))
+        page.addView(status, ui.ll(w, w, left = 2, top = 18))
 
         titlesLabel = ui.label("BUGÜN POPÜLER", C.TEXT3)
         page.addView(titlesLabel, ui.ll(w, w, top = 34, bottom = 6))
