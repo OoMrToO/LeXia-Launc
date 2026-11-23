@@ -803,7 +803,15 @@ class ExploreActivity : Activity() {
             mine.filter { from(it, "local") }.sortedByDescending { it.year },
             more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, newest = true, country = "TR") } else null
         )
-        addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
+        // Not Turkey's: the last few years only, newest first (the "on this day" classics stay out),
+        // then TMDB's newest at the row's end.
+        val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        addRow(
+            if (kind == "tv") "Yabancı diziler" else "Yabancı filmler",
+            mine.filter { !from(it, "local") && !from(it, "history") && yearOf(it) >= thisYear - 3 }
+                .sortedWith(compareByDescending<Pick> { yearOf(it) }.thenByDescending { it.imdb }),
+            more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, newest = true) } else null
+        )
         val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") && inGenrePage(it) }.distinctBy { seenKey(it) }
             .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
