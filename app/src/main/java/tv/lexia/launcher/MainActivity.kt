@@ -274,6 +274,7 @@ class MainActivity : Activity() {
     /** Looks for a new version every 30 minutes while the home screen is open. */
     private val updateCheck = object : Runnable {
         override fun run() {
+            Housekeeping.refreshRepos(this@MainActivity)
             Updater.check(this@MainActivity) {
                 remoteChanged()
                 showUpdatePill()
@@ -3166,6 +3167,7 @@ class MainActivity : Activity() {
         ambient.animate().alpha(1f).setStartDelay(600).setDuration(1200).start()
         if (prefs.saverHoldMin > 0) handler.postDelayed(holdRelease, prefs.saverHoldMin * 60000L)
         schedule()
+        Housekeeping.prefetch(this)
     }
 
     /** Screensaver clock size and weather, as chosen in the settings. */
@@ -3186,6 +3188,7 @@ class MainActivity : Activity() {
 
     private fun exitIdle() {
         idle = false
+        Housekeeping.stopPrefetch()
         holdScreen()
         savedPicks?.let {
             picks = it

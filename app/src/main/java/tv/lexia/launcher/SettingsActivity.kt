@@ -1276,7 +1276,7 @@ class SettingsActivity : Activity() {
         val last = if (at == 0L) "Henüz gönderilmedi" else "Son yedek: " + java.text.SimpleDateFormat("d MMMM HH:mm", java.util.Locale("tr", "TR")).format(java.util.Date(at))
         Dialogs.list(
             this, code, listOf("Tamam" to "", "Şimdi yedekle" to last),
-            subtitle = "Bu kodu bir yere yaz; başka bir TV'de “Yedekten geri yükle”ye girince listelerin geri gelir. LeXia 3 ay hiç açılmazsa yedek silinir.",
+            subtitle = "Bu kodu bir yere yaz; başka bir TV'de “Yedekten geri yükle”ye girince listelerin, kaldığın yerler, izlediklerin ve kaynak depoların geri gelir. LeXia 3 ay hiç açılmazsa yedek silinir.",
             icon = R.drawable.ic_list
         ) { i ->
             if (i == 1) Thread {
@@ -1293,7 +1293,7 @@ class SettingsActivity : Activity() {
                 Glass.toast(this, "Kod LX ile başlar ve 8 harf/rakamdan oluşur", long = true)
                 return@input
             }
-            Dialogs.confirm(this, "Listeler geri yüklensin mi?", "Bu TV'deki Listem, izlediklerin ve beğendiklerin yedektekiyle değişir.") {
+            Dialogs.confirm(this, "Listeler geri yüklensin mi?", "Bu TV'deki Listem, izlediklerin, kaldığın yerler ve beğendiklerin yedektekiyle değişir; kaynak depoların ve eklentilerin de gelir.") {
                 Glass.toast(this, "Yedek aranıyor…")
                 Thread {
                     val ok = Backup.restoreNow(this, code)

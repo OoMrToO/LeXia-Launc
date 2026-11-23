@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -11,6 +13,8 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
  * Listem's backup, with no account: a code like "LX-7K4P-92QM" is made on the TV. The lists are
@@ -59,25 +63,77 @@ object Backup {
         return SecretKeySpec(k, "AES")
     }
 
+    /** Packed (gzip) before locking: the watch history makes the text large. */
     private fun lock(code: String, text: String): String {
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, key(code), GCMParameterSpec(128, iv))
-        return Base64.encodeToString(iv + c.doFinal(text.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        val packed = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(text.toByteArray(Charsets.UTF_8)) } }.toByteArray()
+        return Base64.encodeToString(iv + c.doFinal(packed), Base64.NO_WRAP)
     }
 
+    /** Older backups were not packed; both are read. */
     private fun unlock(code: String, blob: String): String? = try {
         val all = Base64.decode(blob.trim(), Base64.NO_WRAP)
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.DECRYPT_MODE, key(code), GCMParameterSpec(128, all.copyOfRange(0, 12)))
-        String(c.doFinal(all.copyOfRange(12, all.size)), Charsets.UTF_8)
+        val plain = c.doFinal(all.copyOfRange(12, all.size))
+        val gzip = plain.size > 2 && plain[0] == 0x1f.toByte() && plain[1] == 0x8b.toByte()
+        val bytes = if (gzip) GZIPInputStream(ByteArrayInputStream(plain)).use { it.readBytes() } else plain
+        String(bytes, Charsets.UTF_8)
     } catch (e: Exception) {
         null
     }
 
-    /** What is kept: Listem, reminders, watched, liked, turned down, lately opened, and when each Listem film came in. */
-    private fun payload(p: Prefs): String = JSONObject()
-        .put("v", 1)
+    /** A whole preferences file as JSON, each value with its type. */
+    private fun dump(ctx: Context, file: String): JSONObject {
+        val o = JSONObject()
+        for ((k, v) in ctx.getSharedPreferences(file, Context.MODE_PRIVATE).all) {
+            val t = when (v) {
+                is Long -> "l"
+                is Int -> "i"
+                is Boolean -> "b"
+                is Float -> "f"
+                is String -> "s"
+                is Set<*> -> "S"
+                else -> continue
+            }
+            o.put(k, JSONObject().put("t", t).put("v", if (v is Set<*>) JSONArray(v.toList()) else v))
+        }
+        return o
+    }
+
+    /** Puts back what [dump] wrote; keys already on this TV are overwritten by the backup's. */
+    private fun load(ctx: Context, file: String, o: JSONObject?) {
+        if (o == null) return
+        val e = ctx.getSharedPreferences(file, Context.MODE_PRIVATE).edit()
+        for (k in o.keys()) {
+            val item = o.optJSONObject(k) ?: continue
+            when (item.optString("t")) {
+                "l" -> e.putLong(k, item.optLong("v"))
+                "i" -> e.putInt(k, item.optInt("v"))
+                "b" -> e.putBoolean(k, item.optBoolean("v"))
+                "f" -> e.putFloat(k, item.optDouble("v").toFloat())
+                "s" -> e.putString(k, item.optString("v"))
+                "S" -> item.optJSONArray("v")?.let { a -> e.putStringSet(k, (0 until a.length()).map { a.optString(it) }.toSet()) }
+            }
+        }
+        e.apply()
+    }
+
+    /**
+     * What is kept: Listem, reminders, watched, liked, turned down, lately opened, when each Listem
+     * film came in; and (v2) where each film was left, İzlediklerim, the favourite source, the
+     * Stremio add-ons and the Nuvio repositories.
+     */
+    private fun payload(ctx: Context, p: Prefs, full: Boolean = true): String = JSONObject()
+        .put("v", 2)
+        .put("play", dump(ctx, MediaPlaybackStore.FILE_NAME))
+        .put("hist", if (full) dump(ctx, WatchHistory.FILE) else null)
+        .put("fav", JSONObject().put("id", p.favSource).put("name", p.favSourceName))
+        .put("addons", ctx.getSharedPreferences(MediaAddonRepository.PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(MediaAddonRepository.KEY_INSTALLED, null).orEmpty())
+        .put("repos", JSONArray(repos(ctx)))
         .put("watch", JSONArray(p.watchlist.map { it.toJson() }))
         .put("remind", JSONArray(p.reminders.map { it.toJson() }))
         .put("watched", JSONArray(p.watched.toList()))
@@ -87,7 +143,13 @@ object Backup {
         .put("added", JSONObject(p.listAdded))
         .toString()
 
-    private fun apply(p: Prefs, text: String): Boolean = try {
+    private fun repos(ctx: Context): List<String> = try {
+        NuvioJsRepository(ctx).installedRepositories().map { it.manifestUrl }.filter { it.isNotBlank() }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun apply(ctx: Context, p: Prefs, text: String): Boolean = try {
         val o = JSONObject(text)
         fun picks(n: String) = o.optJSONArray(n)?.let { a -> (0 until a.length()).map { Pick.from(a.getJSONObject(it)) } } ?: emptyList()
         fun genres(n: String): Map<String, List<String>> = o.optJSONObject(n)?.let { m ->
@@ -101,9 +163,38 @@ object Backup {
         p.liked = genres("liked")
         p.disliked = genres("disliked")
         p.recent = picks("recent")
+        applyMedia(ctx, p, o)
         true
     } catch (e: Exception) {
         false
+    }
+
+    /** The v2 part: nothing here is lost when one piece fails (a repository that no longer answers). */
+    private fun applyMedia(ctx: Context, p: Prefs, o: JSONObject) {
+        load(ctx, MediaPlaybackStore.FILE_NAME, o.optJSONObject("play"))
+        load(ctx, WatchHistory.FILE, o.optJSONObject("hist"))
+        o.optJSONObject("fav")?.let { f ->
+            if (p.favSource.isBlank() && f.optString("id").isNotBlank()) {
+                p.favSource = f.optString("id")
+                p.favSourceName = f.optString("name")
+            }
+        }
+        val addons = o.optString("addons")
+        val store = ctx.getSharedPreferences(MediaAddonRepository.PREFS_NAME, Context.MODE_PRIVATE)
+        if (addons.isNotBlank() && store.getString(MediaAddonRepository.KEY_INSTALLED, null).isNullOrBlank()) {
+            store.edit().putString(MediaAddonRepository.KEY_INSTALLED, addons).apply()
+        }
+        val urls = o.optJSONArray("repos") ?: return
+        val have = repos(ctx).toSet()
+        val nuvio = NuvioJsRepository(ctx)
+        for (i in 0 until urls.length()) {
+            val url = urls.optString(i)
+            if (url.isBlank() || url in have) continue
+            try {
+                nuvio.addRepository(url)
+            } catch (e: Exception) {
+            }
+        }
     }
 
     private fun sig(text: String) = hex(MessageDigest.getInstance("SHA-256").digest(text.toByteArray())).take(16)
@@ -118,8 +209,11 @@ object Backup {
     /** Sends the lists now; true when the site kept them. */
     fun upload(ctx: Context): Boolean {
         val code = code(ctx) ?: return false
-        val text = payload(Prefs(ctx))
-        val ok = Net.postText("$ENDPOINT?id=${id(code)}", lock(code, text))
+        val prefs = Prefs(ctx)
+        val text = payload(ctx, prefs)
+        // The backup place may refuse a large copy: then everything but İzlediklerim goes.
+        val ok = Net.postText("$ENDPOINT?id=${id(code)}", lock(code, text)) ||
+            Net.postText("$ENDPOINT?id=${id(code)}", lock(code, payload(ctx, prefs, full = false)))
         if (ok) store(ctx).edit().putString("sig", sig(text)).putLong("at", System.currentTimeMillis()).apply()
         return ok
     }
@@ -141,7 +235,7 @@ object Backup {
                     return@Thread
                 }
             }
-            val text = payload(prefs)
+            val text = payload(ctx, prefs)
             val st = store(ctx)
             val age = System.currentTimeMillis() - st.getLong("at", 0L)
             val changed = st.getString("sig", "") != sig(text)
@@ -153,7 +247,7 @@ object Backup {
     fun restoreNow(ctx: Context, code: String): Boolean {
         val blob = Net.get("$ENDPOINT?id=${id(code)}") ?: return false
         val text = unlock(code, blob) ?: return false
-        if (!apply(Prefs(ctx), text)) return false
+        if (!apply(ctx, Prefs(ctx), text)) return false
         store(ctx).edit().putString("code", code).putString("sig", sig(text)).putLong("at", System.currentTimeMillis()).apply()
         return true
     }
