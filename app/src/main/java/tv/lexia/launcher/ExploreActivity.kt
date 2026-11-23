@@ -52,6 +52,12 @@ class ExploreActivity : Activity() {
     /** Which lists each title came from (cinema, soon, platforms, local...). */
     private val sources = HashMap<String, MutableSet<String>>()
     private lateinit var tabBar: LinearLayout
+    private lateinit var stage: ExploreStage
+    private lateinit var scroll: ScrollView
+    /** A genre's own page ("Korku"): its showcase and rows; "" for Keşfet's. */
+    private var genrePage = ""
+    /** The quick filters over the rows (Tür · Yıl · Puan…); rebuilt with the page. */
+    private var chips: LinearLayout? = null
     private val playback by lazy { MediaPlaybackStore(this) }
     /** Posters come in four at a time, not all at once. */
     private val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
@@ -59,11 +65,32 @@ class ExploreActivity : Activity() {
 
     companion object {
         private const val MAX = 30
+        /** A wide (scene) card, in design units. */
+        private const val WIDE_W = 420
+        private const val WIDE_H = 236
     }
 
     override fun onDestroy() {
         super.onDestroy()
         pool.shutdownNow()
+        if (::stage.isInitialized) stage.release()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::stage.isInitialized) stage.pause()
+    }
+
+    private var resumedOnce = false
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // A genre's own page: back goes to Keşfet's.
+        if (genrePage.isNotEmpty()) {
+            openGenre("")
+            return
+        }
+        super.onBackPressed()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,43 +101,46 @@ class ExploreActivity : Activity() {
         val w = ui.wrap
 
         val frame = FrameLayout(this)
-        val blur = Fx.backdrop
-        frame.background = if (blur != null) {
-            android.graphics.drawable.LayerDrawable(arrayOf(
-                android.graphics.drawable.BitmapDrawable(resources, blur),
-                android.graphics.drawable.ColorDrawable(Color.argb(ui.dimAlpha() + 70, 0, 0, 0))
-            ))
-        } else {
-            ui.gradient(GradientDrawable.Orientation.TL_BR, Color.parseColor("#1A1F29"), Color.parseColor("#0A0B0E"), Color.BLACK)
+        frame.setBackgroundColor(Color.BLACK)
+        frame.clipChildren = false
+        // Behind everything, the film's own picture; on top of the page, the showcase.
+        stage = ExploreStage(this, ui, frame)
+        stage.onPlay = { p -> MediaSourcePickerActivity.open(this, p) }
+        stage.onTrailer = { p ->
+            if (p.trailer.isNotBlank()) TrailerActivity.open(this, p) else Glass.toast(this, "Bu yapımın fragmanı yok")
         }
+        stage.onDetails = { p -> DetailActivity.open(this, p) }
 
         val page = ui.vbox()
-        page.setPadding(ui.u(110), ui.u(64), ui.u(110), 0)
+        page.setPadding(ui.u(110), ui.u(46), ui.u(110), 0)
         page.clipChildren = false
         page.clipToPadding = false
+        // Top bar: Keşfet · Filmler · Diziler, then Ara, Rastgele, Maraton; the count on the right.
         val head = ui.hbox()
-        head.gravity = Gravity.BOTTOM
-        head.addView(ui.text("Keşfet", 54, C.TEXT, 700), ui.ll(0, w, weight = 1f))
-        countText = ui.text("", 22, C.TEXT3, 500)
-        head.addView(countText, ui.ll(w, w, bottom = 8))
-        page.addView(head, ui.ll(m, w))
-
-        // Filmler · Diziler, then Süz and the trailer marathon.
+        head.gravity = Gravity.CENTER_VERTICAL
+        head.clipChildren = false
+        head.clipToPadding = false
+        head.addView(ui.text("Keşfet", 34, C.TEXT, 800), ui.ll(w, w, right = 34))
         tabBar = ui.hbox()
         tabBar.clipChildren = false
         tabBar.clipToPadding = false
-        tabBar.setPadding(ui.u(6), ui.u(10), ui.u(6), ui.u(10))
+        tabBar.setPadding(ui.u(6), ui.u(8), ui.u(6), ui.u(8))
         filterBar = ui.hbox()
         filterBar.clipChildren = false
         filterBar.clipToPadding = false
         tabBar.addView(filterBar)
-        page.addView(tabBar, ui.ll(m, w, top = 18, bottom = 10, left = -6))
+        head.addView(tabBar, ui.ll(0, w, weight = 1f))
+        countText = ui.text("", 20, C.TEXT3, 500)
+        head.addView(countText, ui.ll(w, w))
+        page.addView(head, ui.ll(m, w))
+
+        page.addView(stage.panel, ui.ll(m, ui.u(ExploreStage.BIG)))
 
         grid = ui.vbox()
         grid.clipChildren = false
         grid.clipToPadding = false
-        grid.setPadding(ui.u(20), ui.u(10), ui.u(20), ui.u(80))
-        val scroll = ScrollView(this)
+        grid.setPadding(ui.u(20), ui.u(6), ui.u(20), ui.u(80))
+        scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
         scroll.clipChildren = false
@@ -130,6 +160,7 @@ class ExploreActivity : Activity() {
                 all = list
                 buildFilters()
                 show()
+                stage.buttons.getChildAt(0)?.requestFocus()
             }
         }.start()
         frame.alpha = 0f
@@ -140,6 +171,8 @@ class ExploreActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (resumedOnce && ::stage.isInitialized) stage.resume()
+        resumedOnce = true
         // Back from the player: "Kaldığın yerden" and the bars show the new place.
         if (MediaPlaybackStore.changes != seenChanges && all.isNotEmpty()) {
             seenChanges = MediaPlaybackStore.changes
@@ -257,6 +290,20 @@ class ExploreActivity : Activity() {
 
     private fun buildFilters() {
         filterBar.removeAllViews()
+        fun keepsShowcase(b: View) {
+            val style = b.onFocusChangeListener
+            b.setOnFocusChangeListener { v, f ->
+                style?.onFocusChange(v, f)
+                if (f) stage.enterShowcase()
+            }
+        }
+        if (genrePage.isNotEmpty()) {
+            // A genre's page: the way back, and its name.
+            val back = ui.pill("‹   Tüm türler", 58, 21)
+            back.setOnClickListener { openGenre("") }
+            keepsShowcase(back)
+            filterBar.addView(back)
+        }
         fun tab(label: String, value: String) {
             val b = ui.pill(label, 58, 22, primary = kind == value)
             b.setOnClickListener {
@@ -264,53 +311,84 @@ class ExploreActivity : Activity() {
                 kind = value
                 buildFilters()
                 show()
-                filterBar.getChildAt(if (value == "movie") 0 else 1)?.requestFocus()
+                filterBar.findViewWithTag<View>("tab:$value")?.requestFocus()
             }
+            b.tag = "tab:$value"
+            keepsShowcase(b)
             filterBar.addView(b)
         }
         tab("Filmler", "movie")
         tab("Diziler", "tv")
-        val chosen = listOfNotNull(
-            genre.takeIf { it.isNotEmpty() },
-            yearsName().takeIf { years.isNotEmpty() },
-            "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 },
-            sortName().takeIf { sort.isNotEmpty() },
-            where.takeIf { it.isNotEmpty() },
-            lengthName().takeIf { length.isNotEmpty() },
-            stateName().takeIf { state.isNotEmpty() },
-            smart?.first,
-            if (origin == "local") "Yerli" else if (origin == "foreign") "Yabancı" else null,
-            country.takeIf { it.isNotEmpty() }?.let { "Ülke: " + countryName(it) }
-        )
-        // Count active filter dimensions; selected genres remain grouped in the compact bar.
-        val activeCount = chosen.size
-        val filterLabel = if (activeCount == 0) "Süz" else "Süz  ·  $activeCount seçili"
-        val filter = ui.iconPill(filterLabel, R.drawable.ic_search)
-        filter.setOnClickListener { openFilters() }
-        filterBar.addView(filter, ui.ll(ui.wrap, ui.u(64), left = 22, right = 18))
-        if (chosen.isNotEmpty()) {
-            val clear = ui.pill("Temizle", 58, 21)
-            clear.setOnClickListener {
-                genre = ""; minScore = 0.0; years = ""; sort = ""; where = ""; length = ""; state = ""; smart = null; searchTerm = ""; origin = ""; country = ""
-                buildFilters()
-                show()
-                filterBar.getChildAt(2)?.requestFocus()
-            }
-            filterBar.addView(clear)
-        }
         val search = ui.iconPill("Ara", R.drawable.ic_search)
         search.setOnClickListener { SearchAll.ask(this, all) }
-        filterBar.addView(search)
-        // One button each: "Akıllı bul" lives in Süz now, İzlediklerim is on the home screen's top bar.
+        keepsShowcase(search)
+        filterBar.addView(search, ui.ll(ui.wrap, ui.u(64), left = 22, right = 18))
         val random = ui.iconPill("Rastgele", R.drawable.ic_dice)
         random.setOnClickListener { randomPick() }
+        keepsShowcase(random)
         filterBar.addView(random)
         // Trailers of what is shown, one after another, in LeXia's own player.
         if (prefs.trailerInApp) {
             val run = ui.iconPill("Maraton", R.drawable.ic_film)
             run.setOnClickListener { chooseMarathon() }
+            keepsShowcase(run)
             filterBar.addView(run)
         }
+    }
+
+    /**
+     * Over the rows: Tür · Yıl · Puan · Nerede · Sırala · Süre, each opening its choice at once
+     * (what is chosen shows on it, lit), then "Tüm süzgeçler" and "Temizle".
+     */
+    private fun addChips() {
+        val bar = ui.hbox()
+        bar.clipChildren = false
+        bar.clipToPadding = false
+        bar.setPadding(ui.u(4), ui.u(8), ui.u(4), ui.u(8))
+        fun chip(name: String, value: String?, index: Int) {
+            val on = value != null
+            val b = ui.pill(if (on) value!! else "$name  ▾", 54, 20, primary = on)
+            b.tag = "chip:$index"
+            b.setOnClickListener { openFilter(index, reopen = false) }
+            val style = b.onFocusChangeListener
+            b.setOnFocusChangeListener { v, f ->
+                style?.onFocusChange(v, f)
+                if (f) stage.enterShowcase()
+            }
+            bar.addView(b, ui.ll(ui.wrap, ui.u(54), right = 14))
+        }
+        chip("Tür", genre.takeIf { it.isNotEmpty() }?.replace(",", " + "), 0)
+        chip("Yıl", yearsName().takeIf { years.isNotEmpty() }, 3)
+        chip("Puan", "IMDb ${minScore.toInt()}+".takeIf { minScore > 0 }, 4)
+        chip("Nerede", where.takeIf { it.isNotEmpty() }, 1)
+        chip("Sırala", sortName().takeIf { sort.isNotEmpty() }, 6)
+        chip("Süre", lengthName().takeIf { length.isNotEmpty() }, 2)
+        val all = ui.iconPill("Tüm süzgeçler", R.drawable.ic_search, 54, 20)
+        all.tag = "chip:all"
+        all.setOnClickListener { openFilters() }
+        val style = all.onFocusChangeListener
+        all.setOnFocusChangeListener { v, f ->
+            style?.onFocusChange(v, f)
+            if (f) stage.enterShowcase()
+        }
+        bar.addView(all, ui.ll(ui.wrap, ui.u(54), right = 14))
+        if (filtering() || searchTerm.isNotEmpty() || origin.isNotEmpty() || country.isNotEmpty()) {
+            val clear = ui.pill("Temizle", 54, 20)
+            clear.setOnClickListener {
+                genre = ""; minScore = 0.0; years = ""; sort = ""; where = ""; length = ""; state = ""; smart = null; searchTerm = ""; origin = ""; country = ""
+                buildFilters()
+                show()
+                chips?.findViewWithTag<View>("chip:0")?.requestFocus()
+            }
+            bar.addView(clear, ui.ll(ui.wrap, ui.u(54), right = 14))
+        }
+        val holder = android.widget.HorizontalScrollView(this)
+        holder.isHorizontalScrollBarEnabled = false
+        holder.clipChildren = false
+        holder.clipToPadding = false
+        holder.addView(bar)
+        grid.addView(holder, ui.ll(ui.match, ui.wrap, bottom = 22))
+        chips = bar
     }
 
     private fun randomPick() {
@@ -368,16 +446,26 @@ class ExploreActivity : Activity() {
             "Hazır seçimler" to (smart?.first ?: "Bu akşam kısa, 8+ bilim kurgu…")
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
-            fun apply() {
-                smart = null
-                buildFilters()
-                show()
-                openFilters()
-            }
-            if (i == rows.lastIndex) {
-                chooseSmart()
-                return@list
-            }
+            if (i == rows.lastIndex) chooseSmart() else openFilter(i, reopen = true)
+        }
+    }
+
+    /**
+     * One filter's choice ([i]: 0 Tür, 1 Nerede, 2 Süre, 3 Yıl, 4 Puan, 5 Durum, 6 Sırala,
+     * 7 Yerli/yabancı, 8 Yapım ülkesi). [reopen]: back to the Süz list after (from there), else
+     * the remote stays on the chip.
+     */
+    private fun openFilter(i: Int, reopen: Boolean) {
+        val genres = all.filter { ofKind(it) }.flatMap { it.genres }.distinct().sortedBy { it.lowercase(tr) }
+        val platforms = all.filter { ofKind(it) }.flatMap { platformsOf(it) }.groupingBy { it }.eachCount()
+            .entries.sortedByDescending { it.value }.map { it.key }
+        fun apply() {
+            smart = null
+            buildFilters()
+            show()
+            if (reopen) openFilters() else chips?.findViewWithTag<View>("chip:$i")?.requestFocus()
+        }
+        run {
             when (i) {
                 0 -> {
                     // Several genres: each pick adds or removes one; "Bütün türler" clears.
@@ -426,7 +514,7 @@ class ExploreActivity : Activity() {
                         country = codes[selected]
                         if (country.isEmpty()) apply() else Thread {
                             all.filter { ofKind(it) && it.id > 0 }.forEach { item -> runCatching { TmdbDiscover.countries(kind, item.id) } }
-                            runOnUiThread { if (!isFinishing && !isDestroyed) { buildFilters(); show(); openFilters() } }
+                            runOnUiThread { if (!isFinishing && !isDestroyed) apply() }
                         }.start()
                     }
                 }
@@ -544,11 +632,13 @@ class ExploreActivity : Activity() {
         row = null
         more = null
         grid.removeAllViews()
+        addChips()
         if (!filtering()) {
             showRows()
             return
         }
-        found = smart?.second ?: ordered(all.filter { matches(it) })
+        found = smart?.second ?: ordered(all.filter { matches(it) && inGenrePage(it) })
+        stage.feature(found.filter { it.imdb >= 6.5 }.take(6).ifEmpty { found.take(6) }, "SEÇİMİNE GÖRE")
         if (found.isEmpty()) {
             countText.text = "Bu seçimde yapım yok"
             val hint = ui.text("Süz'deki seçimlerden birini gevşet.", 24, C.TEXT2, 400)
@@ -566,49 +656,103 @@ class ExploreActivity : Activity() {
         .sortedByDescending { it.second }
         .map { it.first }
 
+    private fun inGenrePage(p: Pick) = genrePage.isEmpty() || genrePage in p.genres
+
+    /** A genre's own page ([g]), or Keşfet's again (""): its showcase and rows. */
+    private fun openGenre(g: String) {
+        genrePage = g
+        buildFilters()
+        show()
+        scroll.scrollTo(0, 0)
+        stage.buttons.getChildAt(0)?.requestFocus()
+    }
+
+    /** What the showcase turns through: new and much-liked ones with a picture, the best first. */
+    private fun showcaseOf(today: List<Pick>, mine: List<Pick>): List<Pick> {
+        val fresh = today.filter { val d = days(it); d != null && d in -60..0 && it.imdb >= 6.5 }.sortedByDescending { it.imdb }
+        val top = mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }
+        val best = today.filter { it.imdb >= 7.5 }.sortedByDescending { it.imdb }
+        return (fresh.take(3) + top.take(3) + best).filter { it.backdrop.isNotEmpty() }.distinctBy { it.key }.take(6)
+    }
+
     private fun showRows() {
-        val mine = all.filter { ofKind(it) }
-        countText.text = "${mine.size} ${if (kind == "tv") "dizi" else "film"}"
+        val mine = all.filter { ofKind(it) && inGenrePage(it) }
+        val noun = if (kind == "tv") "dizi" else "film"
+        countText.text = if (genrePage.isNotEmpty()) "$genrePage  ·  ${mine.size} $noun" else "${mine.size} $noun"
         val today = mine.filter { (days(it) ?: 1) <= 0 || days(it) == null }
-        addRow("Kaldığın yerden", leftOff())
-        addRow("Yeni çıkanlar", today.filter { val d = days(it); d != null && d in -90..0 }.sortedBy { -(days(it) ?: -999) }) {
-            TmdbDiscover.page(kind, it, newest = true)
+        stage.feature(showcaseOf(today, mine), if (genrePage.isNotEmpty()) genrePage.uppercase(tr) else "ÖNE ÇIKANLAR")
+        val g = genrePage
+        addRow("Kaldığın yerden", leftOff().filter { inGenrePage(it) }, style = Style.WIDE)
+        addRow("Yeni çıkanlar", today.filter { val d = days(it); d != null && d in -90..0 }.sortedBy { -(days(it) ?: -999) }, style = Style.WIDE) {
+            TmdbDiscover.page(kind, it, genre = g, newest = true)
         }
-        addRow("En çok izlenenler", mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }) {
-            TmdbDiscover.page(kind, it)
-        }
+        val top = if (g.isEmpty()) mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }
+        else today.sortedByDescending { it.imdb }
+        addRow(if (g.isEmpty()) "Bu haftanın en çok izlenenleri" else "En sevilen ${g.lowercase(tr)} ${noun}leri", top.take(10), style = Style.RANK)
+        if (g.isEmpty()) addGenreTiles(mine, today)
         addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb }) {
-            TmdbDiscover.page(kind, it, minScore = 8.0)
+            TmdbDiscover.page(kind, it, genre = g, minScore = 8.0)
         }
-        addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }) {
-            TmdbDiscover.upcoming(kind, it)
-        }
-        if (kind == "tv") {
-            addRow("Yerli diziler", mine.filter { from(it, "local") })
-            addRow("Yabancı diziler", mine.filter { !from(it, "local") })
-        } else {
-            addRow("Yerli filmler", mine.filter { from(it, "local") })
-            addRow("Yabancı filmler", mine.filter { !from(it, "local") })
-        }
-        val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") }.distinctBy { seenKey(it) }
+        addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }, style = Style.WIDE,
+            more = if (g.isEmpty()) { pg: Int -> TmdbDiscover.upcoming(kind, pg) } else null)
+        addRow(if (kind == "tv") "Yerli diziler" else "Yerli filmler", mine.filter { from(it, "local") })
+        addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
+        val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") && inGenrePage(it) }.distinctBy { seenKey(it) }
             .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
-        val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
-            .sortedByDescending { it.value }.map { it.key }.take(12)
-        for (g in genres) {
-            addRow(g, today.filter { g in it.genres }.sortedByDescending { it.imdb }) { TmdbDiscover.page(kind, it, genre = g) }
+        if (g.isNotEmpty()) {
+            addRow("Daha fazla ${g.lowercase(tr)}", emptyList()) { TmdbDiscover.page(kind, it, genre = g) }
+            return
         }
+        val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
+            .sortedByDescending { it.value }.map { it.key }.take(6)
+        for (name in genres) {
+            addRow(name, today.filter { name in it.genres }.sortedByDescending { it.imdb }) { TmdbDiscover.page(kind, it, genre = name) }
+        }
+    }
+
+    private enum class Style { POSTER, WIDE, RANK }
+
+    /** "Türler": one tile per genre, the genre's best film behind its colour; a tile opens its page. */
+    private fun addGenreTiles(mine: List<Pick>, today: List<Pick>) {
+        val counts = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }
+        if (counts.size < 3) return
+        addRowTitle("Türler")
+        val line = ui.hbox()
+        line.clipChildren = false
+        line.clipToPadding = false
+        line.setPadding(ui.u(4), ui.u(10), ui.u(40), ui.u(10))
+        counts.take(14).forEach { (name, n) ->
+            val best = today.filter { name in it.genres && it.backdrop.isNotEmpty() }.maxByOrNull { it.imdb }
+            line.addView(genreTile(name, n, best))
+        }
+        val hs = android.widget.HorizontalScrollView(this)
+        hs.isHorizontalScrollBarEnabled = false
+        hs.clipChildren = false
+        hs.clipToPadding = false
+        hs.addView(line)
+        grid.addView(hs, ui.ll(ui.match, ui.wrap, bottom = 34))
+    }
+
+    private fun addRowTitle(title: String) {
+        val label = ui.text(title, 26, C.TEXT, 700)
+        grid.addView(label, ui.ll(ui.wrap, ui.wrap, top = 8, bottom = 14, left = 4))
     }
 
     /**
      * A row of posters (20 at first). [more], when given, brings the next TMDB page at the row's end:
      * titles already on the page are left out.
      */
-    private fun addRow(title: String, items: List<Pick>, more: ((Int) -> List<Pick>)? = null) {
+    private fun addRow(title: String, items: List<Pick>, style: Style = Style.POSTER, more: ((Int) -> List<Pick>)? = null) {
         val online = more != null && BuildConfig.TMDB_API_KEY.isNotBlank()
         if (items.isEmpty() && !online) return
-        val label = ui.text(title, 26, C.TEXT, 700)
-        grid.addView(label, ui.ll(ui.wrap, ui.wrap, top = 8, bottom = 14, left = 4))
+        addRowTitle(title)
+        var rank = 0
+        fun make(p: Pick): View = when (style) {
+            Style.WIDE -> if (p.backdrop.isNotEmpty()) wideCard(p) else card(p)
+            Style.RANK -> rankCard(p, ++rank)
+            Style.POSTER -> card(p)
+        }
         val line = ui.hbox()
         line.clipChildren = false
         line.clipToPadding = false
@@ -621,12 +765,12 @@ class ExploreActivity : Activity() {
         grid.addView(scroll, ui.ll(ui.match, ui.wrap, bottom = 34))
         val seen = HashSet<String>()
         val start = items.take(20)
-        start.forEach { p -> seen.add(seenKey(p)); line.addView(card(p)) }
+        start.forEach { p -> seen.add(seenKey(p)); line.addView(make(p)) }
         if (more == null) return
         var page = 1
         var moreCard: View? = null
         fun addMoreCard() {
-            moreCard = moreCard(0).also { c ->
+            moreCard = moreCard(0, wide = style == Style.WIDE).also { c ->
                 (c.tag as View).setOnClickListener { _ ->
                     val g = gen
                     val box = c.tag as View
@@ -643,7 +787,7 @@ class ExploreActivity : Activity() {
                                 return@runOnUiThread
                             }
                             var first: View? = null
-                            fresh.forEach { p -> val v = card(p); line.addView(v); if (first == null) first = v.tag as View }
+                            fresh.forEach { p -> val v = make(p); line.addView(v); if (first == null) first = v.tag as View }
                             addMoreCard()
                             (first ?: (moreCard?.tag as? View))?.requestFocus()
                         }
@@ -695,8 +839,9 @@ class ExploreActivity : Activity() {
         if (from > 0) first?.requestFocus()
     }
 
-    private fun moreCard(n: Int): View {
-        val cw = 200
+    private fun moreCard(n: Int, wide: Boolean = false): View {
+        val cw = if (wide) WIDE_W else 200
+        val ch = if (wide) WIDE_H else cw * 3 / 2
         val col = ui.vbox()
         col.clipChildren = false
         val box = FrameLayout(this)
@@ -719,7 +864,7 @@ class ExploreActivity : Activity() {
             t.setTextColor(if (f) C.INK else C.TEXT)
         }
         box.setOnClickListener { addMore() }
-        col.addView(box, ui.ll(ui.u(cw), ui.u(cw * 3 / 2)))
+        col.addView(box, ui.ll(ui.u(cw), ui.u(ch)))
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 28)
         col.tag = box
         return col
@@ -792,6 +937,7 @@ class ExploreActivity : Activity() {
             ui.lift(poster, f, 1.08f, 30)
             fx(f)
             title.setTextColor(if (f) C.TEXT else C.TEXT2)
+            if (f) stage.focusOn(p)
         }
         poster.setTag(R.id.lexia_pick, p)
         poster.setOnClickListener { DetailActivity.open(this, p, row = DetailActivity.rowAround(poster)) }
@@ -801,6 +947,196 @@ class ExploreActivity : Activity() {
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 28)
         col.tag = poster
         return col
+    }
+
+    /** The image under [path] (TMDB), into [img], four at a time; skipped if the page changed meanwhile. */
+    private fun loadInto(img: ImageView, size: String, path: String, width: Int) {
+        img.setImageDrawable(Fx.Shimmer(C.CARD, 0f))
+        val g = gen
+        pool.execute {
+            if (isFinishing || g != gen) return@execute
+            val b = Net.bitmap("https://image.tmdb.org/t/p/$size$path", ui.u(width), true)
+            runOnUiThread { if (b != null && !isFinishing && g == gen) Fx.fadeIn(img, b) }
+        }
+    }
+
+    /** A scene card (16:9): the film's picture, its logo or name over the bottom, the bar where it was left. */
+    private fun wideCard(p: Pick): View {
+        val col = ui.vbox()
+        col.clipChildren = false
+        val box = FrameLayout(this)
+        box.isFocusable = true
+        box.isClickable = true
+        box.background = ui.round(C.CARD, D.CARD)
+        box.clipToOutline = true
+        val img = ImageView(this)
+        img.scaleType = ImageView.ScaleType.CENTER_CROP
+        box.addView(img, ui.fl(ui.match, ui.match))
+        loadInto(img, "w780", p.backdrop, WIDE_W)
+        val shade = View(this)
+        shade.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(200, 0, 0, 0), Color.TRANSPARENT)
+        box.addView(shade, ui.fl(ui.match, ui.u(130), Gravity.BOTTOM))
+        val name = ui.text(p.title, 24, C.TEXT, 800)
+        name.maxLines = 1
+        name.ellipsize = TextUtils.TruncateAt.END
+        val nlp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        nlp.setMargins(ui.u(18), 0, ui.u(18), ui.u(22))
+        box.addView(name, nlp)
+        p.logo.takeIf { it.isNotEmpty() }?.let { path ->
+            val logo = ImageView(this)
+            logo.scaleType = ImageView.ScaleType.FIT_START
+            logo.adjustViewBounds = true
+            logo.visibility = View.GONE
+            val llp = ui.fl(ui.u(220), ui.u(70), Gravity.BOTTOM or Gravity.START)
+            llp.setMargins(ui.u(18), 0, 0, ui.u(22))
+            box.addView(logo, llp)
+            val g = gen
+            pool.execute {
+                if (isFinishing || g != gen) return@execute
+                val b = Net.bitmap("https://image.tmdb.org/t/p/w300$path", ui.u(220), false)?.takeIf { !Img.isDark(it) }
+                runOnUiThread {
+                    if (b == null || isFinishing || g != gen) return@runOnUiThread
+                    logo.setImageBitmap(b)
+                    logo.visibility = View.VISIBLE
+                    name.visibility = View.GONE
+                }
+            }
+        }
+        WatchMarks.add(ui, box, WatchMarks.of(playback, p))
+        val fx = Fx.decorate(ui, box, D.CARD)
+        val sub = ui.text(subline(p), 17, C.TEXT3, 500)
+        sub.maxLines = 1
+        sub.ellipsize = TextUtils.TruncateAt.END
+        box.setOnFocusChangeListener { _, f ->
+            ui.lift(box, f, 1.06f, 30)
+            fx(f)
+            sub.setTextColor(if (f) C.TEXT2 else C.TEXT3)
+            if (f) stage.focusOn(p)
+        }
+        box.setTag(R.id.lexia_pick, p)
+        box.setOnClickListener { DetailActivity.open(this, p, row = DetailActivity.rowAround(box)) }
+        col.addView(box, ui.ll(ui.u(WIDE_W), ui.u(WIDE_H)))
+        col.addView(sub, ui.ll(ui.u(WIDE_W), ui.wrap, top = 12))
+        col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 28)
+        col.tag = box
+        return col
+    }
+
+    /** The line under a card: the score and the year, or when it comes out. */
+    private fun subline(p: Pick): String {
+        val bits = ArrayList<String>()
+        val d = days(p)
+        if (d != null && d > 0) return dateText(p)
+        val tmdb = TmdbDiscover.score["${p.kind}:${p.id}"]
+        if (p.imdb > 0) bits.add(String.format(tr, "IMDb %.1f", p.imdb))
+        else if (tmdb != null && tmdb > 0) bits.add(String.format(tr, "TMDB %.1f", tmdb))
+        if (p.genres.isNotEmpty()) bits.add(p.genres.first())
+        when {
+            from(p, "cinema") -> bits.add("Sinemada")
+            d != null && d >= -30 -> bits.add(dateText(p))
+            p.year.isNotEmpty() -> bits.add(p.year)
+        }
+        return bits.joinToString("  ·  ")
+    }
+
+    /** "En çok izlenenler": its place as a big outlined number, the poster leaning on it. */
+    private fun rankCard(p: Pick, n: Int): View {
+        val col = ui.vbox()
+        col.clipChildren = false
+        val stageBox = FrameLayout(this)
+        stageBox.clipChildren = false
+        val number = ui.text(n.toString(), 250, Color.argb(210, 255, 255, 255), 800)
+        number.paint.style = android.graphics.Paint.Style.STROKE
+        number.paint.strokeWidth = ui.uf(4)
+        number.includeFontPadding = false
+        number.letterSpacing = -0.06f
+        // Its foot level with the poster's (the title and score lines are below the poster).
+        val numberLp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        numberLp.bottomMargin = ui.u(48)
+        stageBox.addView(number, numberLp)
+        val view = card(p)
+        val poster = view.tag as View
+        stageBox.addView(view, ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.END))
+        val numberStyle = poster.onFocusChangeListener
+        poster.setOnFocusChangeListener { v, f ->
+            numberStyle?.onFocusChange(v, f)
+            number.setTextColor(if (f) Color.WHITE else Color.argb(210, 255, 255, 255))
+            number.paint.style = if (f) android.graphics.Paint.Style.FILL_AND_STROKE else android.graphics.Paint.Style.STROKE
+            number.invalidate()
+        }
+        // The number sits half under the poster: one digit 130 wide, two digits a little more.
+        val width = 200 + if (n >= 10) 190 else 120
+        col.addView(stageBox, ui.ll(ui.u(width), ui.wrap))
+        col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 20)
+        col.tag = poster
+        return col
+    }
+
+    /** A genre's tile: its best film's picture under the genre's colour, the name large. */
+    private fun genreTile(name: String, count: Int, best: Pick?): View {
+        val col = ui.vbox()
+        col.clipChildren = false
+        val box = FrameLayout(this)
+        box.isFocusable = true
+        box.isClickable = true
+        val (a, b) = genreColors(name)
+        box.background = ui.round(a, D.CARD)
+        box.clipToOutline = true
+        if (best != null) {
+            val img = ImageView(this)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            box.addView(img, ui.fl(ui.match, ui.match))
+            loadInto(img, "w500", best.backdrop, 320)
+        }
+        val wash = View(this)
+        wash.background = ui.gradient(GradientDrawable.Orientation.BL_TR,
+            Color.argb(245, Color.red(a), Color.green(a), Color.blue(a)),
+            Color.argb(170, Color.red(b), Color.green(b), Color.blue(b)))
+        box.addView(wash, ui.fl(ui.match, ui.match))
+        val label = ui.vbox()
+        label.addView(ui.text(name, 30, Color.WHITE, 800).also { it.maxLines = 1; it.ellipsize = TextUtils.TruncateAt.END })
+        label.addView(ui.text("$count ${if (kind == "tv") "dizi" else "film"}", 17, Color.argb(200, 255, 255, 255), 600), ui.ll(ui.wrap, ui.wrap, top = 2))
+        val lp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM or Gravity.START)
+        lp.setMargins(ui.u(22), 0, ui.u(16), ui.u(18))
+        box.addView(label, lp)
+        val ring = View(this)
+        ring.background = ui.round(Color.TRANSPARENT, D.CARD, 4, Color.WHITE)
+        ring.alpha = 0f
+        box.addView(ring, ui.fl(ui.match, ui.match))
+        box.setOnFocusChangeListener { _, f ->
+            ui.lift(box, f, 1.07f, 30)
+            ring.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            if (f && best != null) stage.focusOn(best)
+        }
+        box.setOnClickListener { openGenre(name) }
+        col.addView(box, ui.ll(ui.u(320), ui.u(180)))
+        col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 24)
+        col.tag = box
+        return col
+    }
+
+    /** Each genre's own two colours (deep, then lighter); others get one of a few by their name. */
+    private fun genreColors(name: String): Pair<Int, Int> {
+        val n = name.lowercase(tr)
+        fun c(x: String, y: String) = Color.parseColor(x) to Color.parseColor(y)
+        return when {
+            "korku" in n -> c("#3A0A0F", "#8E1B24")
+            "gerilim" in n -> c("#1B1530", "#4B2E83")
+            "komedi" in n -> c("#7A4A00", "#E0A21B")
+            "aksiyon" in n -> c("#5A1405", "#D9480F")
+            "macera" in n -> c("#0D3B2E", "#2F9E44")
+            "bilim" in n -> c("#06243F", "#1C7ED6")
+            "fantastik" in n || "fantazi" in n -> c("#2B0B46", "#9C36B5")
+            "dram" in n -> c("#1F2A44", "#5C7CFA")
+            "romantik" in n -> c("#4A0D2A", "#E64980")
+            "animasyon" in n || "aile" in n || "çocuk" in n -> c("#003C4F", "#15AABF")
+            "suç" in n -> c("#1A1A1A", "#5C5F66")
+            "gizem" in n -> c("#14213D", "#3B5BDB")
+            "belgesel" in n -> c("#2B2A1A", "#94812B")
+            "tarih" in n || "savaş" in n -> c("#3B2A14", "#A0782C")
+            "müzik" in n -> c("#3D0A3A", "#D6336C")
+            else -> listOf(c("#1F2A44", "#5C7CFA"), c("#0D3B2E", "#2F9E44"), c("#3B2A14", "#A0782C"), c("#2B0B46", "#9C36B5"))[Math.floorMod(n.hashCode(), 4)]
+        }
     }
 
     override fun finish() {
