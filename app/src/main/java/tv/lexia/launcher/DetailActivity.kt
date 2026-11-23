@@ -80,6 +80,9 @@ class DetailActivity : Activity() {
     private lateinit var frame: FrameLayout
     private lateinit var back: ImageView
     private lateinit var stuck: View
+    /** Frosted glass: the film's picture blurred, coming up as the page scrolls down (Apple TV). */
+    private lateinit var frost: ImageView
+    private lateinit var frostShade: View
 
 
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
@@ -113,9 +116,16 @@ class DetailActivity : Activity() {
         // The film's own colour, softly over the shade (sand for Dune, green for The Matrix).
         val tint = View(this)
         tint.alpha = 0f
+        frost = ImageView(this)
+        frost.scaleType = ImageView.ScaleType.CENTER_CROP
+        frost.alpha = 0f
+        frostShade = View(this)
+        frostShade.setBackgroundColor(Color.argb(120, 8, 10, 14))
+        frostShade.alpha = 0f
         Img.load(this, if (screenW > 1280) "original" else "w1280", film.backdrop, screenW, back) {
             back.animate().alpha(1f).setDuration(700).start()
             val bmp = (back.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            bmp?.let { Fx.blurred(it) }?.let { frost.setImageBitmap(it) }
             val c = bmp?.let { Fx.accent(it) } ?: 0
             if (c != 0) {
                 tint.background = ui.gradient(
@@ -140,6 +150,8 @@ class DetailActivity : Activity() {
         )
         frame.addView(bottom, ui.fl(m, (screenH * 0.55f).toInt(), Gravity.BOTTOM))
         frame.addView(tint, ui.fl(m, m))
+        frame.addView(frost, ui.fl(m, m))
+        frame.addView(frostShade, ui.fl(m, m))
 
         scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
@@ -398,8 +410,17 @@ class DetailActivity : Activity() {
 
         // A series: its seasons and episodes on this page; an episode opens its sources.
         val hasEpisodes = film.isSeries && film.id > 0
+        // Apple TV: under the first screen, the page's parts as tabs; each scrolls to its part.
+        val tabs = ui.hbox()
+        tabs.clipChildren = false
+        tabs.clipToPadding = false
+        tabs.setPadding(ui.u(6), ui.u(10), ui.u(6), ui.u(10))
+        col.addView(tabs, ui.ll(m, w, top = 0, bottom = 24, left = -6))
+        val parts = ArrayList<Pair<String, View>>()
         if (hasEpisodes) {
-            col.addView(label("BÖLÜMLER"), ui.ll(w, w, top = 10))
+            val episodesLabel = label("BÖLÜMLER")
+            parts.add("Bölümler" to episodesLabel)
+            col.addView(episodesLabel, ui.ll(w, w, top = 10))
             seasonRow = ui.hbox()
             col.addView(rowOf(seasonRow), rowParams())
             episodeRow = ui.hbox()
@@ -409,7 +430,9 @@ class DetailActivity : Activity() {
             loadEpisodes()
         }
         if (film.cast.isNotEmpty() || film.director.isNotEmpty()) {
-            col.addView(label(if (film.director.isNotEmpty()) "YÖNETMEN VE OYUNCULAR" else "OYUNCULAR"), ui.ll(w, w, top = if (hasEpisodes) 40 else 10))
+            val castLabel = label(if (film.director.isNotEmpty()) "YÖNETMEN VE OYUNCULAR" else "OYUNCULAR")
+            parts.add("Oyuncular" to castLabel)
+            col.addView(castLabel, ui.ll(w, w, top = if (hasEpisodes) 40 else 10))
             val row = ui.hbox()
             // The director first (each name of a few), then the cast.
             film.director.split(",").map { it.trim() }.filter { it.isNotEmpty() }.take(2).forEach { d ->
@@ -419,10 +442,23 @@ class DetailActivity : Activity() {
             col.addView(rowOf(row), rowParams())
         }
         if (film.similar.isNotEmpty()) {
-            col.addView(label(if (film.isSeries) "BENZER DİZİLER" else "BENZER FİLMLER"), ui.ll(w, w, top = 40))
+            val similarLabel = label(if (film.isSeries) "BENZER DİZİLER" else "BENZER FİLMLER")
+            parts.add("Benzerleri" to similarLabel)
+            col.addView(similarLabel, ui.ll(w, w, top = 40))
             val row = ui.hbox()
             for (s in film.similar) row.addView(similarCard(s))
             col.addView(rowOf(row), rowParams())
+        }
+        val about = aboutBlock()
+        parts.add("Hakkında" to about)
+        col.addView(about, ui.ll(m, w, top = 46))
+        for ((name, target) in parts) {
+            val chip = ui.pill(name, 54, 20)
+            chip.setOnClickListener {
+                val y = (target.top - ui.u(170)).coerceAtLeast(0)
+                scroll.smoothScrollTo(0, y)
+            }
+            tabs.addView(chip, ui.ll(w, ui.u(54), right = 14))
         }
 
         // Scrolling down: the picture drifts slower than the page, and the name stays on top.
@@ -436,6 +472,15 @@ class DetailActivity : Activity() {
                 val z = 1f + (y.toFloat() / screenH).coerceIn(0f, 1f) * 0.05f
                 back.scaleX = z
                 back.scaleY = z
+            }
+            // Frosted glass rises as the page goes down: the film stays behind, softly.
+            val g = (y / (screenH * 0.45f)).coerceIn(0f, 1f)
+            frost.alpha = g
+            frostShade.alpha = g
+            if (!Fx.lite) {
+                frost.translationY = back.translationY
+                frost.scaleX = back.scaleX
+                frost.scaleY = back.scaleY
             }
             val t = ((y - screenH * 0.42f) / (screenH * 0.18f)).coerceIn(0f, 1f)
             stuck.alpha = t
@@ -469,6 +514,32 @@ class DetailActivity : Activity() {
         bar.addView(line, ui.ll(ui.wrap, ui.wrap, top = 6))
         bar.alpha = 0f
         return bar
+    }
+
+    /** "Hakkında": the whole story and the facts, in two columns, as on Apple TV's film page. */
+    private fun aboutBlock(): View {
+        val box = ui.vbox()
+        box.addView(label("HAKKINDA"))
+        val body = ui.hbox()
+        val story = ui.text(film.overview.ifBlank { "Bu yapımın Türkçe özeti yok." }, 22, Color.argb(225, 255, 255, 255), 400)
+        story.setLineSpacing(0f, 1.3f)
+        body.addView(story, ui.ll(0, ui.wrap, weight = 1.4f, right = 70))
+        val facts = ui.vbox()
+        fun fact(name: String, value: String) {
+            if (value.isBlank()) return
+            facts.addView(ui.text(name.uppercase(Locale("tr", "TR")), 15, C.TEXT3, 700).also { it.letterSpacing = 0.14f }, ui.ll(ui.wrap, ui.wrap, top = if (facts.childCount == 0) 0 else 18))
+            facts.addView(ui.text(value, 21, C.TEXT, 500), ui.ll(ui.wrap, ui.wrap, top = 4))
+        }
+        fact("Tür", film.genres.joinToString(", "))
+        fact(if (film.isSeries) "Yaratıcı" else "Yönetmen", film.director)
+        fact("Yıl", film.year)
+        if (film.runtime > 0) fact("Süre", if (film.runtime >= 60) "${film.runtime / 60} sa ${film.runtime % 60} dk" else "${film.runtime} dk")
+        if (film.imdb > 0) fact("IMDb", String.format(Locale("tr", "TR"), "%.1f", film.imdb))
+        fact("Yaş sınırı", film.cert)
+        fact("Başroller", film.cast.take(4).joinToString(", ") { it.name })
+        body.addView(facts, ui.ll(0, ui.wrap, weight = 1f))
+        box.addView(body, ui.ll(ui.match, ui.wrap, top = 18))
+        return box
     }
 
     private fun label(s: String): TextView {

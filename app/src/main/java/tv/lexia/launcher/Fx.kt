@@ -400,6 +400,20 @@ object Fx {
         }
     }
 
+    /** [src] as frosted glass: shrunk [scale] times and blurred [passes] times (cheap on any TV). */
+    fun blurred(src: Bitmap, scale: Int = 16, passes: Int = 2): Bitmap? {
+        if (lite) return null
+        return try {
+            val w = (src.width / scale).coerceAtLeast(1)
+            val h = (src.height / scale).coerceAtLeast(1)
+            val b = Bitmap.createScaledBitmap(src, w, h, true).copy(Bitmap.Config.ARGB_8888, true)
+            repeat(passes) { boxBlur(b, 3) }
+            b
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
     private fun boxBlur(b: Bitmap, r: Int) {
         val w = b.width
         val h = b.height
