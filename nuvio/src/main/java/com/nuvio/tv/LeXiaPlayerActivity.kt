@@ -6,18 +6,50 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.nuvio.tv.data.repository.LeXiaProgress
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PlayerViewModel
@@ -98,43 +130,94 @@ class LeXiaPlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Sinema modu: the film starts behind black curtains that part to the sides, as in a cinema
-     * (a moment's pause, then 1.6 seconds), and are gone.
+     * Sinema modu: logo/title shimmers on a dark screen, then black curtains sweep apart like a
+     * real cinema screen. The logo "fills" with the film's accent colour as the curtains open.
      */
-    @androidx.compose.runtime.Composable
+    @Composable
     private fun Curtain() {
-        val open = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-        var done by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(600)
-            open.animateTo(1f, androidx.compose.animation.core.tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        val open = remember { Animatable(0f) }
+        val logoReveal = remember { Animatable(0f) }
+        var done by remember { mutableStateOf(false) }
+        val accent = LeXiaCinema.accent.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF8AB4FF)
+        LaunchedEffect(Unit) {
+            logoReveal.animateTo(1f, tween(800, easing = LinearEasing))
+            kotlinx.coroutines.delay(200)
+            open.animateTo(1f, tween(1600, easing = FastOutSlowInEasing))
             done = true
         }
         if (done) return
-        androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxSize()) {
+        val logo = intent.getStringExtra("logo")?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        val title = intent.getStringExtra("title")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val half = maxWidth / 2
             val shift = half * open.value
-            val shade = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                listOf(androidx.compose.ui.graphics.Color.Black, androidx.compose.ui.graphics.Color(0xFF0B0B0D))
-            )
-            androidx.compose.foundation.layout.Box(
-                androidx.compose.ui.Modifier
+            val logoAlpha = (1f - open.value * 1.8f).coerceIn(0f, 1f)
+            val logoScale = 1f + open.value * 0.12f
+            val fillFraction = logoReveal.value
+            if (logoAlpha > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .alpha(logoAlpha),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(Modifier.scale(logoScale).clipToBounds()) {
+                        if (!logo.isNullOrBlank()) {
+                            var failed by remember { mutableStateOf(false) }
+                            if (!failed) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey("curtain_$logo").crossfade(false).build(),
+                                    contentDescription = title,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.height(80.dp).widthIn(max = 420.dp),
+                                    onError = { failed = true },
+                                    alpha = 0.25f + fillFraction * 0.75f
+                                )
+                            } else {
+                                CurtainTitle(title, fillFraction, accent)
+                            }
+                        } else {
+                            CurtainTitle(title, fillFraction, accent)
+                        }
+                    }
+                }
+            }
+            val shadeL = Brush.horizontalGradient(listOf(Color.Black, Color(0xFF0B0B0D)))
+            Box(
+                Modifier
                     .offset(x = -shift)
                     .width(half)
                     .fillMaxHeight()
-                    .background(shade)
+                    .background(shadeL)
             )
-            androidx.compose.foundation.layout.Box(
-                androidx.compose.ui.Modifier
+            Box(
+                Modifier
                     .offset(x = half + shift)
                     .width(half)
                     .fillMaxHeight()
-                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(
-                        listOf(androidx.compose.ui.graphics.Color(0xFF0B0B0D), androidx.compose.ui.graphics.Color.Black)
-                    ))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF0B0B0D), Color.Black)))
             )
         }
     }
+
+    @Composable
+    private fun CurtainTitle(title: String, fill: Float, accent: Color) {
+        val color = lerp(Color.White.copy(alpha = 0.35f), accent, fill)
+        Text(
+            title,
+            style = TextStyle(fontSize = 42.sp, fontWeight = FontWeight.Light, color = color, letterSpacing = 1.sp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 48.dp)
+        )
+    }
+
+    private fun lerp(a: Color, b: Color, t: Float) = Color(
+        a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t,
+        a.alpha + (b.alpha - a.alpha) * t
+    )
 
     private fun answer(result: Int, videoId: String?, season: Int?, episode: Int?) {
         if (isFinishing) return

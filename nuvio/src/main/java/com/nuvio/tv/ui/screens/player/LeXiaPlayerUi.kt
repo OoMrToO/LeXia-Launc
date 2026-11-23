@@ -78,6 +78,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,7 +103,11 @@ private fun lexiaAccent(): Color =
     LeXiaCinema.accent.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF8AB4FF)
 
 private val Ink = Color(0xFF111111)
-private val Glass = Color.White.copy(alpha = 0.14f)
+private val Glass = Color.White.copy(alpha = 0.12f)
+private val GlassBorder = Color.White.copy(alpha = 0.08f)
+private val GlassHi = Color.White.copy(alpha = 0.20f)
+private val Dim = Color.White.copy(alpha = 0.52f)
+private val Dim2 = Color.White.copy(alpha = 0.32f)
 
 /** "1 sa 37 dk", "42 dk", "40 sn". */
 internal fun lexiaSpan(ms: Long): String {
@@ -164,7 +169,7 @@ private fun LeXiaClock(modifier: Modifier = Modifier, style: TextStyle) {
             delay((60_000L - now % 60_000L).coerceAtLeast(1_000L))
         }
     }
-    Text(DateFormat.getTimeFormat(context).format(Date(now)), modifier = modifier, style = style, color = Color.White.copy(alpha = 0.85f))
+    Text(DateFormat.getTimeFormat(context).format(Date(now)), modifier = modifier, style = style, color = Dim)
 }
 
 @Composable
@@ -175,14 +180,14 @@ private fun endTimeText(remainingMs: Long, speed: Float): String {
 }
 
 @Composable
-private fun LogoOrTitle(logo: String?, title: String, height: Int) {
+private fun LogoOrTitle(logo: String?, title: String, height: Int, alignment: Alignment = Alignment.BottomStart) {
     var failed by remember(logo) { mutableStateOf(logo.isNullOrBlank()) }
     if (!failed) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey(logo).crossfade(true).build(),
             contentDescription = title,
             contentScale = ContentScale.Fit,
-            alignment = Alignment.BottomStart,
+            alignment = alignment,
             modifier = Modifier.height(height.dp).widthIn(max = 420.dp),
             onError = { failed = true }
         )
@@ -196,63 +201,49 @@ private fun LogoOrTitle(logo: String?, title: String, height: Int) {
     }
 }
 
+/** A quality/audio badge. First one uses accent tint, rest are neutral glass. */
 @Composable
-private fun QualityChips(labels: List<String>, trailing: String?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        labels.forEach {
-            Text(
-                it,
-                style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp, color = Color.White),
-                modifier = Modifier
-                    .padding(end = 6.dp)
-                    .border(1.3.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            )
-        }
-        if (!trailing.isNullOrBlank()) {
-            Text(
-                trailing,
-                style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.75f)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-        }
-    }
+private fun Badge(label: String, isAccent: Boolean = false) {
+    val bg = if (isAccent) lexiaAccent().copy(alpha = 0.18f) else Color.White.copy(alpha = 0.10f)
+    val border = if (isAccent) lexiaAccent().copy(alpha = 0.25f) else GlassBorder
+    val fg = if (isAccent) lerp(lexiaAccent(), Color.White, 0.5f) else Color.White.copy(alpha = 0.70f)
+    Text(
+        label.uppercase(),
+        style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.4.sp, color = fg),
+        modifier = Modifier
+            .background(bg, RoundedCornerShape(4.dp))
+            .border(1.dp, border, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
 }
 
-/** A round glass button; focused it turns white and, with a [label], shows it beside the icon. */
+/** Glass pill button for the top row: icon + optional label, expands on focus. */
 @Composable
-private fun LeXiaButton(
+private fun PillButton(
     icon: ImageVector? = null,
     painter: Painter? = null,
     text: String? = null,
     label: String,
-    big: Boolean = false,
     onClick: () -> Unit,
-    showLabel: Boolean = false,
     focusRequester: FocusRequester? = null,
     up: FocusRequester? = null,
     down: FocusRequester? = null,
-    onUp: (() -> Unit)? = null,
-    onDown: (() -> Unit)? = null,
     onFocused: () -> Unit,
     accent: Color
 ) {
     var focused by remember { mutableStateOf(false) }
-    val size = if (big) 50.dp else 42.dp
-    val bg by animateColorAsState(if (focused) Color.White else Glass, tween(140), label = "bg")
-    val fg = if (focused) Ink else Color.White
-    val grow by animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "grow")
+    val bg by animateColorAsState(if (focused) GlassHi else Glass, tween(140), label = "pbg")
+    val borderColor by animateColorAsState(if (focused) Color.White.copy(alpha = 0.18f) else GlassBorder, tween(140), label = "pbd")
+    val fg = if (focused) Color.White else Color.White.copy(alpha = 0.80f)
+    val grow by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "pgrow")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .scale(grow)
-            .then(if (focused && big) Modifier.shadow(18.dp, CircleShape, ambientColor = accent, spotColor = accent) else Modifier)
-            .height(size)
-            .widthIn(min = size)
-            .clip(RoundedCornerShape(size / 2))
+            .height(32.dp)
+            .clip(RoundedCornerShape(20.dp))
             .background(bg)
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusProperties {
                 up?.let { this.up = it }
@@ -271,35 +262,129 @@ private fun LeXiaButton(
                     in OK_KEYS -> { if (k.repeatCount == 0) onClick(); true }
                     KeyEvent.KEYCODE_DPAD_UP -> when {
                         up != null -> { runCatching { up.requestFocus() }; true }
-                        onUp != null -> { onUp(); true }
                         else -> true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> when {
                         down != null -> { runCatching { down.requestFocus() }; true }
-                        onDown != null -> { onDown(); true }
                         else -> true
                     }
                     else -> false
                 }
             }
             .focusable()
-            .padding(horizontal = if (focused && showLabel) 16.dp else 0.dp),
-        horizontalArrangement = Arrangement.Center
+            .padding(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
     ) {
-        Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-            when {
-                painter != null -> Icon(painter, label, tint = fg, modifier = Modifier.size(if (big) 24.dp else 19.dp))
-                icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(if (big) 26.dp else 20.dp))
-                text != null -> Text(text, style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = fg))
-            }
+        when {
+            painter != null -> Icon(painter, label, tint = fg, modifier = Modifier.size(14.dp))
+            icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(14.dp))
         }
-        if (focused && showLabel) {
+        if (text != null || label.isNotBlank()) {
             Text(
-                label,
-                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = fg),
-                maxLines = 1,
-                modifier = Modifier.offset(x = (-6).dp)
+                text ?: label,
+                style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.2.sp, color = fg),
+                maxLines = 1
             )
+        }
+    }
+}
+
+/** Big glass circle play/pause button for the transport row. */
+@Composable
+private fun TransportPlayButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester,
+    up: FocusRequester? = null,
+    onDown: (() -> Unit)? = null,
+    onFocused: () -> Unit,
+    accent: Color,
+    play: Painter,
+    pause: Painter
+) {
+    var focused by remember { mutableStateOf(false) }
+    val bg by animateColorAsState(if (focused) Color.White.copy(alpha = 0.22f) else Glass, tween(140), label = "tpbg")
+    val borderColor by animateColorAsState(if (focused) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.18f), tween(140), label = "tpbd")
+    val grow by animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "tpgrow")
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .scale(grow)
+            .size(56.dp)
+            .then(if (focused) Modifier.shadow(18.dp, CircleShape, ambientColor = accent, spotColor = accent) else Modifier)
+            .clip(CircleShape)
+            .background(bg)
+            .border(1.5.dp, borderColor, CircleShape)
+            .focusRequester(focusRequester)
+            .focusProperties { up?.let { this.up = it } }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
+            .onPreviewKeyEvent { e ->
+                val k = e.nativeKeyEvent
+                if (k.action != KeyEvent.ACTION_DOWN) {
+                    return@onPreviewKeyEvent k.action == KeyEvent.ACTION_UP && k.keyCode in OK_KEYS
+                }
+                when (k.keyCode) {
+                    in OK_KEYS -> { if (k.repeatCount == 0) onClick(); true }
+                    KeyEvent.KEYCODE_DPAD_UP -> { up?.let { runCatching { it.requestFocus() } }; true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> { onDown?.invoke(); true }
+                    else -> false
+                }
+            }
+            .focusable()
+    ) {
+        Icon(if (isPlaying) pause else play, if (isPlaying) "Durdur" else "Oynat", tint = Color.White, modifier = Modifier.size(24.dp))
+    }
+}
+
+/** Small transport button (10s back/forward, next episode). */
+@Composable
+private fun TransportButton(
+    icon: ImageVector? = null,
+    painter: Painter? = null,
+    label: String,
+    showLabel: Boolean = false,
+    onClick: () -> Unit,
+    up: FocusRequester? = null,
+    onDown: (() -> Unit)? = null,
+    onFocused: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val fg by animateColorAsState(if (focused) Color.White else Color.White.copy(alpha = 0.85f), tween(140), label = "tbfg")
+    val grow by animateFloatAsState(if (focused) 1.12f else 1f, tween(160), label = "tbgrow")
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier
+            .scale(grow)
+            .padding(4.dp)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
+            .focusProperties { up?.let { this.up = it } }
+            .onPreviewKeyEvent { e ->
+                val k = e.nativeKeyEvent
+                if (k.action != KeyEvent.ACTION_DOWN) {
+                    return@onPreviewKeyEvent k.action == KeyEvent.ACTION_UP && k.keyCode in OK_KEYS
+                }
+                when (k.keyCode) {
+                    in OK_KEYS -> { if (k.repeatCount == 0) onClick(); true }
+                    KeyEvent.KEYCODE_DPAD_UP -> { up?.let { runCatching { it.requestFocus() } }; true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> { onDown?.invoke(); true }
+                    else -> false
+                }
+            }
+            .focusable()
+    ) {
+        when {
+            painter != null -> Icon(painter, label, tint = fg, modifier = Modifier.size(28.dp))
+            icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(28.dp))
+        }
+        if (showLabel) {
+            Text(label, style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Normal, color = if (focused) Color.White else Dim), maxLines = 1)
         }
     }
 }
@@ -331,7 +416,7 @@ private fun LeXiaBar(
                 .fillMaxWidth()
                 .height(barH)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color.White.copy(alpha = 0.22f))
+                .background(Color.White.copy(alpha = 0.12f))
                 .drawBehind {
                     drawRect(Color.White.copy(alpha = 0.18f), size = Size(size.width * buffer, size.height))
                     drawRect(
@@ -367,6 +452,23 @@ private fun LeXiaBar(
     }
 }
 
+/** Thin accent mini-bar for the pause overlay bottom. */
+@Composable
+private fun MiniBar(progress: Float, accent: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(Color.White.copy(alpha = 0.06f))
+            .drawBehind {
+                drawRect(
+                    Brush.horizontalGradient(listOf(accent.copy(alpha = 0.85f), lerp(accent, Color.White, 0.55f))),
+                    size = Size(size.width * progress.coerceIn(0f, 1f), size.height)
+                )
+            }
+    )
+}
+
 private fun lerp(a: Color, b: Color, t: Float) = Color(
     a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, 1f
 )
@@ -378,9 +480,8 @@ private fun seekLabel(deltaMs: Long): String {
 }
 
 /**
- * The controls, in place of Nuvio's PlayerControlsOverlay (same arguments, same events): clock top
- * left, Ses · Altyazı · Kaynak … top right, logo, real quality, bar and times bottom left, the play
- * buttons under them. Keys: Nuvio's (OK plays/pauses, left/right on the bar seek, down hides).
+ * Apple TV + Netflix style controls. Film title top-left, pill buttons + clock top-right.
+ * Info row (name, metadata, badges) and progress bar at the bottom, centered transport below.
  */
 @Composable
 internal fun LeXiaPlayerControls(
@@ -405,7 +506,6 @@ internal fun LeXiaPlayerControls(
     onShowStreamInfo: () -> Unit,
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
-    // Nuvio's other arguments, taken so the call stays Nuvio's; LeXia has no use for them.
     @Suppress("UNUSED_PARAMETER") playerBadges: List<com.nuvio.tv.domain.model.StreamBadge> = emptyList(),
     @Suppress("UNUSED_PARAMETER") onSeekTo: (Long) -> Unit = {},
     @Suppress("UNUSED_PARAMETER") onShowPartyPanel: (() -> Unit)? = null,
@@ -421,7 +521,6 @@ internal fun LeXiaPlayerControls(
     onSubtitleTitleBoundsChanged: (Float, Float) -> Unit = { _, _ -> }
 ) {
     val accent = remember { lexiaAccent() }
-    // Subtitles move up out of the controls' way, as in Nuvio.
     val latestClearance by androidx.compose.runtime.rememberUpdatedState(onSubtitleClearanceChanged)
     val latestBounds by androidx.compose.runtime.rememberUpdatedState(onSubtitleTitleBoundsChanged)
     var clearance by remember { mutableStateOf(0f) }
@@ -437,7 +536,6 @@ internal fun LeXiaPlayerControls(
     var showEngineConfirm by remember { mutableStateOf(false) }
     var quality by remember { mutableStateOf(emptyList<String>()) }
     LaunchedEffect(uiState.currentStreamUrl, uiState.isBuffering, uiState.internalPlayerEngine, uiState.audioTracks.firstOrNull { it.isSelected }?.index) {
-        // The decoder knows the real picture and sound only once playing; ask again a little later.
         repeat(3) {
             if (!uiState.isBuffering) quality = lexiaQuality(viewModel.playerMediaInfo())
             delay(1500)
@@ -452,7 +550,6 @@ internal fun LeXiaPlayerControls(
     }
     val subtitle = uiState.subtitleTracks.firstOrNull { it.isSelected }?.let { lexiaLanguage(it.language) ?: it.name.takeIf { n -> n.isNotBlank() } }
         ?: uiState.selectedAddonSubtitle?.let { lexiaLanguage(it.lang) ?: it.lang }
-    val chips = quality + listOfNotNull(subtitle?.let { "$it altyazı" })
     val source = uiState.currentStreamName?.lineSequence()?.firstOrNull()?.trim()
         ?.replace(Regex("""(?i)\s*[-–|·]\s*(\d{3,4}p|4k|2160p).*$"""), "")?.takeIf { it.isNotBlank() }
 
@@ -465,60 +562,67 @@ internal fun LeXiaPlayerControls(
     val aspect = rememberRawSvgPainter(R.raw.ic_player_aspect_ratio)
 
     val barTarget = if (live) playPauseFocusRequester else progressBarFocusRequester
-    // From the bar, up goes to skip intro / next episode when Nuvio shows them, else to the top row.
     val barUp = progressBarUpFocusRequester ?: topFocus
 
     Box(Modifier.fillMaxSize()) {
+        // Gradient veils (Apple TV style)
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(140.dp)
                 .align(Alignment.TopCenter)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
+                .background(Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.72f),
+                    0.5f to Color.Black.copy(alpha = 0.35f),
+                    1f to Color.Transparent
+                ))
         )
         Box(
             Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.62f)
+                .height(200.dp)
                 .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.55f to Color(0xFF080605).copy(alpha = 0.55f),
-                        1f to Color(0xFF080605).copy(alpha = 0.92f)
-                    )
-                )
+                .background(Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.55f to Color.Black.copy(alpha = 0.42f),
+                    1f to Color.Black.copy(alpha = 0.78f)
+                ))
         )
 
-        LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 56.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
-
-        // Top right: what you change while watching.
+        // Top row: film title left, pills + clock right
         Row(
-            Modifier.align(Alignment.TopEnd).padding(end = 34.dp, top = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = 36.dp, end = 34.dp, top = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val common: @Composable (ImageVector?, Painter?, String?, String, () -> Unit, FocusRequester?) -> Unit =
-                { icon, painter, text, label, click, requester ->
-                    LeXiaButton(
-                        icon = icon, painter = painter, text = text, label = label, onClick = click, showLabel = true,
-                        focusRequester = requester, down = barTarget, onFocused = onResetHideTimer, accent = accent
-                    )
-                }
-            if (uiState.audioTracks.isNotEmpty()) common(null, audio, null, "Ses", onShowAudioDialog, null)
-            if (uiState.subtitleTracks.isNotEmpty() || uiState.addonSubtitles.isNotEmpty()) common(null, subs, null, "Altyazı", onShowSubtitleDialog, null)
-            common(null, sourceIcon, null, "Kaynak", onShowSourcesPanel, topFocus)
-            if (uiState.currentSeason != null && uiState.currentEpisode != null) common(Icons.AutoMirrored.Filled.List, episodesIcon, null, "Bölümler", onShowEpisodesPanel, null)
-            if (uiState.chapters.isNotEmpty() && !live) common(Icons.AutoMirrored.Filled.Toc, null, null, "Sahneler", onShowChaptersPanel, null)
-            common(Icons.Default.Speed, null, if (uiState.playbackSpeed != 1f) formatSpeed(uiState.playbackSpeed) else null, "Hız", onShowSpeedDialog, null)
-            common(Icons.Default.AspectRatio, aspect, null, "Görüntü", onToggleAspectRatio, null)
-            LeXiaButton(
-                icon = Icons.Default.Info, label = "Bilgi", onClick = onShowStreamInfo, showLabel = true,
-                focusRequester = streamInfoFocusRequester, down = barTarget, onFocused = onResetHideTimer, accent = accent
+            Text(
+                uiState.title.uppercase(),
+                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.9.sp, color = Color.White.copy(alpha = 0.92f)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp)
             )
-            common(Icons.Default.Sync, null, null, if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) "ExoPlayer'a geç" else "MPV'ye geç", { showEngineConfirm = true }, null)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (uiState.audioTracks.isNotEmpty()) PillButton(painter = audio, label = "Ses", onClick = onShowAudioDialog, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                if (uiState.subtitleTracks.isNotEmpty() || uiState.addonSubtitles.isNotEmpty()) PillButton(painter = subs, label = "Altyazı", onClick = onShowSubtitleDialog, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                PillButton(painter = sourceIcon, label = "Kaynak", onClick = onShowSourcesPanel, focusRequester = topFocus, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                if (uiState.currentSeason != null && uiState.currentEpisode != null) PillButton(painter = episodesIcon, label = "Bölümler", onClick = onShowEpisodesPanel, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                if (uiState.chapters.isNotEmpty() && !live) PillButton(icon = Icons.AutoMirrored.Filled.Toc, label = "Sahneler", onClick = onShowChaptersPanel, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                PillButton(icon = Icons.Default.Speed, text = if (uiState.playbackSpeed != 1f) formatSpeed(uiState.playbackSpeed) else null, label = "Hız", onClick = onShowSpeedDialog, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                PillButton(painter = aspect, label = "Görüntü", onClick = onToggleAspectRatio, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                PillButton(icon = Icons.Default.Info, label = "Bilgi", onClick = onShowStreamInfo, focusRequester = streamInfoFocusRequester, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                PillButton(icon = Icons.Default.Sync, label = if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) "ExoPlayer" else "MPV", onClick = { showEngineConfirm = true }, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+                LeXiaClock(style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Light, letterSpacing = 0.3.sp))
+            }
         }
 
+        // Bottom section
         Column(
             Modifier
                 .align(Alignment.BottomStart)
@@ -527,28 +631,52 @@ internal fun LeXiaPlayerControls(
                     val root = c.findRootCoordinates().size.height
                     if (root > 0) clearance = (root - c.boundsInRoot().top).coerceAtLeast(0f)
                 }
-                .padding(start = 56.dp, end = 56.dp, bottom = 26.dp)
+                .padding(start = 36.dp, end = 36.dp, bottom = 22.dp)
         ) {
+            // Info row: film name + metadata left, quality badges right
             AnimatedVisibility(uiState.activeSkipInterval == null, enter = fadeIn(tween(150)), exit = fadeOut(tween(150))) {
-                Column {
-                    val series = uiState.currentSeason != null && uiState.currentEpisode != null
-                    LogoOrTitle(uiState.logo, if (series) uiState.contentName ?: uiState.title else uiState.title, if (series) 52 else 62)
-                    if (series) {
-                        val name = uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column(Modifier.weight(1f, fill = false)) {
+                        val series = uiState.currentSeason != null && uiState.currentEpisode != null
                         Text(
-                            "${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm" + (name?.let { " · $it" } ?: ""),
-                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.9f)),
+                            if (series) uiState.contentName ?: uiState.title else uiState.title,
+                            style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.2.sp),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 6.dp)
+                            overflow = TextOverflow.Ellipsis
                         )
+                        val meta = buildString {
+                            if (series) {
+                                append("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
+                                uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
+                            } else {
+                                uiState.releaseYear?.takeIf { it.isNotBlank() }?.let { append(it) }
+                                source?.let { if (isNotBlank()) append(" · "); append(it) }
+                            }
+                        }
+                        if (meta.isNotBlank()) {
+                            Text(
+                                meta,
+                                style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = Dim, letterSpacing = 0.2.sp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    QualityChips(chips, source)
+                    val badgeLabels = quality + listOfNotNull(subtitle?.let { it })
+                    if (badgeLabels.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            badgeLabels.forEachIndexed { i, label -> Badge(label, isAccent = i == 0) }
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(if (live) 18.dp else 8.dp))
 
+            // Progress bar
             if (!live) {
                 Box(
                     Modifier
@@ -605,42 +733,43 @@ internal fun LeXiaPlayerControls(
                     )
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatTime(timeline.currentPosition), style = TextStyle(fontSize = 14.sp, color = Color.White.copy(alpha = 0.88f)))
+                    Text(formatTime(timeline.currentPosition), style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = Dim))
                     if (timeline.duration > 0) {
                         val left = (timeline.duration - timeline.currentPosition).coerceAtLeast(0)
                         Text(
                             "${lexiaSpan(left)} kaldı · bitiş ${endTimeText(left, uiState.playbackSpeed)}",
-                            style = TextStyle(fontSize = 14.sp, color = lerp(accent, Color.White, 0.6f))
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = lerp(accent, Color.White, 0.6f))
                         )
                     }
                 }
             } else {
+                Spacer(Modifier.height(18.dp))
                 Text("Canlı · ${lexiaSpan(timeline.watchedDurationMs)} izlendi", style = TextStyle(fontSize = 14.sp, color = Color.White.copy(alpha = 0.88f)))
             }
 
+            // Centered transport controls
             Row(
-                Modifier.fillMaxWidth().padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                Modifier.fillMaxWidth().padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val up = if (live) (progressBarUpFocusRequester ?: topFocus) else progressBarFocusRequester
-                if (!live) LeXiaButton(icon = Icons.Default.Replay10, label = "10 sn geri", onClick = onSeekBackward, up = up, onDown = onHideControls, onFocused = onResetHideTimer, accent = accent)
-                LeXiaButton(
-                    painter = if (uiState.isPlaying) pause else play,
-                    icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    label = if (uiState.isPlaying) "Durdur" else "Oynat",
-                    big = true,
+                val tUp = if (live) (progressBarUpFocusRequester ?: topFocus) else progressBarFocusRequester
+                if (!live) TransportButton(icon = Icons.Default.Replay10, label = "10 sn geri", onClick = onSeekBackward, up = tUp, onDown = onHideControls, onFocused = onResetHideTimer)
+                TransportPlayButton(
+                    isPlaying = uiState.isPlaying,
                     onClick = onPlayPause,
                     focusRequester = playPauseFocusRequester,
-                    up = up,
+                    up = tUp,
                     onDown = onHideControls,
                     onFocused = onResetHideTimer,
-                    accent = accent
+                    accent = accent,
+                    play = play,
+                    pause = pause
                 )
-                if (!live) LeXiaButton(icon = Icons.Default.Forward10, label = "10 sn ileri", onClick = onSeekForward, up = up, onDown = onHideControls, onFocused = onResetHideTimer, accent = accent)
+                if (!live) TransportButton(icon = Icons.Default.Forward10, label = "10 sn ileri", onClick = onSeekForward, up = tUp, onDown = onHideControls, onFocused = onResetHideTimer)
                 val showNext = uiState.nextEpisode?.hasAired == true &&
                     (uiState.postPlayMode as? PostPlayMode.AutoPlay)?.let { !it.searching && it.countdownSec == null } != false
-                if (showNext) LeXiaButton(icon = Icons.Default.SkipNext, label = "Sonraki bölüm", showLabel = true, onClick = onPlayNextEpisode, up = up, onDown = onHideControls, onFocused = onResetHideTimer, accent = accent)
+                if (showNext) TransportButton(icon = Icons.Default.SkipNext, label = "Sonraki", showLabel = true, onClick = onPlayNextEpisode, up = tUp, onDown = onHideControls, onFocused = onResetHideTimer)
             }
         }
     }
@@ -663,7 +792,7 @@ internal fun LeXiaPlayerControls(
 private fun formatSpeed(rate: Float): String =
     if (rate % 1f == 0f) "${rate.toInt()}×" else "${"%.2f".format(Locale.US, rate).trimEnd('0').trimEnd('.')}×"
 
-/** While seeking with the controls hidden: just the bar, the times and the bubble. */
+/** While seeking with the controls hidden: radial glow + bar at the bottom. */
 @Composable
 internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerChapter>, playbackSpeed: Float) {
     val accent = remember { lexiaAccent() }
@@ -672,15 +801,15 @@ internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerC
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
-            .padding(start = 56.dp, end = 56.dp, top = 40.dp, bottom = 28.dp)
+            .padding(start = 36.dp, end = 36.dp, top = 40.dp, bottom = 28.dp)
     ) {
         Column {
             LeXiaBar(timeline.currentPosition, timeline.duration, timeline.bufferedPosition, chapters, accent, true, null)
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(timeline.currentPosition), style = TextStyle(fontSize = 14.sp, color = Color.White))
+                Text(formatTime(timeline.currentPosition), style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = Color.White))
                 if (timeline.duration > 0) {
                     val left = (timeline.duration - timeline.currentPosition).coerceAtLeast(0)
-                    Text("${lexiaSpan(left)} kaldı · bitiş ${endTimeText(left, playbackSpeed)}", style = TextStyle(fontSize = 14.sp, color = lerp(accent, Color.White, 0.6f)))
+                    Text("${lexiaSpan(left)} kaldı · bitiş ${endTimeText(left, playbackSpeed)}", style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = lerp(accent, Color.White, 0.6f)))
                 }
             }
         }
@@ -688,8 +817,8 @@ internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerC
 }
 
 /**
- * Paused for a while (Nuvio decides when): the film's screen, Apple TV style. Logo, what it is about,
- * the cast with their faces, and where you are. Any key goes back to the film (Nuvio handles keys).
+ * Paused for a while: centered film title, metadata dots, description, glass play button.
+ * Big time bottom-left, remaining bottom-right, thin accent mini-bar at the very bottom.
  */
 @Composable
 internal fun LeXiaPauseOverlay(
@@ -701,69 +830,102 @@ internal fun LeXiaPauseOverlay(
     val accent = remember { lexiaAccent() }
     AnimatedVisibility(visible, enter = fadeIn(tween(450)), exit = fadeOut(tween(220)), modifier = modifier) {
         val timeline by viewModel.playbackTimeline.collectAsState()
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color(0xFF060504).copy(alpha = 0.93f),
-                        0.5f to Color(0xFF060504).copy(alpha = 0.75f),
-                        1f to Color(0xFF060504).copy(alpha = 0.25f)
-                    )
-                )
-        ) {
-            if (!uiState.isLive) LeXiaClock(Modifier.align(Alignment.TopStart).padding(start = 56.dp, top = 30.dp), TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium))
-            val tag = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.7.sp, color = lerp(accent, Color.White, 0.45f))
-            Column(Modifier.padding(start = 56.dp, top = 64.dp).width(430.dp)) {
+        val progress = if (timeline.duration > 0) (timeline.currentPosition.toFloat() / timeline.duration).coerceIn(0f, 1f) else 0f
+        Box(Modifier.fillMaxSize()) {
+            // Blurred dark backdrop
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.65f)))
+
+            // Centered content
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .widthIn(max = 600.dp)
+                    .padding(horizontal = 36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 val series = uiState.currentSeason != null && uiState.currentEpisode != null
-                LogoOrTitle(uiState.logo, if (series) uiState.contentName ?: uiState.title else uiState.title, 72)
-                Spacer(Modifier.height(16.dp))
-                Text("DURAKLATILDI", style = tag)
-                if (series) {
-                    Text(
-                        "${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm" +
-                            (uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
-                        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                val filmTitle = if (series) uiState.contentName ?: uiState.title else uiState.title
+
+                // Film title (large, light weight)
+                Text(
+                    filmTitle,
+                    style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.6.sp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+
+                // Metadata row with dots
+                val metaItems = buildList {
+                    uiState.releaseYear?.takeIf { it.isNotBlank() }?.let { add(it) }
+                    if (timeline.duration > 0) add(lexiaSpan(timeline.duration))
+                    if (series) {
+                        add("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
+                        uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { add(it) }
+                    }
                 }
-                (LeXiaCinema.description.takeIf { it.isNotBlank() && LeXiaCinema.descriptionOf == (if (uiState.currentSeason != null && uiState.currentEpisode != null) "${uiState.currentSeason}:${uiState.currentEpisode}" else "") } ?: uiState.description)?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = TextStyle(fontSize = 15.sp, lineHeight = 23.sp, color = Color.White.copy(alpha = 0.88f)),
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-                val facts = listOfNotNull(uiState.releaseYear?.takeIf { it.isNotBlank() }, timeline.duration.takeIf { it > 0 }?.let(::lexiaSpan))
-                if (facts.isNotEmpty()) {
-                    Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        facts.forEach {
-                            Text(
-                                it,
-                                style = TextStyle(fontSize = 12.sp, color = Color.White),
-                                modifier = Modifier.background(Color.White.copy(alpha = 0.13f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
+                if (metaItems.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        metaItems.forEachIndexed { i, item ->
+                            if (i > 0) Box(Modifier.size(3.dp).background(Dim2, CircleShape))
+                            Text(item, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, color = Dim))
                         }
                     }
                 }
-                if (uiState.castMembers.isNotEmpty()) {
-                    Text("OYUNCULAR", style = tag, modifier = Modifier.padding(top = 22.dp, bottom = 10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        uiState.castMembers.take(5).forEach { CastFace(it, accent) }
-                    }
+
+                // Description
+                (LeXiaCinema.description.takeIf { it.isNotBlank() && LeXiaCinema.descriptionOf == (if (series) "${uiState.currentSeason}:${uiState.currentEpisode}" else "") } ?: uiState.description)?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        it,
+                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Light, lineHeight = 21.sp, color = Color.White.copy(alpha = 0.45f)),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 480.dp)
+                    )
+                }
+
+                // Glass play button
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.20f), CircleShape)
+                ) {
+                    Icon(Icons.Default.PlayArrow, "Devam et", tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
+
+            // Bottom: big time left, remaining right
             if (!uiState.isLive && timeline.duration > 0) {
                 val left = (timeline.duration - timeline.currentPosition).coerceAtLeast(0)
-                Column(Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 40.dp), horizontalAlignment = Alignment.End) {
-                    Text(formatTime(timeline.currentPosition), style = TextStyle(fontSize = 34.sp, fontWeight = FontWeight.Light, color = Color.White))
-                    Text("${lexiaSpan(left)} kaldı · bitiş ${endTimeText(left, uiState.playbackSpeed)}", style = TextStyle(fontSize = 14.sp, color = Color.White.copy(alpha = 0.7f)))
-                    Text("OK ile devam", style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f)), modifier = Modifier.padding(top = 10.dp))
+                // Big time bottom-left
+                Text(
+                    formatTime(timeline.currentPosition),
+                    style = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.ExtraLight, color = Color.White.copy(alpha = 0.85f)),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 24.dp)
+                )
+                // Remaining + end time bottom-right
+                Column(
+                    Modifier.align(Alignment.BottomEnd).padding(end = 36.dp, bottom = 24.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("${lexiaSpan(left)} kaldı", style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = Dim))
+                    Text("bitiş ${endTimeText(left, uiState.playbackSpeed)}", style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Light, color = Dim2))
                 }
+            }
+
+            // Thin accent mini-bar at the very bottom
+            if (timeline.duration > 0) {
+                MiniBar(progress, accent, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -797,7 +959,7 @@ private fun CastFace(member: MetaCastMember, accent: Color) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
     }
 }
