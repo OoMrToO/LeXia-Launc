@@ -10,6 +10,17 @@ import java.util.Locale
 
 /** Keeps the last crash on the device so it can be read in Settings › Hakkında. */
 class App : Application() {
+    /** The TV runs short of memory: drop the picture cache before Android starts closing things. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level in TRIM_MEMORY_RUNNING_LOW..TRIM_MEMORY_RUNNING_CRITICAL || level >= TRIM_MEMORY_MODERATE) Img.clear()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        Img.clear()
+    }
+
     override fun onCreate() {
         super.onCreate()
         Guard.started(this)

@@ -44,8 +44,8 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         active = true
         finder.execute {
             val source = try {
-                // Full HD: sharp on any TV, light enough to decode beside the home screen.
-                YouTubeStreams.find(youtubeId, 1080, TrailerDecoders::canDecode)
+                // 720p: sharp enough under the dimmed home screen, light for weaker TVs (1080p made them stutter).
+                YouTubeStreams.find(youtubeId, 720, TrailerDecoders::canDecode)
             } catch (_: Exception) {
                 null
             }

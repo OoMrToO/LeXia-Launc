@@ -301,18 +301,13 @@ class ExploreActivity : Activity() {
         val search = ui.iconPill("Ara", R.drawable.ic_search)
         search.setOnClickListener { SearchAll.ask(this, all) }
         filterBar.addView(search)
-        val random = ui.iconPill("🎲 Rastgele", R.drawable.ic_film)
+        // One button each: "Akıllı bul" lives in Süz now, İzlediklerim is on the home screen's top bar.
+        val random = ui.iconPill("Rastgele", R.drawable.ic_dice)
         random.setOnClickListener { randomPick() }
         filterBar.addView(random)
-        val clever = ui.iconPill("Akıllı bul", R.drawable.ic_dice)
-        clever.setOnClickListener { chooseSmart() }
-        filterBar.addView(clever)
-        val mine = ui.iconPill("İzlediklerim", R.drawable.ic_history)
-        mine.setOnClickListener { WatchHistoryActivity.open(this) }
-        filterBar.addView(mine)
         // Trailers of what is shown, one after another, in LeXia's own player.
         if (prefs.trailerInApp) {
-            val run = ui.iconPill("Fragman maratonu", R.drawable.ic_film)
+            val run = ui.iconPill("Maraton", R.drawable.ic_film)
             run.setOnClickListener { chooseMarathon() }
             filterBar.addView(run)
         }
@@ -321,8 +316,8 @@ class ExploreActivity : Activity() {
     private fun randomPick() {
         val candidates = (if (filtering()) all.filter { matches(it) } else all.filter { ofKind(it) }).filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         if (candidates.isEmpty()) { Glass.toast(this, "Mevcut seçimde rastgele öneri bulunamadı"); return }
-        val picked = candidates.random()
-        DetailActivity.open(this, picked, surprise = true, why = "Keşfet seçimlerine göre rastgele seçildi")
+        // The film page's "Başka öner" draws again from the same choice, without going back.
+        Surprise.start(this, candidates, "Keşfet seçimlerine göre")
     }
 
     private fun yearsName() = when (years) {
@@ -368,7 +363,9 @@ class ExploreActivity : Activity() {
             "Durum" to stateName(),
             "Sırala" to sortName(),
             "Yerli / yabancı" to when (origin) { "local" -> "Yerli listesi"; "foreign" -> "Yerli listesi dışında"; else -> "Tümü" },
-            "Yapım ülkesi" to (country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler")
+            "Yapım ülkesi" to (country.takeIf { it.isNotEmpty() }?.let { countryName(it) } ?: "Tüm ülkeler"),
+            // What "Akıllı bul" was: ready-made searches, now inside Süz (one button less on the page).
+            "Hazır seçimler" to (smart?.first ?: "Bu akşam kısa, 8+ bilim kurgu…")
         )
         Dialogs.list(this, "Süz", rows, subtitle = if (kind == "tv") "Diziler" else "Filmler", icon = R.drawable.ic_search) { i ->
             fun apply() {
@@ -376,6 +373,10 @@ class ExploreActivity : Activity() {
                 buildFilters()
                 show()
                 openFilters()
+            }
+            if (i == rows.lastIndex) {
+                chooseSmart()
+                return@list
             }
             when (i) {
                 0 -> {

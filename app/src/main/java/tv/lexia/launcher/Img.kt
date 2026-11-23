@@ -24,7 +24,7 @@ class BitmapCache(megabytes: Int) {
 
 /** Small shared picture cache and loader for TMDB images. */
 object Img {
-    private val cache = object : LruCache<String, Bitmap>(48 * 1024 * 1024) {
+    private val cache = object : LruCache<String, Bitmap>((minOf(48L, Runtime.getRuntime().maxMemory() / 1024 / 1024 / 8) * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 

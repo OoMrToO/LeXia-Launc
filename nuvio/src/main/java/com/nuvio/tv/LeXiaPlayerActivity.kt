@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -63,10 +64,28 @@ class LeXiaPlayerActivity : ComponentActivity() {
                     }
                 )
                 if (curtain) Curtain()
+                if (quickFailMs > 0) QuickFail(viewModel, quickFailMs)
                 }
             }
         }
     }
+
+    /**
+     * "Devam et" from a remembered source: a link that has gone stale must not keep the film on
+     * "Yayın başlatılıyor". If nothing plays within [ms], LeXia's source list takes over.
+     */
+    @androidx.compose.runtime.Composable
+    private fun QuickFail(viewModel: PlayerViewModel, ms: Long) {
+        val state by viewModel.uiState.collectAsState()
+        var started by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        if (state.isPlaying && !state.showLoadingOverlay) started = true
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(ms)
+            if (!started) answer(RESULT_FAILED, null, null, null)
+        }
+    }
+
+    private val quickFailMs: Long get() = intent.getStringExtra(EXTRA_QUICK_FAIL)?.toLongOrNull() ?: 0L
 
     override fun onResume() {
         super.onResume()
@@ -133,6 +152,8 @@ class LeXiaPlayerActivity : ComponentActivity() {
         const val RESULT_VIDEO_ID = "lexia.player.videoId"
         const val RESULT_SEASON = "lexia.player.season"
         const val RESULT_EPISODE = "lexia.player.episode"
+        /** Milliseconds to wait for the picture before giving up on a remembered source. */
+        const val EXTRA_QUICK_FAIL = "lexia.player.quickFail"
 
         /** LeXia's record of where films stop; set before [intent] is started. */
         @Volatile

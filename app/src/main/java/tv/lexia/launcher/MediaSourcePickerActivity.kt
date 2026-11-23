@@ -980,6 +980,8 @@ class MediaSourcePickerActivity : Activity() {
             status.text = e.message ?: "Oynatıcı açılamadı."
             return
         }
+        // A remembered source ("Devam et") gets 12 s to show the picture; then the list opens instead.
+        if (resumeTry?.url == stream.url) intent.putExtra(LeXiaPlayerActivity.EXTRA_QUICK_FAIL, "12000")
         playing = stream
         focusedUrl = stream.url
         startActivityForResult(intent, REQUEST_PLAY)
@@ -1047,6 +1049,8 @@ class MediaSourcePickerActivity : Activity() {
             filename = stream.fileName.takeIf { it.isNotBlank() },
             subtitles = subtitles
         )
+        // A remembered source ("Devam et") gets 12 s to show the picture; then the list opens instead.
+        if (resumeTry?.url == stream.url) intent.putExtra(LeXiaPlayerActivity.EXTRA_QUICK_FAIL, "12000")
         playing = stream
         focusedUrl = stream.url
         startActivityForResult(intent, REQUEST_PLAY)
@@ -1083,17 +1087,12 @@ class MediaSourcePickerActivity : Activity() {
                     if (remembered("choices") == signature(stream)) remember("choices", "")
                 }
                 if (stream != null && resumed != null && stream.url == resumed.url) {
-                    // The last source no longer opens (its address expired): another one goes on
-                    // from the same minute by itself, as soon as the search has one.
+                    // The last source no longer opens (its address expired, or it was too slow): the
+                    // list opens, and whichever source is chosen goes on from the same minute.
                     val key = mediaKey
                     worker.submit { memory.forgetPlayed(key) }
-                    auto = Auto.BEST
-                    if (streams.any { it.url !in failed }) {
-                        playBestNow()
-                        return
-                    }
-                    if (!searching) auto = Auto.NO
-                    status.text = if (searching) "Son kaynak açılmadı  ·  Başka kaynak aranıyor…" else status.text
+                    auto = Auto.NO
+                    status.text = if (searching) "Son kaynak açılmadı  ·  Bir kaynak seç (aranıyor…)" else "Son kaynak açılmadı  ·  Bir kaynak seç"
                 }
                 if (streams.isNotEmpty()) renderStreams()
             }

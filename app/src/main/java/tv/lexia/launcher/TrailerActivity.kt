@@ -533,7 +533,7 @@ class TrailerActivity : Activity() {
         if (!webLoaded) {
             load(w, startSec)
         } else {
-            w.evaluateJavascript("play('$id')", null)
+            w.evaluateJavascript("noSubs=${currentTrailerDubbed()};play('$id')", null)
             handler.removeCallbacks(giveUp)
             handler.postDelayed(giveUp, 15000)
         }
@@ -613,7 +613,9 @@ class TrailerActivity : Activity() {
             }
             function onYouTubeIframeAPIReady(){mk(0,'$id',$start);}
             // Subtitles only in Turkish: a Turkish track if the video has one, otherwise none at all.
-            function subs(pl){try{if(!pl||!pl.getOption)return;var l=pl.getOption('captions','tracklist')||[];var t=null;
+            // A Turkish-dubbed trailer: no subtitles at all (noSubs, set by the app for each trailer).
+            var noSubs=${currentTrailerDubbed()};
+            function subs(pl){try{if(!pl||!pl.getOption)return;var l=noSubs?[]:(pl.getOption('captions','tracklist')||[]);var t=null;
               for(var i=0;i<l.length;i++){if(String(l[i].languageCode||'').indexOf('tr')===0){t=l[i];break;}}
               if(t){pl.setOption('captions','track',{languageCode:t.languageCode});}
               else{pl.setOption('captions','track',{});pl.unloadModule('captions');pl.unloadModule('cc');}}catch(x){}}
@@ -895,9 +897,9 @@ class TrailerActivity : Activity() {
                 val height = maxHeight
                 val wantsHdr = hdr
                 finder.execute { YouTubeStreams.find(next, height, TrailerDecoders::canDecode, wantsHdr) }
-            } else {
-                web?.evaluateJavascript("prep('$next')", null)
             }
+            // The YouTube page gets no second hidden player any more: two players at once froze and
+            // closed LeXia on the TV during marathons. The next one loads when its turn comes.
         }
         center.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setDuration(D.MED).start()
         status.animate().alpha(0f).setDuration(D.MED).start()
