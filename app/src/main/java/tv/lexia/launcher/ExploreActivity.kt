@@ -193,8 +193,11 @@ class ExploreActivity : Activity() {
         scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
-        scroll.clipChildren = false
+        // Rows that scroll up go under the showcase, not over its words; a little room on top keeps
+        // the first row's lifted poster whole.
+        scroll.clipChildren = true
         scroll.clipToPadding = false
+        scroll.setPadding(0, ui.u(24), 0, 0)
         scroll.addView(grid, FrameLayout.LayoutParams(m, w))
         page.addView(scroll, ui.ll(m, 0, left = -20, right = -20, weight = 1f))
         frame.addView(page, ui.fl(m, m))
@@ -794,7 +797,12 @@ class ExploreActivity : Activity() {
             more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, minScore = 8.0) } else null)
         addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }, style = Style.WIDE,
             more = if (!sub) { pg: Int -> TmdbDiscover.upcoming(kind, pg) } else null)
-        addRow(if (kind == "tv") "Yerli diziler" else "Yerli filmler", mine.filter { from(it, "local") })
+        // Turkey's own: today's list first (newest first), then TMDB's newest Turkish ones at the row's end.
+        addRow(
+            if (kind == "tv") "Yerli diziler" else "Yerli filmler",
+            mine.filter { from(it, "local") }.sortedByDescending { it.year },
+            more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, newest = true, country = "TR") } else null
+        )
         addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
         val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") && inGenrePage(it) }.distinctBy { seenKey(it) }
             .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
