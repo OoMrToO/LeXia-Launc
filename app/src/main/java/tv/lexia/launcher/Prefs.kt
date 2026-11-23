@@ -272,6 +272,8 @@ class Prefs(ctx: Context) {
     var movieNightShown: Long get() = p.getLong("movieNightShown", 0L); set(v) = p.edit().putLong("movieNightShown", v).apply()
     /** The week ("yyyy-ww") whose weekend guide opened by itself. */
     var weekendSeen: String get() = str("weekendSeen"); set(v) = putStr("weekendSeen", v)
+    /** Hafta sonu programı: this week's films for Friday evening, Saturday and Sunday (JSON). */
+    var weekendPlan: String get() = str("weekendPlan"); set(v) = putStr("weekendPlan", v)
     /** The morning card ("Günaydın") after the first start of the day. */
     var morningCard: Boolean get() = bool("morningCard", true); set(v) = putBool("morningCard", v)
     /** Day ("yyyy-MM-dd") the morning card was shown. */

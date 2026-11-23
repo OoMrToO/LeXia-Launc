@@ -3999,7 +3999,9 @@ class MainActivity : Activity() {
     }
 
     private fun autoNext() {
-        val busy = menu != null || moving != null || trailerBtn.hasFocus() || listBtn.hasFocus() || !hasWindowFocus()
+        // Down in the rows the top half belongs to the poster under the remote (HomePeek): the
+        // film of the day does not turn behind it while browsing.
+        val busy = menu != null || moving != null || trailerBtn.hasFocus() || listBtn.hasFocus() || !hasWindowFocus() || level > 0
         val on = prefs.showPicks && (prefs.autoRotate || idle)
         if (on && picks.size > 1 && !busy) next() else schedule()
     }
@@ -4507,6 +4509,12 @@ class MainActivity : Activity() {
         handler.postDelayed(nightTick, 900L)
         handler.removeCallbacks(weekendCheck)
         handler.postDelayed(weekendCheck, 2500L)
+        // The weekend plan: today's film, said once a day.
+        handler.postDelayed({
+            if (!isFinishing && hasWindowFocus()) WeekendActivity.todayOnce(this)?.let {
+                Glass.toast(this, "Bugünkü programın: $it", long = true)
+            }
+        }, 4_000L)
         updateGreeting()
         updateNet()
         if (Cache.clearRequested) {
