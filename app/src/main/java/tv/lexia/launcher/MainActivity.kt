@@ -1438,6 +1438,14 @@ class MainActivity : Activity() {
             out.add(Notice("now:${p.key}:$name", R.drawable.ic_tv, "Artık ${TrailerActivity.locative(name)}: ${p.title}",
                 (if (day == todayStr()) "Bugün geldi" else "Bu hafta geldi") + ". Listende bekliyordu.") { openNowStreaming(p, name) })
         }
+        // A Listem film whose sources were found for the first time while the TV rested: three days.
+        for (p in prefs.watchlist) {
+            if (p.isSeries) continue
+            val at = playback.readyAt(p.key)
+            if (at <= 0L || System.currentTimeMillis() - at > 3 * 86400_000L || playback.isFinished(p.key)) continue
+            out.add(Notice("ready:${p.key}", R.drawable.ic_film, "Artık izlenebilir: ${p.title}",
+                "Kaynağı bulundu. Listende bekliyordu.") { openDetail(p, null, null) })
+        }
         listNudge()?.let { out.add(it) }
         val reminded = prefs.reminders.map { it.key }.toSet()
         for (p in soon.filter { it.key !in reminded }.take(12)) {
@@ -3651,7 +3659,7 @@ class MainActivity : Activity() {
             }
             val got = HashMap<String, Bitmap>()
             // Title logos for the films the hero will show (today's films, and the others when chosen).
-            val heroFilms = (if (prefs.heroSource == "picks") list else list + plat.take(24) + nowList) + topTv
+            val heroFilms = (list + (if ("platform" in prefs.heroKinds) plat.take(24) else emptyList()) + (if ("cinema" in prefs.heroKinds) nowList else emptyList())) + topTv
             for (p in heroFilms) {
                 if (p.logo.isEmpty() || logos.containsKey(p.logo)) continue
                 Net.bitmap("https://image.tmdb.org/t/p/w500" + p.logo, logoWidth, false)
@@ -3720,7 +3728,7 @@ class MainActivity : Activity() {
         var next = (if (match.size >= 3) match else unseen)
             .sortedBy { p -> if (p.genres.any { it in liked }) 0 else if (p.genres.any { it in down }) 2 else 1 }
         // The weather film belongs to today's films; cinema-only and streaming-only stay as chosen.
-        if (prefs.heroSource == "picks" || prefs.heroSource == "mix") {
+        if ("picks" in prefs.heroKinds) {
             moodPick()?.let { m -> next = (next.take(1) + m + next.drop(1)).distinctBy { it.key } }
         }
         // Weeknights after nine: films that end early come first (no setting needed).
@@ -3831,13 +3839,15 @@ class MainActivity : Activity() {
             for (i in 0 until lists.maxOf { it.size }) for (l in lists) l.getOrNull(i)?.let { out.add(it) }
             return out.distinctBy { it.key }.take(max)
         }
-        return when (prefs.heroSource) {
-            "cinema" -> now.ifEmpty { films }
-            "platform" -> turns(stream, daily(series), max = 40).ifEmpty { films }
-            // One of each in turn: today's film, a series, one in cinemas, one new on streaming, one more.
-            "mix" -> turns(daily(films), daily(series), now, stream, more, max = 48)
-            else -> turns(daily(films), daily(series), more, max = 40)
-        }
+        // One of each chosen kind in turn: today's film, a series, one in cinemas, one new on streaming, one more.
+        val kinds = prefs.heroKinds
+        val lists = ArrayList<List<Pick>>()
+        if ("picks" in kinds) lists.add(daily(films))
+        if ("picks" in kinds || "platform" in kinds) lists.add(daily(series))
+        if ("cinema" in kinds) lists.add(now)
+        if ("platform" in kinds) lists.add(stream)
+        if ("picks" in kinds) lists.add(more)
+        return turns(*lists.toTypedArray(), max = 48).ifEmpty { films }
     }
 
     /** "IMDb 7.2  ·  2024" under a poster. */
@@ -4093,7 +4103,7 @@ class MainActivity : Activity() {
                 // The platform's name is on the coloured badge under the title.
                 p.provider.isNotEmpty() -> "PLATFORMLARDA YENİ"
                 p.isSeries -> "HAFTANIN DİZİLERİ"
-                prefs.heroSource != "picks" && cinema.any { it.key == p.key } -> "ŞU AN SİNEMADA"
+                "cinema" in prefs.heroKinds && cinema.any { it.key == p.key } -> "ŞU AN SİNEMADA"
                 pickIndex == 0 -> "GÜNÜN FİLMİ"
                 else -> "BU HAFTA ÖNE ÇIKANLAR"
             }

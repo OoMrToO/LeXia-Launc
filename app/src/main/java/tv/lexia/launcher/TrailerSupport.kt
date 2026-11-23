@@ -134,7 +134,7 @@ internal object TrailerDecoders {
         }
     }
 
-    private fun hasHardwareDecoder(mime: String): Boolean = try {
+    fun hasHardwareDecoder(mime: String): Boolean = try {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
             !info.isEncoder && info.supportedTypes.any { it.equals(mime, true) } &&
                 if (Build.VERSION.SDK_INT >= 29) info.isHardwareAccelerated

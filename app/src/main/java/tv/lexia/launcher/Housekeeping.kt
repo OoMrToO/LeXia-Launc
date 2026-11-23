@@ -77,6 +77,7 @@ internal object Housekeeping {
                     val found = NuvioSearch.streams(app, "movie", key, null, null, prefs.favSource) { }
                     if (found.isNotEmpty()) {
                         memory.keep(key, found)
+                        if (!store.everFound(film.key)) store.markReady(film.key)
                         store.markAvailable(film.key)
                     }
                 }

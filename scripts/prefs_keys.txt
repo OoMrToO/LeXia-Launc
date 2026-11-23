@@ -116,6 +116,7 @@ ${key}_subdelay long
 ${key}_done bool
 ${key}_last text
 ${key}_found long
+${key}_ready long
 playAudioLang text
 playSubLang text
 playSubSmart bool

@@ -403,6 +403,45 @@ object LeXiaNuvio {
         }
     }
 
+    /** LeXia's subtitle looks (Ayarlar › Oynatma ve Takip › Altyazı görünümü): 0 Klasik, 1 Kutulu, 2 Kalın, 3 Sarı. */
+    fun subtitleLook(context: Context): Int {
+        val s = playerSettings(context).subtitleStyle
+        return when {
+            s.textColor == SUB_YELLOW -> 3
+            android.graphics.Color.alpha(s.backgroundColor) > 0 -> 1
+            s.bold -> 2
+            else -> 0
+        }
+    }
+
+    fun setSubtitleLook(context: Context, look: Int) = kotlinx.coroutines.runBlocking {
+        val store = playerSettingsStore(context)
+        store.setSubtitleTextColor(if (look == 3) SUB_YELLOW else android.graphics.Color.WHITE)
+        store.setSubtitleBackgroundColor(if (look == 1) SUB_BOX else android.graphics.Color.TRANSPARENT)
+        store.setSubtitleBackgroundRadius(if (look == 1) 6 else 0)
+        store.setSubtitleOutlineEnabled(look != 1)
+        store.setSubtitleOutlineColor(android.graphics.Color.BLACK)
+        store.setSubtitleOutlineWidth(if (look == 2) 3 else 2)
+        store.setSubtitleBold(look == 2)
+    }
+
+    /** How far above the bottom the subtitles sit, percent (Nuvio: -20…50, default 5). */
+    fun subtitleOffset(context: Context): Int = playerSettings(context).subtitleStyle.verticalOffset
+
+    fun setSubtitleOffset(context: Context, offset: Int) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setSubtitleVerticalOffset(offset)
+    }
+
+    fun subtitleSize(context: Context): Int = playerSettings(context).subtitleStyle.size
+
+    /** Subtitle size, percent (Nuvio: 50…200, default 120). */
+    fun setSubtitleSize(context: Context, percent: Int) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setSubtitleSize(percent)
+    }
+
+    const val SUB_YELLOW = 0xFFFFD54A.toInt()
+    const val SUB_BOX = 0xB4000000.toInt()
+
     private fun playerSettingsStore(context: Context) =
         PlayerSettingsDataStore(dataStoreFactory(context.applicationContext), profileManager, context.applicationContext)
 

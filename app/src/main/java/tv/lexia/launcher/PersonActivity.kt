@@ -35,6 +35,7 @@ class PersonActivity : Activity() {
     private lateinit var ui: Ui
     private val tr = Locale("tr", "TR")
     private lateinit var grid: LinearLayout
+    private lateinit var label: TextView
     private val playback by lazy { MediaPlaybackStore(this) }
     /** Titles watched to the end (İzlediklerim and the "İzledim" mark on a film's page). */
     private var watched: Set<String> = emptySet()
@@ -83,7 +84,7 @@ class PersonActivity : Activity() {
         head.addView(info, ui.ll(0, w, weight = 1f, left = 48))
         page.addView(head, ui.ll(m, w))
 
-        val label = ui.text("FİLMLERİ VE DİZİLERİ", 16, C.TEXT3, 800)
+        label = ui.text("FİLMLERİ VE DİZİLERİ", 16, C.TEXT3, 800)
         label.letterSpacing = 0.12f
         page.addView(label, ui.ll(w, w, top = 46, bottom = 18))
         grid = ui.vbox()
@@ -163,6 +164,9 @@ class PersonActivity : Activity() {
             grid.addView(ui.text("Film bulunamadı.", 22, C.TEXT2, 400))
             return
         }
+        // How many of them the viewer has watched to the end (the posters carry "İzledin").
+        val seen = works.count { it.key in watched || WatchMarks.of(playback, it)?.finished == true }
+        if (seen > 0) label.text = "FİLMLERİ VE DİZİLERİ  ·  $seen TANESİNİ İZLEDİN"
         val cols = 7
         var row: LinearLayout? = null
         var first: View? = null

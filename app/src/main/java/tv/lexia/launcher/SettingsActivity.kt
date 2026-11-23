@@ -339,7 +339,13 @@ class SettingsActivity : Activity() {
             return
         }
         previewBox.removeAllViews()
-        previewBox.addView(if (kind == "saver") preview.saver() else preview.home(), ui.fl(ui.match, ui.match))
+        previewBox.addView(when (kind) {
+            "saver" -> preview.saver()
+            "subtitle" -> preview.subtitle(
+                LeXiaNuvio.subtitleLook(this), LeXiaNuvio.subtitleSize(this), LeXiaNuvio.subtitleOffset(this)
+            )
+            else -> preview.home()
+        }, ui.fl(ui.match, ui.match))
     }
 
     /** Settings that take effect outside this screen right away. */
@@ -725,6 +731,61 @@ class SettingsActivity : Activity() {
         )
     }
 
+    private val heroKindNames = mapOf("picks" to "Günün filmleri", "cinema" to "Sinemada şimdi", "platform" to "Platformlarda yeni")
+
+    /** "Ana ekrandaki filmler": opens the page where any of the three kinds is turned on. */
+    private fun heroKindsRow() = sub(
+        "Ana ekrandaki filmler", "Ana ekranın büyük alanında hangi filmler dönsün; birden fazlasını seçebilirsin.",
+        { heroKindsPage() },
+        value = {
+            val k = prefs.heroKinds
+            if (k.size == Prefs.HERO_KINDS.size) "Hepsi" else Prefs.HERO_KINDS.filter { it in k }.joinToString(" + ") { heroKindNames[it] ?: it }
+        }
+    )
+
+    private fun heroKindsPage() = Page("Ana ekrandaki filmler", R.drawable.ic_film, keys = listOf("heroSource")) {
+        fun kind(id: String, desc: String) = toggle(heroKindNames.getValue(id), desc, { id in prefs.heroKinds }, { on ->
+            val now = prefs.heroKinds
+            // At least one kind stays on: the big area is never empty.
+            if (on || now.size > 1) prefs.heroKinds = if (on) now + id else now - id
+        })
+        listOf(
+            Note("Seçtiklerin sırayla döner. En az biri açık kalır."),
+            kind("picks", "Her gün seçilen 20 film ve haftanın dizileri."),
+            kind("cinema", "Türkiye'de şu an vizyondaki filmler."),
+            kind("platform", "Netflix, Disney+, Prime Video gibi platformlara yeni gelenler; TV'nde uygulaması kurulu olanlar önce.")
+        )
+    }
+
+    /** Nuvio's subtitle sizes (percent) for LeXia's four steps. */
+    private val subPercents = listOf(95, 120, 145, 175)
+
+    private fun subtitleLookPage() = Page("Altyazı görünümü", R.drawable.ic_eye, preview = "subtitle") {
+        listOf(
+            Note("Film oynarken altyazılar böyle görünür. Seçtikçe soldaki resimde hemen görürsün."),
+            choice(
+                "Stil",
+                "Klasik: beyaz, ince siyah kenarlı. Kutulu: koyu yarı saydam zemin üstünde. Kalın: kalın harf, belirgin kenar. Sarı: eski sinema altyazısı gibi.",
+                listOf(0, 1, 2, 3), SUB_LOOKS,
+                { LeXiaNuvio.subtitleLook(this) }, { LeXiaNuvio.setSubtitleLook(this, it) }
+            ),
+            choice(
+                "Boyut",
+                "Oynatıcıdaki Altyazı ayarı düğmesinden de değişir; orada altyazının zamanlaması da düzeltilebilir.",
+                listOf(0, 1, 2, 3), listOf("Küçük", "Normal", "Büyük", "Çok büyük"),
+                { LeXiaNuvio.subtitleSize(this).let { now -> subPercents.indices.minByOrNull { kotlin.math.abs(subPercents[it] - now) } ?: 1 } },
+                { prefs.playSubSize = it; LeXiaNuvio.setSubtitleSize(this, subPercents[it]) }
+            ),
+            choice(
+                "Konum",
+                "Altyazının ekranın altından ne kadar yukarıda duracağı. Siyah bantlı filmlerde Yüksek, yazıyı görüntünün içine alır.",
+                listOf(0, 1, 2), listOf("Alçak", "Normal", "Yüksek"),
+                { LeXiaNuvio.subtitleOffset(this).let { now -> SUB_OFFSETS.indices.minByOrNull { kotlin.math.abs(SUB_OFFSETS[it] - now) } ?: 1 } },
+                { LeXiaNuvio.setSubtitleOffset(this, SUB_OFFSETS[it]) }
+            )
+        )
+    }
+
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
         keys = listOf("favSource", "playAutoSource", "cinemaMode", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
@@ -802,12 +863,8 @@ class SettingsActivity : Activity() {
                 "Örneğin Türkçe dublajlı bir filmde Türkçe altyazı kendiliğinden açılmaz. Kapalıyken altyazı her zaman açılır.",
                 { prefs.playSubSmart }, { prefs.playSubSmart = it }
             ),
-            choice(
-                "Altyazı boyutu",
-                "Oynatıcıdaki Altyazı ayarı düğmesinden de değişir; orada altyazının zamanlaması da düzeltilebilir.",
-                listOf(0, 1, 2, 3), listOf("Küçük", "Normal", "Büyük", "Çok büyük"),
-                { prefs.playSubSize }, { prefs.playSubSize = it }
-            ),
+            sub("Altyazı görünümü", "Altyazının stili, boyutu ve ekrandaki yeri; önizlemeyle.", { subtitleLookPage() },
+                value = { SUB_LOOKS[LeXiaNuvio.subtitleLook(this).coerceIn(0, SUB_LOOKS.size - 1)] }),
             Note("Harfleri bozuk gelen Türkçe altyazılar (ş, ğ, ı yerine başka işaretler) oynatılırken kendiliğinden düzeltilir."),
             Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",
@@ -838,13 +895,7 @@ class SettingsActivity : Activity() {
                 listOf("film", "plain"), listOf("Film görselleri", "Sade"),
                 { prefs.background }, { prefs.background = it }
             ),
-            choice(
-                "Ana ekrandaki filmler",
-                "Günün filmleri: her gün seçilen 20 film. Sinemada şimdi: Türkiye'de vizyondakiler. Platformlarda yeni: " +
-                    "Netflix, Disney+, Prime Video gibi platformlara yeni gelenler; TV'nde uygulaması kurulu olan platformlar önce. Karışık: hepsi sırayla.",
-                listOf("picks", "cinema", "platform", "mix"), listOf("Günün filmleri", "Sinemada şimdi", "Platformlarda yeni", "Karışık"),
-                { prefs.heroSource }, { prefs.heroSource = it }
-            ),
+            heroKindsRow(),
             choice(
                 "Uygulama kartları", "Çok uygulaman varsa küçük kartlarla hepsi tek bakışta görünür.",
                 listOf(0, 1, 2), listOf("Küçük", "Orta", "Büyük"),
@@ -882,8 +933,8 @@ class SettingsActivity : Activity() {
             ),
             toggle("Hava durumu", "Saatin yanında hava ikonu ve derece.", { prefs.weather }, { prefs.weather = it }),
             toggle(
-                "Ana ekranda sessiz fragman",
-                "Bir film birkaç saniye ekranda kalınca arka plandaki görseli sessiz fragmanına döner; fragman bitince sıradaki filme geçer. Hafif modda kapalıdır.",
+                "Arkada fragman oynasın",
+                "Ana ekranda, afişlerde, Keşfet vitrininde ve film sayfasında bir film birkaç saniye seçili kalınca görselinin yerine sessiz fragmanı oynar. Kapalıyken hiçbir yerde kendiliğinden fragman oynamaz. Hafif modda kapalıdır.",
                 { prefs.heroTrailer }, { prefs.heroTrailer = it }
             ),
             toggle(
@@ -995,6 +1046,7 @@ class SettingsActivity : Activity() {
             Triple("soon", "Yakında vizyonda", "Önümüzdeki günlerde vizyona girecek filmler."),
             Triple("plat", "Platformlara gelenler", "Seçtiğin platformların yeni yapımları."),
             Triple("now", "Artık platformda", "Listem'deki bir film bir platforma gelince."),
+            Triple("ready", "Artık izlenebilir", "Listem'deki bir filmin kaynağı ilk kez bulununca."),
             Triple("night", "Film gecesi", "Planladığın film gecesine kalan süre."),
             Triple("listold", "Listende bekleyenler", "Hafta sonu, Listem'de uzun süredir bekleyen bir film.")
         )
@@ -1020,14 +1072,7 @@ class SettingsActivity : Activity() {
             chevron = true, action = { PlatformMonthActivity.open(this) }))
         items.add(Note("Ana ekrandaki filmler, ekran koruyucu, zildeki bildirimler ve hafta sonu rehberi seçtiğin " +
             "platformların yeni yapımlarını gösterir. Hiçbirini seçmezsen hepsi gelir; TV'nde uygulaması kurulu olanlar önde."))
-        items.add(
-            choice(
-                "Ana ekrandaki filmler",
-                "Karışık: günün filmleri, sinemadakiler ve platformlara yeni gelenler sırayla.",
-                listOf("mix", "picks", "cinema", "platform"), listOf("Karışık", "Günün filmleri", "Sinemada şimdi", "Platformlarda yeni"),
-                { prefs.heroSource }, { prefs.heroSource = it }
-            )
-        )
+        items.add(heroKindsRow())
         items.add(Header("PLATFORMLARIM"))
         if (names.isEmpty()) {
             items.add(Note("Bugünün listesi henüz gelmedi; birazdan tekrar bak."))
@@ -1466,6 +1511,10 @@ class SettingsActivity : Activity() {
             ),
             Row("Film listesi", "Günün filmleri her sabah yenilenir.", value = { dayText(prefs.pickDate) }),
             Row(
+                "Bu TV",
+                TvAbility.of(this).summary + ". Kaynak listesi bu TV'nin gösteremediği kaynakları sona alır.",
+            ),
+            Row(
                 "En yeni sürüm",
                 "Yayındaki en yeni sürüm. Yeni bir sürüm varsa OK ile kurulur.",
                 value = {
@@ -1703,5 +1752,10 @@ class SettingsActivity : Activity() {
             ?.hostAddress
     } catch (e: Exception) {
         null
+    }
+
+    companion object {
+        private val SUB_LOOKS = listOf("Klasik", "Kutulu", "Kalın", "Sarı")
+        private val SUB_OFFSETS = listOf(0, 5, 12)
     }
 }

@@ -438,6 +438,9 @@ class DetailActivity : Activity() {
             val episodesLabel = label("BÖLÜMLER")
             parts.add("Bölümler" to episodesLabel)
             col.addView(episodesLabel, ui.ll(w, w, top = 10))
+            episodeSummary = ui.text("", 19, C.TEXT2, 500)
+            episodeSummary.visibility = View.GONE
+            col.addView(episodeSummary, ui.ll(w, w, top = 6))
             seasonRow = ui.hbox()
             col.addView(rowOf(seasonRow), rowParams())
             episodeRow = ui.hbox()
@@ -668,6 +671,7 @@ class DetailActivity : Activity() {
     private lateinit var seasonRow: LinearLayout
     private lateinit var episodeRow: LinearLayout
     private lateinit var episodeNote: TextView
+    private lateinit var episodeSummary: TextView
     private var episodeList: List<MediaEpisode> = emptyList()
     private var shownSeason = -1
     private val turkishSeasons = HashSet<Int>()
@@ -692,10 +696,50 @@ class DetailActivity : Activity() {
                 val lastSeason = Regex(":(\\d+):\\d+$").find(playback.last(film.key))?.groupValues?.get(1)?.toIntOrNull()
                 val seasons = seasonsOf(found)
                 shownSeason = lastSeason?.takeIf { it in seasons } ?: seasons.first()
+                showEpisodeSummary()
                 renderSeasons()
                 renderEpisodes()
             }
         }.start()
+    }
+
+    /**
+     * Under "BÖLÜMLER": what is left to watch and about how long it takes, and the next new
+     * episode's day ("Kalan 14 bölüm · yaklaşık 11 saat · Yeni bölüm Perşembe").
+     */
+    private fun showEpisodeSummary() {
+        val real = episodeList.filter { it.season > 0 }
+        val aired = real.filter { !isUnaired(it) }
+        if (aired.isEmpty()) return
+        val left = aired.filter { !playback.isFinished(it.id) }
+        val known = aired.filter { it.runtime > 0 }
+        val usual = if (known.isNotEmpty()) known.sumOf { it.runtime } / known.size else film.runtime.takeIf { it in 10..120 } ?: 45
+        val parts = ArrayList<String>()
+        if (left.isEmpty()) {
+            parts.add("Hepsini izledin")
+        } else {
+            val minutes = left.sumOf { if (it.runtime > 0) it.runtime else usual }
+            parts.add(if (left.size == aired.size) "${aired.size} bölüm" else "Kalan ${left.size} bölüm")
+            parts.add(if (minutes < 60) "$minutes dk" else "yaklaşık ${(minutes + 30) / 60} saat")
+        }
+        real.filter { isUnaired(it) }.minByOrNull { it.released.take(10) }?.let { parts.add("Yeni bölüm " + dayName(it.released.take(10))) }
+        episodeSummary.text = parts.joinToString("  ·  ")
+        episodeSummary.visibility = View.VISIBLE
+    }
+
+    /** "bugün", "yarın", "Perşembe" within the week, else "27 Kasım". */
+    private fun dayName(day: String): String {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        val at = try { fmt.parse(day) } catch (_: Exception) { null } ?: return day
+        val today = fmt.parse(fmt.format(java.util.Date()))?.time ?: return day
+        val days = ((at.time - today + 3_600_000L) / 86_400_000L).toInt()
+        val tr = Locale.forLanguageTag("tr-TR")
+        return when {
+            days <= 0 -> "bugün"
+            days == 1 -> "yarın"
+            days < 7 -> java.text.SimpleDateFormat("EEEE", tr).format(at)
+            else -> java.text.SimpleDateFormat("d MMMM", tr).format(at)
+        }
     }
 
     /** Real seasons first, specials last. */
@@ -1154,6 +1198,7 @@ class DetailActivity : Activity() {
         // Back from the player: "Oynat" says where it was left, the episodes how far they were watched.
         updatePlayBtn()
         renderEpisodes()
+        if (episodeList.isNotEmpty()) showEpisodeSummary()
     }
     /** The episode "Devam et" opens ("tt…:2:5"); "" for a film or a series not started. */
     private var continueEpisode = ""

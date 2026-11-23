@@ -122,6 +122,27 @@ internal class MediaPlaybackStore(context: Context) {
         preferences.edit().putLong("${key}_found", System.currentTimeMillis()).apply()
     }
 
+    /** Sources were ever found for this title (by the source page or while the TV rested). */
+    fun everFound(watchKey: String): Boolean {
+        if (watchKey.isBlank()) return false
+        val key = prefix(watchKey)
+        return preferences.getLong("${key}_found", 0L) > 0L
+    }
+
+    /** A Listem film became watchable while the TV rested, the first time: the bell says so. */
+    fun markReady(watchKey: String) {
+        if (watchKey.isBlank()) return
+        val key = prefix(watchKey)
+        preferences.edit().putLong("${key}_ready", System.currentTimeMillis()).apply()
+    }
+
+    /** When [markReady] was put (0 = never). */
+    fun readyAt(watchKey: String): Long {
+        if (watchKey.isBlank()) return 0L
+        val key = prefix(watchKey)
+        return preferences.getLong("${key}_ready", 0L)
+    }
+
     /** Sources were found within the last week (links on these sites do not last much longer). */
     fun isAvailable(watchKey: String): Boolean {
         if (watchKey.isBlank()) return false

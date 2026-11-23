@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
 
 /**
  * The home screen's film picture turning into its trailer, without sound, after a few seconds
- * (Ayarlar › Görünüm › "Ana ekranda sessiz fragman"). Uses the trailer page's own streams
+ * (Ayarlar › Görünüm › "Arkada fragman oynasın"). Uses the trailer page's own streams
  * (YouTubeStreams, YouTubeChunkedDataSource); nothing is shown until the first frame is drawn,
  * and any failure simply leaves the picture.
  */
