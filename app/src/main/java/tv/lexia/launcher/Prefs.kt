@@ -7,6 +7,7 @@ import org.json.JSONObject
 /** Launcher settings, stored on the device. */
 class Prefs(ctx: Context) {
     companion object {
+        val HERO_KINDS = listOf("picks", "cinema", "platform")
         /** 0 morning (5–12), 1 afternoon (12–17), 2 evening (17–22), 3 night. */
         fun daySlot(hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)): Int = when (hour) {
             in 5..11 -> 0
@@ -251,6 +252,20 @@ class Prefs(ctx: Context) {
     /** Films behind the home screen: "picks" today's films, "cinema" in cinemas now, "platform" new on streaming, "mix". */
     /** Default "mix": today's films, cinemas and new on streaming in turn, so everyone sees what LeXia has. */
     var heroSource: String get() = p.getString("heroSource", "mix") ?: "mix"; set(v) = putStr("heroSource", v)
+    /**
+     * What the home screen's big area shows, any of "picks", "cinema", "platform" (kept in
+     * heroSource: "mix" = all three, else the chosen ones with commas).
+     */
+    var heroKinds: Set<String>
+        get() {
+            val all = HERO_KINDS.toSet()
+            return heroSource.split(',').flatMap { if (it == "mix") HERO_KINDS else listOf(it) }
+                .filter { it in all }.toSet().ifEmpty { all }
+        }
+        set(v) {
+            val kept = HERO_KINDS.filter { it in v }
+            heroSource = if (kept.isEmpty() || kept.size == HERO_KINDS.size) "mix" else kept.joinToString(",")
+        }
     /** Streaming platforms to show under "Platformlarda yeni"; empty = all of them (installed apps first). */
     var platforms: Set<String>
         get() = HashSet(p.getStringSet("platforms", emptySet()) ?: emptySet())

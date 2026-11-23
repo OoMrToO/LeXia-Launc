@@ -731,6 +731,32 @@ class SettingsActivity : Activity() {
         )
     }
 
+    private val heroKindNames = mapOf("picks" to "Günün filmleri", "cinema" to "Sinemada şimdi", "platform" to "Platformlarda yeni")
+
+    /** "Ana ekrandaki filmler": opens the page where any of the three kinds is turned on. */
+    private fun heroKindsRow() = sub(
+        "Ana ekrandaki filmler", "Ana ekranın büyük alanında hangi filmler dönsün; birden fazlasını seçebilirsin.",
+        { heroKindsPage() },
+        value = {
+            val k = prefs.heroKinds
+            if (k.size == Prefs.HERO_KINDS.size) "Hepsi" else Prefs.HERO_KINDS.filter { it in k }.joinToString(" + ") { heroKindNames[it] ?: it }
+        }
+    )
+
+    private fun heroKindsPage() = Page("Ana ekrandaki filmler", R.drawable.ic_film, keys = listOf("heroSource")) {
+        fun kind(id: String, desc: String) = toggle(heroKindNames.getValue(id), desc, { id in prefs.heroKinds }, { on ->
+            val now = prefs.heroKinds
+            // At least one kind stays on: the big area is never empty.
+            if (on || now.size > 1) prefs.heroKinds = if (on) now + id else now - id
+        })
+        listOf(
+            Note("Seçtiklerin sırayla döner. En az biri açık kalır."),
+            kind("picks", "Her gün seçilen 20 film ve haftanın dizileri."),
+            kind("cinema", "Türkiye'de şu an vizyondaki filmler."),
+            kind("platform", "Netflix, Disney+, Prime Video gibi platformlara yeni gelenler; TV'nde uygulaması kurulu olanlar önce.")
+        )
+    }
+
     /** Nuvio's subtitle sizes (percent) for LeXia's four steps. */
     private val subPercents = listOf(95, 120, 145, 175)
 
@@ -869,13 +895,7 @@ class SettingsActivity : Activity() {
                 listOf("film", "plain"), listOf("Film görselleri", "Sade"),
                 { prefs.background }, { prefs.background = it }
             ),
-            choice(
-                "Ana ekrandaki filmler",
-                "Günün filmleri: her gün seçilen 20 film. Sinemada şimdi: Türkiye'de vizyondakiler. Platformlarda yeni: " +
-                    "Netflix, Disney+, Prime Video gibi platformlara yeni gelenler; TV'nde uygulaması kurulu olan platformlar önce. Karışık: hepsi sırayla.",
-                listOf("picks", "cinema", "platform", "mix"), listOf("Günün filmleri", "Sinemada şimdi", "Platformlarda yeni", "Karışık"),
-                { prefs.heroSource }, { prefs.heroSource = it }
-            ),
+            heroKindsRow(),
             choice(
                 "Uygulama kartları", "Çok uygulaman varsa küçük kartlarla hepsi tek bakışta görünür.",
                 listOf(0, 1, 2), listOf("Küçük", "Orta", "Büyük"),
@@ -1052,14 +1072,7 @@ class SettingsActivity : Activity() {
             chevron = true, action = { PlatformMonthActivity.open(this) }))
         items.add(Note("Ana ekrandaki filmler, ekran koruyucu, zildeki bildirimler ve hafta sonu rehberi seçtiğin " +
             "platformların yeni yapımlarını gösterir. Hiçbirini seçmezsen hepsi gelir; TV'nde uygulaması kurulu olanlar önde."))
-        items.add(
-            choice(
-                "Ana ekrandaki filmler",
-                "Karışık: günün filmleri, sinemadakiler ve platformlara yeni gelenler sırayla.",
-                listOf("mix", "picks", "cinema", "platform"), listOf("Karışık", "Günün filmleri", "Sinemada şimdi", "Platformlarda yeni"),
-                { prefs.heroSource }, { prefs.heroSource = it }
-            )
-        )
+        items.add(heroKindsRow())
         items.add(Header("PLATFORMLARIM"))
         if (names.isEmpty()) {
             items.add(Note("Bugünün listesi henüz gelmedi; birazdan tekrar bak."))
