@@ -51,6 +51,10 @@ class MediaSourcePickerActivity : Activity() {
         /** Once the first sources are in, how long the rest get before the best so far is played. */
         private const val AUTO_WAIT_MS = 6_000L
         private const val MEMORY_SIZE = 60
+        /** After an automatically chosen source fails: how many more are tried by themselves. */
+        private const val MAX_AUTO_RETRIES = 2
+        /** Time to read why it failed before the next one starts. */
+        private const val RETRY_PAUSE_MS = 1_800L
 
         /** [resumeEpisode] ("tt…:2:5"): a series opens straight on that episode's sources. */
         fun open(activity: Activity, film: Pick, resumeEpisode: String = "") {
@@ -119,12 +123,29 @@ class MediaSourcePickerActivity : Activity() {
     private var addonSubtitles: List<MediaSubtitle> = emptyList()
     private var playbackTitle = ""
     private var mediaKey = ""
-    private val failed = HashSet<String>()
+    /** Sources that would not play here: address → why, in plain words. */
+    private val failed = HashMap<String, String>()
+    /** Why the last one would not play; shown above the list. */
+    private var lastFailure = ""
+    /** The source playing now was chosen by LeXia, not by the viewer: should it fail, the next is tried. */
+    private var autoChosen = false
+    /** Sources tried one after another by themselves for this title; a few, then the list is left to the viewer. */
+    private var autoRetries = 0
     private var playing: MediaStream? = null
     private var focusedUrl = ""
     private var listShown = false
     private var auto = Auto.NO
     private val autoDeadline = Runnable { playBestNow() }
+    private var nextTry: MediaStream? = null
+    /** The next source after an automatic one failed; not if the viewer has started another meanwhile. */
+    private val tryNext = Runnable {
+        val next = nextTry
+        nextTry = null
+        if (next != null && playing == null && !isFinishing) {
+            play(next)
+            autoChosen = true
+        }
+    }
     /** "Devam et": the source the film or episode last played from, started again without a list. */
     private var resumeTry: MediaStream? = null
 
@@ -166,6 +187,11 @@ class MediaSourcePickerActivity : Activity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // The viewer is choosing: nothing starts by itself any more.
         if (event.action == KeyEvent.ACTION_DOWN && auto != Auto.NO && searching) cancelAuto()
+        if (event.action == KeyEvent.ACTION_DOWN && nextTry != null) {
+            handler.removeCallbacks(tryNext)
+            nextTry = null
+            updateStatus()
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -748,6 +774,8 @@ class MediaSourcePickerActivity : Activity() {
         // Answers still on their way belong to a search nobody is waiting for.
         generation++
         handler.removeCallbacks(autoDeadline)
+        handler.removeCallbacks(tryNext)
+        nextTry = null
         running.forEach { it.cancel(true) }
         running.clear()
         searching = false
@@ -777,6 +805,8 @@ class MediaSourcePickerActivity : Activity() {
         streams = emptyList()
         addonSubtitles = emptyList()
         failed.clear()
+        lastFailure = ""
+        autoRetries = 0
         focusedUrl = ""
         listShown = false
         playbackTitle = title
@@ -879,7 +909,7 @@ class MediaSourcePickerActivity : Activity() {
         status.text = when {
             auto != Auto.NO -> "$count bulundu  ·  En uygun kaynak açılıyor…"
             searching -> "$count bulundu  ·  Diğer eklentiler aranıyor…"
-            failed.isNotEmpty() -> "Kaynak oynatılamadı. Başka bir kaynak seç."
+            failed.isNotEmpty() -> "${lastFailure.ifBlank { "Kaynak açılmadı" }}  ·  Başka bir kaynak seç."
             else -> "$count  ·  ${streams.map { it.addonName.trim().lowercase() }.distinct().size} sağlayıcı"
         }
     }
@@ -932,7 +962,10 @@ class MediaSourcePickerActivity : Activity() {
         if (choice == null && favoriteName.isNotBlank() && streams.isNotEmpty()) {
             status.text = "$favoriteName bu yapımı bulamadı  ·  ${streams.size} kaynak başka sağlayıcılardan, birini seç."
         }
-        if (choice != null && !isFinishing) play(choice)
+        if (choice != null && !isFinishing) {
+            play(choice)
+            autoChosen = true
+        }
     }
 
     /** The source's own subtitles, then the subtitle add-ons': the wanted language first, 24 at most. */
@@ -947,7 +980,9 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun play(stream: MediaStream) {
         handler.removeCallbacks(autoDeadline)
+        handler.removeCallbacks(tryNext)
         auto = Auto.NO
+        autoChosen = false
         // "Devam et" starts this one again next time.
         val playedKey = mediaKey
         worker.submit { memory.playedFrom(playedKey, stream) }
@@ -1076,12 +1111,16 @@ class MediaSourcePickerActivity : Activity() {
         }
         val stream = playing
         playing = null
-        // What LeXia learns about the site: it would not open, or it played.
+        val wasAuto = autoChosen
+        autoChosen = false
+        val why = PlayFailure.of(data?.getStringExtra(LeXiaPlayerActivity.RESULT_REASON))
+        // What LeXia learns about the site: it would not open, or it played. A dropped connection or
+        // a picture this TV cannot show is not the site's fault.
         if (stream != null) {
             val site = sourceName(stream)
             val store = MediaPlaybackStore(this)
             if (resultCode == PlayerActivity.RESULT_FAILED) {
-                memory.failed(site)
+                if (why.sourceFault) memory.failed(site)
                 val key = mediaKey
                 worker.submit { memory.drop(key, stream.url) }
             } else if (store.progress(mediaKey) != null || store.isFinished(mediaKey)) {
@@ -1103,8 +1142,9 @@ class MediaSourcePickerActivity : Activity() {
         resumeTry = null
         when (resultCode) {
             PlayerActivity.RESULT_FAILED -> {
+                lastFailure = why.text
                 if (stream != null) {
-                    failed.add(stream.url)
+                    failed[stream.url] = why.text
                     if (remembered("choices") == signature(stream)) remember("choices", "")
                 }
                 if (stream != null && resumed != null && stream.url == resumed.url) {
@@ -1113,9 +1153,18 @@ class MediaSourcePickerActivity : Activity() {
                     val key = mediaKey
                     worker.submit { memory.forgetPlayed(key) }
                     auto = Auto.NO
-                    status.text = if (searching) "Son kaynak açılmadı  ·  Bir kaynak seç (aranıyor…)" else "Son kaynak açılmadı  ·  Bir kaynak seç"
+                    status.text = "Son kaynak açılmadı  ·  ${why.text}" + if (searching) "  ·  Bir kaynak seç (aranıyor…)" else "  ·  Bir kaynak seç"
                 }
                 if (streams.isNotEmpty()) renderStreams()
+                // LeXia chose that one: the next best is tried by itself, after a moment to read why.
+                // A few tries at most; when the connection is down, none.
+                val next = if (wasAuto && why.tryAnother && autoRetries < MAX_AUTO_RETRIES) best() else null
+                if (next != null) {
+                    autoRetries++
+                    nextTry = next
+                    status.text = "${why.text}  ·  Sonraki kaynak açılıyor: ${sourceName(next)}"
+                    handler.postDelayed(tryNext, RETRY_PAUSE_MS)
+                }
             }
             PlayerActivity.RESULT_NEXT -> {
                 // The next episode starts on the source this one played from.
@@ -1243,8 +1292,13 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun renderStreams() {
         if (streams.isEmpty()) return
+        // Sites that keep not opening go last (SourceMemory learns it from every try).
+        val shaky = HashMap<String, Boolean>()
+        fun unreliable(s: MediaStream) = shaky.getOrPut(sourceName(s)) { memory.unreliable(sourceName(s)) }
         val groups: Map<String, List<MediaStream>> = if (groupByProvider) {
             streams.groupBy { it.addonName.trim().ifBlank { "Diğer kaynaklar" } }
+                .entries.sortedBy { (_, list) -> list.all { unreliable(it) } }
+                .associateTo(LinkedHashMap()) { it.key to it.value }
         } else {
             linkedMapOf("" to streams)
         }
@@ -1259,8 +1313,10 @@ class MediaSourcePickerActivity : Activity() {
         var focus: View? = null
         var firstCard: View? = null
         groups.forEach { (provider, list) ->
-            val ordered = if (sortByQuality) list.sortedByDescending { score(it) } else list.sortedBy { it.name.lowercase(tr) }
-            if (groupByProvider && groups.size > 1) addSectionTitle("${provider.uppercase(tr)}  ·  ${ordered.size}")
+            val ordered = (if (sortByQuality) list.sortedByDescending { score(it) } else list.sortedBy { it.name.lowercase(tr) })
+                .sortedBy { unreliable(it) }
+            val note = if (ordered.all { unreliable(it) }) "  ·  SIK AÇILMIYOR" else ""
+            if (groupByProvider && groups.size > 1) addSectionTitle("${provider.uppercase(tr)}  ·  ${ordered.size}$note")
             addSourceGrid(ordered, number) { stream, card ->
                 if (firstCard == null) firstCard = card
                 if (stream.url == focusedUrl) focus = card
@@ -1496,7 +1552,11 @@ class MediaSourcePickerActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }
         val line = TextView(this).apply {
-            text = if (broken) "Oynatılamadı" else sourceLine(stream)
+            text = when {
+                broken -> failed[stream.url] ?: "Oynatılamadı"
+                memory.unreliable(sourceName(stream)) -> "Sık açılmıyor  ·  ${sourceLine(stream)}"
+                else -> sourceLine(stream)
+            }
             textSize = 14f
             setTextColor(Color.rgb(201, 208, 245))
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)

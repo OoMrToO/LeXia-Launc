@@ -59,7 +59,7 @@ Yalnızca sahibinin kendi TV'si için (Grundig Google TV, kumanda/D-pad, Türkiy
 
 ## 6. Şu anki durum (kısa)
 
-- Oynatıcı: Nuvio motoru (ExoPlayer + MPV yedeği, FFmpeg ses, libass), LeXia görünümü (#80), perde + logo dolma, kare hızı uyumu ve jenerik paneli (#81, yayın bekliyor).
+- Oynatıcı: Nuvio motoru (ExoPlayer + MPV yedeği, FFmpeg ses, libass), LeXia görünümü (#80), perde + logo dolma, kare hızı uyumu ve jenerik paneli (#81).
 - Kaynak: Nuvio araması (Stremio eklentileri + Nuvio JS depoları; kullanıcının deposu izlelan), favori kaynak, "Devam et" son kaynakla, 3 saatlik kaynak önbelleği.
 - Yok (bilerek): torrent/debrid, CloudStream, Trakt/Simkl, birlikte izleme, Plex/Jellyfin, Dolby Vision dönüştürme, çözünürlük uyumu, 64 bit. IntroDB adresi doğrulanmadı.
 - Hiçbir özellik TV'de tam doğrulanmadı; kullanıcı fotoğrafla geri bildirim veriyor.
@@ -67,6 +67,6 @@ Yalnızca sahibinin kendi TV'si için (Grundig Google TV, kumanda/D-pad, Türkiy
 ## 7. Kararlar (tekrar önerme)
 
 - Ücretli yapay zekâ yok (TMDB + IMDb).
-- Reddedilenler: telefondan yönetim/QR, manzara videoları, kendi fotoğrafları, maç kartı, namaz vakitleri, kur/altın, resmî tatil, hatırlatıcı notlar, çocuk modu, doğum günü, hazır temalar, profiller, LeXia Özet, seriyi tamamla, hava durumu sayfası, hız testi, depolama durumu, ayar yedeği, gece güncellemesi, Watch Next, açılış animasyonu, HDMI kısayolları, afişte hızlı menü, IMDb oy sayısı, film müziği düğmesi, ayarlarda sekmeler/renkli ikonlar/arama, iPhone tarzı anahtarlar, ücretsiz izle satırı; yönetim sayfası, sayaç, duyuru, güncelleme sonrası kart.
+- Reddedilenler: telefondan yönetim/QR, manzara videoları, kendi fotoğrafları, maç kartı, namaz vakitleri, kur/altın, resmî tatil, hatırlatıcı notlar, çocuk modu, doğum günü, hazır temalar, profiller, LeXia Özet, seriyi tamamla, hava durumu sayfası, hız testi, depolama durumu, ayar yedeği, gece güncellemesi, Watch Next, açılış animasyonu, HDMI kısayolları, afişte hızlı menü, IMDb oy sayısı, film müziği düğmesi, ayarlarda sekmeler/renkli ikonlar/arama, iPhone tarzı anahtarlar, ücretsiz izle satırı; yönetim sayfası, sayaç, duyuru, güncelleme sonrası kart; hero fragmanını önceden yükleme, açılışı hızlandırma (23 Kasım).
 - Sonradan kabul edilenler (artık ret değil): bitiş saati / bu akşamın programı, Türkçe dublajlı fragman önceliği, Yarım kalanlar satırı.
 - Önerildi, cevap bekleyenler (23 Kasım): film sayfası sinema açılışı, oynatıcıda oyuncular paneli (X-Ray), sinema altyazısı, ses dengesi, Oscar rozetleri, usta yönetmenler satırları, sevdiğin sahneler, replik ekran koruyucusu, sezon finali rozeti; daha önce: duraklatmada filmden kareler, "Önceki bölümde", Apple TV tarzı Keşfet.

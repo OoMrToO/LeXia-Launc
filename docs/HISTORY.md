@@ -297,3 +297,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 ## Yeni kayıtlar (23 Kasım 2026 sonrası)
 
 - **Token düzeni (23 Kasım):** CLAUDE.md kısa çekirdeğe indirildi; bu dosya arşiv oldu. `.ignore` (arama dışı: build, aar, pick.json, bu dosya), `scripts/dev-setup.sh`, `scripts/mirror.init.gradle`, `PROGRESS.md` eklendi.
+- **Kaynak güvenilirliği ve açık hata (23 Kasım):** oynatıcı hata sebebini `RESULT_REASON` ile döndürür; `PlayFailure` Türkçe sebebe çevirir (bağlantı/biçim hatası siteye yazılmaz). Otomatik seçilen kaynak açılmazsa 1,8 sn sonra sıradaki denenir (en çok 2 kez, tuşa basınca durur). `SourceMemory` son 30 denemeye ağırlık verir; sık açılmayan sağlayıcı listede sona iner, "Sık açılmıyor" yazar. Oyuncu/yönetmen sayfasında "İzledin" işareti ve yarım kalan çubuğu.

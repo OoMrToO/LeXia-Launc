@@ -31,6 +31,12 @@ internal class SourceMemory(context: Context) {
         val row = all.optJSONArray(name) ?: JSONArray().put(0).put(0)
         val i = if (played) 0 else 1
         row.put(i, row.optInt(i) + 1)
+        // What a site did lately counts most: past [RECENT] tries the old record is halved, so a
+        // site that was fixed comes back up and one that broke goes down within days.
+        if (row.optInt(0) + row.optInt(1) > RECENT) {
+            row.put(0, row.optInt(0) / 2)
+            row.put(1, row.optInt(1) / 2)
+        }
         all.put(name, row)
         preferences.edit().putString(KEY_STATS, all.toString()).apply()
     }
@@ -48,6 +54,15 @@ internal class SourceMemory(context: Context) {
         val ok = row.optInt(0)
         val bad = row.optInt(1)
         return Math.round((ok + 1.0) / (ok + bad + 2.0) * 10) / 10.0
+    }
+
+    /**
+     * A site that keeps not opening: three failures or more, and most of its tries failed. Its
+     * sources go to the end of the list, marked, so the ones that play are what the eye meets first.
+     */
+    fun unreliable(site: String): Boolean {
+        val row = stats().optJSONArray(site.trim().lowercase()) ?: return false
+        return row.optInt(1) >= 3 && trust(site) <= 0.3
     }
 
     // ---------- A title's sources, for a few hours ----------
@@ -160,6 +175,7 @@ internal class SourceMemory(context: Context) {
         /** Sources found less than three hours ago still play (their addresses carry tokens that expire). */
         private const val KEEP_MS = 3 * 60 * 60 * 1000L
         private const val MAX_KEPT = 80
+        private const val RECENT = 30
         private const val LAST_MS = 30L * 24 * 60 * 60 * 1000
         private val LOCK = Any()
     }

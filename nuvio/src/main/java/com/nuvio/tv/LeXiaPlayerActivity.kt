@@ -92,7 +92,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
                     onBackPress = { videoId, season, episode, _, completed ->
                         answer(if (completed) Activity.RESULT_OK else Activity.RESULT_CANCELED, videoId, season, episode)
                     },
-                    onPlaybackErrorBack = { answer(RESULT_FAILED, null, null, null) },
+                    onPlaybackErrorBack = { answer(RESULT_FAILED, null, null, null, reason = viewModel.uiState.value.error) },
                     onPlaybackEnded = { nextVideoId, nextSeason, nextEpisode, _ ->
                         if (nextVideoId != null && nextSeason != null && nextEpisode != null) {
                             answer(RESULT_NEXT, nextVideoId, nextSeason, nextEpisode)
@@ -120,7 +120,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
         if (state.isPlaying && !state.showLoadingOverlay) started = true
         androidx.compose.runtime.LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(ms)
-            if (!started) answer(RESULT_FAILED, null, null, null)
+            if (!started) answer(RESULT_FAILED, null, null, null, reason = REASON_TIMEOUT)
         }
     }
 
@@ -400,9 +400,10 @@ class LeXiaPlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun answer(result: Int, videoId: String?, season: Int?, episode: Int?, suggestion: Int = -1) {
+    private fun answer(result: Int, videoId: String?, season: Int?, episode: Int?, suggestion: Int = -1, reason: String? = null) {
         if (isFinishing) return
         setResult(result, Intent().apply {
+            reason?.takeIf { it.isNotBlank() }?.let { putExtra(RESULT_REASON, it.take(400)) }
             if (suggestion >= 0) putExtra(RESULT_SUGGESTION, suggestion)
             videoId?.let { putExtra(RESULT_VIDEO_ID, it) }
             season?.let { putExtra(RESULT_SEASON, it) }
@@ -420,6 +421,9 @@ class LeXiaPlayerActivity : ComponentActivity() {
         const val RESULT_VIDEO_ID = "lexia.player.videoId"
         const val RESULT_SEASON = "lexia.player.season"
         const val RESULT_EPISODE = "lexia.player.episode"
+        /** With [RESULT_FAILED]: why it would not play (the player's own message, or [REASON_TIMEOUT]). */
+        const val RESULT_REASON = "lexia.player.reason"
+        const val REASON_TIMEOUT = "lexia:timeout"
         /** Milliseconds to wait for the picture before giving up on a remembered source. */
         const val EXTRA_QUICK_FAIL = "lexia.player.quickFail"
 
