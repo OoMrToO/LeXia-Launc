@@ -289,12 +289,15 @@ internal class ExploreStage(private val activity: Activity, private val ui: Ui, 
     private fun startTrailer() {
         val p = current ?: return
         val prefs = Prefs(activity)
-        if (!big || Fx.lite || !prefs.heroTrailer || p.trailer.isBlank()) return
+        if (!big || Fx.lite || !prefs.heroTrailer || p.homeTrailer.isBlank()) return
         if (!activity.hasWindowFocus()) return
         handler.removeCallbacks(turn)
         trailer.sound = prefs.heroTrailerSound
-        trailer.start(p.trailer)
+        trailer.start(p.homeTrailer)
     }
+
+    /** The trailer playing behind the showcase now, and where: "Fragman" carries on from there. */
+    fun trailerAt(): Pair<String, Int>? = if (trailer.active) trailer.where() else null
 
     /** The page is left (another page on top): no trailer, no turning. */
     fun pause() {

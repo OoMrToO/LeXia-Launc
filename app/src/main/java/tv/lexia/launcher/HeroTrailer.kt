@@ -51,9 +51,19 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         }
     }
 
+    /** The trailer playing now (its YouTube key) and how far in, in seconds; null when none is on screen. */
+    fun where(): Pair<String, Int>? {
+        val p = player ?: return null
+        if (view == null || current.isBlank()) return null
+        return current to (p.currentPosition / 1000L).toInt()
+    }
+
+    private var current = ""
+
     fun start(youtubeId: String) {
         stop()
         if (youtubeId.isBlank()) return
+        current = youtubeId
         val mine = ++token
         active = true
         finder.execute {

@@ -56,6 +56,18 @@ class Pick(
 ) {
     val isSeries: Boolean get() = kind == "tv"
 
+    /**
+     * The trailer the home screen plays by itself: the Turkish dubbed one when the film has it
+     * (not a subtitled one that only says "Türkçe"), otherwise the main trailer.
+     */
+    val homeTrailer: String get() {
+        val tr = java.util.Locale("tr", "TR")
+        return trailers.firstOrNull { v ->
+            val l = v.label.lowercase(tr)
+            "dubla" in l && "altyaz" !in l && v.key.isNotBlank()
+        }?.key ?: trailer
+    }
+
     val key: String get() = backdrop.ifEmpty { title }
 
     /** "2026 · 2 sa 25 dk · Dram, Aksiyon", or the stored line for older data. */

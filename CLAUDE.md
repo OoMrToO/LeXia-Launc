@@ -7,7 +7,7 @@ Sahibinin Grundig Google TV'si için (kumanda/D-pad, Türkiye). Süren iş: `PRO
 - Önce ne yapılacağını söyle, onay al; "yap/düzelt" derse doğrudan yap. Silici işler ve istenmemiş fikirler önce sorulur.
 - Öneri yapmadan önce: `grep -n "Reddedilenler" docs/HISTORY.md`; aynı fikir tekrarlanmaz. Kullanıcının cevap vermediği öneri reddedilmiş sayılır: Reddedilenler'e yazılır, "bekleyen" listesi tutulmaz, bir daha önerilmez. Ücretli yapay zekâ yok.
 - Premium/Apple TV hissi; yazım ve görsel kusur kabul edilmez.
-- TV burada yok: denenmeyene "TV'de henüz denenmedi" yazılır. Mesaj sonu: sürüm numarası + "Güncelleme geldi" düğmesi.
+- TV burada yok: denenmeyene "TV'de henüz denenmedi" yazılır. Ekran resmi (yerel çizim) kullanıcı istemedikçe çıkarılmaz. Mesaj sonu: sürüm numarası + "Güncelleme geldi" düğmesi.
 - APK'ya kullanıcı adı, e-posta, depo adresi yazılmaz.
 
 ## Verimli çalışma

@@ -67,6 +67,41 @@ class ExploreActivity : Activity() {
         private const val EXTRA_WHERE = "where"
         private const val EXTRA_SERIES = "series"
 
+        /** pick.json read and turned into films, with the lists each came from; kept until the file changes. */
+        @Volatile private var cache: Triple<Long, List<Pick>, Map<String, Set<String>>>? = null
+        private val cacheLock = Any()
+
+        internal fun parsed(ctx: android.content.Context): Pair<List<Pick>, Map<String, Set<String>>>? = synchronized(cacheLock) {
+            val file = java.io.File(ctx.filesDir, "pick.json")
+            val stamp = file.lastModified()
+            cache?.takeIf { it.first == stamp && stamp != 0L }?.let { return it.second to it.third }
+            val o = try { JSONObject(file.readText()) } catch (e: Exception) { return null }
+            val out = ArrayList<Pick>()
+            val from = HashMap<String, MutableSet<String>>()
+            fun add(name: String) {
+                val a = o.optJSONArray(name) ?: return
+                for (i in 0 until a.length()) {
+                    val p = try { Pick.from(a.getJSONObject(i)) } catch (e: Exception) { continue }
+                    out.add(p)
+                    from.getOrPut(p.key) { HashSet() }.add(name)
+                }
+            }
+            for (n in listOf("picks", "platforms", "top10", "top10tv", "cinema", "soon", "local", "history")) add(n)
+            val g = o.optJSONArray("genres")
+            for (i in 0 until (g?.length() ?: 0)) {
+                val f = g!!.optJSONObject(i)?.optJSONArray("films") ?: continue
+                for (j in 0 until f.length()) try { out.add(Pick.from(f.getJSONObject(j))) } catch (e: Exception) { }
+            }
+            cache = Triple(stamp, out, from)
+            out to from
+        }
+
+        /** Reads the list in the background ahead of time, so Keşfet opens without "Hazırlanıyor". */
+        fun warm(ctx: android.content.Context) {
+            val app = ctx.applicationContext
+            Thread { try { parsed(app) } catch (e: Exception) { } }.start()
+        }
+
         /** Keşfet narrowed to one platform ("Netflix"): from the home screen's platform tiles. */
         fun openPlatform(a: Activity, name: String, series: Boolean) {
             a.startActivity(android.content.Intent(a, ExploreActivity::class.java).putExtra(EXTRA_WHERE, name).putExtra(EXTRA_SERIES, series))
@@ -120,7 +155,7 @@ class ExploreActivity : Activity() {
         stage = ExploreStage(this, ui, frame)
         stage.onPlay = { p -> MediaSourcePickerActivity.open(this, p) }
         stage.onTrailer = { p ->
-            if (p.trailer.isNotBlank()) TrailerActivity.open(this, p) else Glass.toast(this, "Bu yapımın fragmanı yok")
+            if (p.trailer.isNotBlank()) TrailerActivity.open(this, p, stage.trailerAt()) else Glass.toast(this, "Bu yapımın fragmanı yok")
         }
         stage.onDetails = { p -> DetailActivity.open(this, p) }
 
@@ -204,27 +239,11 @@ class ExploreActivity : Activity() {
 
     /** Every titled film and series in the saved list, once; hidden and turned-down ones left out. */
     private fun load(): List<Pick> {
-        val o = try {
-            JSONObject(java.io.File(filesDir, "pick.json").readText())
-        } catch (e: Exception) {
-            return emptyList()
-        }
+        // Read once and kept (the home screen warms it up): the page opens at once after that.
+        val parsed = parsed(applicationContext) ?: return emptyList()
         Remote.loadSaved(this)
-        val out = ArrayList<Pick>()
-        fun add(name: String) {
-            val a = o.optJSONArray(name) ?: return
-            for (i in 0 until a.length()) {
-                val p = Pick.from(a.getJSONObject(i))
-                out.add(p)
-                sources.getOrPut(p.key) { HashSet() }.add(name)
-            }
-        }
-        for (n in listOf("picks", "platforms", "top10", "top10tv", "cinema", "soon", "local", "history")) add(n)
-        val g = o.optJSONArray("genres")
-        for (i in 0 until (g?.length() ?: 0)) {
-            val f = g!!.getJSONObject(i).optJSONArray("films") ?: continue
-            for (j in 0 until f.length()) out.add(Pick.from(f.getJSONObject(j)))
-        }
+        val out = parsed.first
+        for ((k, v) in parsed.second) sources.getOrPut(k) { HashSet() }.addAll(v)
         val down = prefs.disliked.keys
         // The same title can come in several lists; the one with a platform name wins.
         return out.filter { it.title.isNotEmpty() && it.poster.isNotEmpty() && !Remote.isHidden(it) && it.key !in down }
