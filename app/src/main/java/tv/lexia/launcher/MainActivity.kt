@@ -3948,11 +3948,11 @@ class MainActivity : Activity() {
     private fun startHeroTrailer() {
         val p = picks.getOrNull(pickIndex) ?: return
         if (!prefs.heroTrailer || Fx.lite || idle || level != 0 || !hasWindowFocus() || menu != null) return
-        if (p.trailer.isBlank()) return
+        if (p.homeTrailer.isBlank()) return
         handler.removeCallbacks(rotate)
         progressAnim?.cancel()
         heroTrailer.sound = prefs.heroTrailerSound
-        heroTrailer.start(p.trailer)
+        heroTrailer.start(p.homeTrailer)
     }
 
     private fun queueHeroTrailer() {

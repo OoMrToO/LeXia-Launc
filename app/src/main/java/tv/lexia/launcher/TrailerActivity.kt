@@ -370,12 +370,7 @@ class TrailerActivity : Activity() {
         guide = TrailerAmbience.Guide(ui, frame)
         card = TrailerAmbience.Card(ui, frame)
         setContentView(frame)
-        // The first trailer: the green card, as in the cinema, while it loads.
-        if (savedInstanceState == null) {
-            val first = films.firstOrNull { it.trailer == id || it.trailers.any { v -> v.key == id } }
-            card.show(first?.title ?: title, first?.cert.orEmpty())
-            if (card.showing) status.alpha = 0f
-        }
+        // No card before the first trailer (the viewer asked): the guide at the top left says it all.
         bindFilm()
         showInfo()
         handler.post(tick)

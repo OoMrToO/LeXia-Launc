@@ -130,7 +130,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     /** A new poster under the remote: whatever was playing goes; this one's trailer comes after a rest. */
     private fun queueTrailer(p: Pick) {
         stopTrailer()
-        if (p.trailer.isBlank() || Fx.lite || !Prefs(activity).heroTrailer) return
+        if (p.homeTrailer.isBlank() || Fx.lite || !Prefs(activity).heroTrailer) return
         trailerFilm = p
         handler.postDelayed(trailerSoon, TRAILER_AFTER_MS)
     }
@@ -139,7 +139,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         val p = trailerFilm ?: return
         if (!showing || key != p.key || activity.isFinishing || !activity.hasWindowFocus()) return
         trailer.sound = false
-        trailer.start(p.trailer)
+        trailer.start(p.homeTrailer)
     }
 
     private fun stopTrailer() {
