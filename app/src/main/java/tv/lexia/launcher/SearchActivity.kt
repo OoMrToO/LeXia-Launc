@@ -207,6 +207,7 @@ class SearchActivity : Activity() {
             showKeyboard()
             return true
         }
+        Fx.edgeNudge(this, event, ui)
         return super.dispatchKeyEvent(event)
     }
 
@@ -320,6 +321,7 @@ class SearchActivity : Activity() {
         s.clipChildren = false
         s.clipToPadding = false
         s.isSmoothScrollingEnabled = true
+        Fx.softEdges(s, ui)
         s.addView(row)
         return s
     }
@@ -337,7 +339,7 @@ class SearchActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w342", p.poster, ui.u(cw), img)
+        Img.load(this, "w500", p.poster, ui.u(cw), img)
         val fx = Fx.decorate(ui, poster, D.CARD)
         val title = ui.text(p.title, 19, C.TEXT2, 500)
         title.maxLines = 1

@@ -331,7 +331,7 @@ class WeekendActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         card.addView(img, ui.fl(ui.match, ui.match))
-        if (item.film.poster.isNotEmpty()) Img.load(this, "w342", item.film.poster, ui.u(cw), img)
+        if (item.film.poster.isNotEmpty()) Img.load(this, "w500", item.film.poster, ui.u(cw), img)
         val fx = Fx.decorate(ui, card, D.CARD)
         card.setOnFocusChangeListener { v, f ->
             ui.lift(v, f, 1.1f, 30)

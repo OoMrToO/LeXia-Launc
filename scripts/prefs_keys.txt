@@ -138,3 +138,4 @@ finishes text
 cinemaMode bool
 speed text
 stats text
+heroTrailerHd bool

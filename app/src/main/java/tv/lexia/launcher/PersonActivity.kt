@@ -191,7 +191,7 @@ class PersonActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w342", p.poster, ui.u(cw), img)
+        Img.load(this, "w500", p.poster, ui.u(cw), img)
         // Watched to the end: a small mark; left half way: the bar the home screen shows.
         val mark = WatchMarks.of(playback, p)
         if (p.key in watched || mark?.finished == true) addSeen(poster) else WatchMarks.add(ui, poster, mark)

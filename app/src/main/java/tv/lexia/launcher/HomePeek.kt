@@ -210,7 +210,9 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         if (path.isEmpty() || pictureFor == id) return
         pictureFor = id
         Thread {
-            val b: Bitmap? = Net.bitmap("https://image.tmdb.org/t/p/w1280$path", ui.u(1920), true)
+            // The full picture on screens wider than 1280, as the home screen's own: no soft upscaling.
+            val size = if (activity.resources.displayMetrics.widthPixels > 1280) "original" else "w1280"
+            val b: Bitmap? = Net.bitmap("https://image.tmdb.org/t/p/$size$path", activity.resources.displayMetrics.widthPixels, true)
             activity.runOnUiThread {
                 if (b == null || activity.isFinishing || pictureFor != id || !showing) return@runOnUiThread
                 val next = 1 - front

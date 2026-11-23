@@ -222,7 +222,14 @@ object Dialogs {
         val ui = Ui(a)
         val d = Dialog(a, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
         val root = FrameLayout(a)
-        root.setBackgroundColor(Color.argb(150, 0, 0, 0))
+        // Frosted glass behind the window, as on Apple TV: the page blurred, then dimmed.
+        val blur = if (Fx.lite) null else try { Fx.snapshotBlur(a.window.decorView, 16, 3) } catch (e: Exception) { null }
+        root.background = if (blur != null) android.graphics.drawable.LayerDrawable(
+            arrayOf(
+                android.graphics.drawable.BitmapDrawable(a.resources, blur),
+                ColorDrawable(Color.argb(125, 0, 0, 0))
+            )
+        ) else ColorDrawable(Color.argb(150, 0, 0, 0))
         root.setOnClickListener { d.dismiss() }
         val card = ui.vbox()
         card.isClickable = true
@@ -257,6 +264,10 @@ object Dialogs {
 
     private fun show(d: Dialog, card: View, focus: View?) {
         d.show()
+        (card.parent as? View)?.let { back ->
+            back.alpha = 0f
+            back.animate().alpha(1f).setDuration(220).start()
+        }
         card.alpha = 0f
         card.scaleX = 0.96f
         card.scaleY = 0.96f

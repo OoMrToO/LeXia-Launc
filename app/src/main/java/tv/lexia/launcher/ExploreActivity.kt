@@ -65,6 +65,8 @@ class ExploreActivity : Activity() {
 
     companion object {
         private const val EXTRA_WHERE = "where"
+        private const val MOOD = "mood:"
+        private const val PLAT = "plat:"
         private const val EXTRA_SERIES = "series"
 
         /** pick.json read and turned into films, with the lists each came from; kept until the file changes. */
@@ -234,6 +236,11 @@ class ExploreActivity : Activity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        Fx.edgeNudge(this, event, ui)
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
         Pointer.handle(this, ev) || super.dispatchGenericMotionEvent(ev)
 
@@ -331,7 +338,7 @@ class ExploreActivity : Activity() {
         }
         if (genrePage.isNotEmpty()) {
             // A genre's page: the way back, and its name.
-            val back = ui.pill("‹   Tüm türler", 58, 21)
+            val back = ui.pill(if (genrePage.contains(':')) "‹   Keşfet" else "‹   Tüm türler", 58, 21)
             back.setOnClickListener { openGenre("") }
             keepsShowcase(back)
             filterBar.addView(back)
@@ -689,7 +696,48 @@ class ExploreActivity : Activity() {
         .sortedByDescending { it.second }
         .map { it.first }
 
-    private fun inGenrePage(p: Pick) = genrePage.isEmpty() || genrePage in p.genres
+    /**
+     * The page Keşfet narrows to: a genre ("Dram"), a mood ("mood:kafa") or a platform
+     * ("plat:Netflix"); empty is Keşfet itself.
+     */
+    private fun inGenrePage(p: Pick): Boolean = when {
+        genrePage.isEmpty() -> true
+        genrePage.startsWith(MOOD) -> moods.firstOrNull { it.id == genrePage.removePrefix(MOOD) }?.fits?.invoke(p) ?: true
+        genrePage.startsWith(PLAT) -> genrePage.removePrefix(PLAT) in platformsOf(p)
+        else -> genrePage in p.genres
+    }
+
+    /** The page's name as it is shown: the genre, the mood's title or the platform's name. */
+    private fun pageName(): String = when {
+        genrePage.startsWith(MOOD) -> moods.firstOrNull { it.id == genrePage.removePrefix(MOOD) }?.title.orEmpty()
+        genrePage.startsWith(PLAT) -> genrePage.removePrefix(PLAT)
+        else -> genrePage
+    }
+
+    /** A mood: what fits it, by genre (and length or age band), and its two colours. */
+    private class Mood(val id: String, val title: String, val colors: Pair<Int, Int>, val fits: (Pick) -> Boolean)
+
+    private fun has(p: Pick, vararg words: String) = p.genres.any { g -> val l = g.lowercase(tr); words.any { it in l } }
+
+    private val moods: List<Mood> by lazy {
+        fun c(a: String, b: String) = Color.parseColor(a) to Color.parseColor(b)
+        listOf(
+            Mood("kafa", "Kafa dağıtmalık", c("#7A4A00", "#F2B01E")) { p ->
+                has(p, "komedi", "animasyon", "aile", "macera", "çocuk") && !has(p, "korku", "gerilim", "suç", "savaş")
+            },
+            Mood("gerilim", "Gerilim dolu bir gece", c("#1B1530", "#6741D9")) { p -> has(p, "gerilim", "korku", "gizem", "suç") },
+            Mood("duygu", "Duygusal", c("#4A0D2A", "#E64980")) { p -> has(p, "dram", "romantik") && !has(p, "korku", "aksiyon") },
+            Mood("aile", "Aileyle izlenir", c("#003C4F", "#15AABF")) { p ->
+                !has(p, "korku", "gerilim", "suç", "savaş") && (has(p, "aile", "animasyon", "çocuk") || p.cert == "Genel" || p.cert == "7+")
+            },
+            Mood("dusun", "Düşündürenler", c("#06243F", "#339AF0")) { p ->
+                p.imdb >= 7.5 && has(p, "bilim", "gizem", "belgesel", "tarih", "dram")
+            },
+            Mood("kisa", "Kısa ve keyifli", c("#0D3B2E", "#40C057")) { p ->
+                p.runtime in 1..100 && p.imdb >= 6.5 && !p.isSeries
+            }
+        )
+    }
 
     /** A genre's own page ([g]), or Keşfet's again (""): its showcase and rows. */
     private fun openGenre(g: String) {
@@ -711,30 +759,48 @@ class ExploreActivity : Activity() {
     private fun showRows() {
         val mine = all.filter { ofKind(it) && inGenrePage(it) }
         val noun = if (kind == "tv") "dizi" else "film"
-        countText.text = if (genrePage.isNotEmpty()) "$genrePage  ·  ${mine.size} $noun" else "${mine.size} $noun"
+        val sub = genrePage.isNotEmpty()
+        // TMDB's own pages ("Daha fazla") only know genres; a mood's or a platform's page keeps to the list.
+        val tmdb = !genrePage.contains(':')
+        val g = if (tmdb) genrePage else ""
+        val name = pageName()
+        countText.text = if (sub) "$name  ·  ${mine.size} $noun" else "${mine.size} $noun"
         val today = mine.filter { (days(it) ?: 1) <= 0 || days(it) == null }
-        stage.feature(showcaseOf(today, mine), if (genrePage.isNotEmpty()) genrePage.uppercase(tr) else "ÖNE ÇIKANLAR")
-        val g = genrePage
+        stage.feature(showcaseOf(today, mine), if (sub) name.uppercase(tr) else "ÖNE ÇIKANLAR")
         addRow("Kaldığın yerden", leftOff().filter { inGenrePage(it) }, style = Style.WIDE)
-        addRow("Yeni çıkanlar", today.filter { val d = days(it); d != null && d in -90..0 }.sortedBy { -(days(it) ?: -999) }, style = Style.WIDE) {
-            TmdbDiscover.page(kind, it, genre = g, newest = true)
-        }
-        val top = if (g.isEmpty()) mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }
+        addRow("Yeni çıkanlar", today.filter { val d = days(it); d != null && d in -90..0 }.sortedBy { -(days(it) ?: -999) }, style = Style.WIDE,
+            more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, newest = true) } else null)
+        val top = if (!sub) mine.filter { from(it, if (kind == "tv") "top10tv" else "top10") }
         else today.sortedByDescending { it.imdb }
-        addRow(if (g.isEmpty()) "Bu haftanın en çok izlenenleri" else "En sevilen ${g.lowercase(tr)} ${noun}leri", top.take(10), style = Style.RANK)
-        if (g.isEmpty()) addGenreTiles(mine, today)
-        addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb }) {
-            TmdbDiscover.page(kind, it, genre = g, minScore = 8.0)
+        addRow(
+            when {
+                !sub -> "Bu haftanın en çok izlenenleri"
+                g.isNotEmpty() -> "En sevilen ${g.lowercase(tr)} ${noun}leri"
+                else -> "En sevilenler"
+            },
+            top.take(10), style = Style.RANK
+        )
+        if (!sub) {
+            addMoodTiles(mine, today)
+            addGenreTiles(mine, today)
+            addPlatformTiles(mine, today)
+            if (kind == "tv") {
+                // For a series to start now and see to the end.
+                addRow("Tek sezonluk mini diziler", today.filter { it.seasons == 1 && it.ended }.sortedByDescending { it.imdb })
+                addRow("Bitmiş diziler: hepsini izle", today.filter { it.ended && it.seasons > 1 }.sortedByDescending { it.imdb })
+            }
         }
+        addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb },
+            more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, minScore = 8.0) } else null)
         addRow("Yakında çıkacaklar", mine.filter { (days(it) ?: 0) > 0 }.sortedBy { days(it) ?: 0 }, style = Style.WIDE,
-            more = if (g.isEmpty()) { pg: Int -> TmdbDiscover.upcoming(kind, pg) } else null)
+            more = if (!sub) { pg: Int -> TmdbDiscover.upcoming(kind, pg) } else null)
         addRow(if (kind == "tv") "Yerli diziler" else "Yerli filmler", mine.filter { from(it, "local") })
         addRow(if (kind == "tv") "Yabancı diziler" else "Yabancı filmler", mine.filter { !from(it, "local") })
         val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") && inGenrePage(it) }.distinctBy { seenKey(it) }
             .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
-        if (g.isNotEmpty()) {
-            addRow("Daha fazla ${g.lowercase(tr)}", emptyList()) { TmdbDiscover.page(kind, it, genre = g) }
+        if (sub) {
+            if (g.isNotEmpty()) addRow("Daha fazla ${g.lowercase(tr)}", emptyList()) { TmdbDiscover.page(kind, it, genre = g) }
             return
         }
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
@@ -763,6 +829,7 @@ class ExploreActivity : Activity() {
         hs.isHorizontalScrollBarEnabled = false
         hs.clipChildren = false
         hs.clipToPadding = false
+        Fx.softEdges(hs, ui)
         hs.addView(line)
         grid.addView(hs, ui.ll(ui.match, ui.wrap, bottom = 34))
     }
@@ -794,6 +861,7 @@ class ExploreActivity : Activity() {
         scroll.isHorizontalScrollBarEnabled = false
         scroll.clipChildren = false
         scroll.clipToPadding = false
+        Fx.softEdges(scroll, ui)
         scroll.addView(line)
         grid.addView(scroll, ui.ll(ui.match, ui.wrap, bottom = 34))
         val seen = HashSet<String>()
@@ -1005,7 +1073,7 @@ class ExploreActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         box.addView(img, ui.fl(ui.match, ui.match))
-        loadInto(img, "w780", p.backdrop, WIDE_W)
+        loadInto(img, "w1280", p.backdrop, WIDE_W)
         val shade = View(this)
         shade.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP, Color.argb(200, 0, 0, 0), Color.TRANSPARENT)
         box.addView(shade, ui.fl(ui.match, ui.u(130), Gravity.BOTTOM))
@@ -1106,13 +1174,55 @@ class ExploreActivity : Activity() {
     }
 
     /** A genre's tile: its best film's picture under the genre's colour, the name large. */
-    private fun genreTile(name: String, count: Int, best: Pick?): View {
+    private fun genreTile(name: String, count: Int, best: Pick?): View =
+        tile(name, count, best, genreColors(name)) { openGenre(name) }
+
+    /** "Ruh hâline göre": one tile per mood with at least three titles. */
+    private fun addMoodTiles(mine: List<Pick>, today: List<Pick>) {
+        val found = moods.map { m -> m to mine.count { m.fits(it) } }.filter { it.second >= 3 }
+        if (found.size < 2) return
+        addRowTitle("Ruh hâline göre")
+        tileLine(found.map { (m, n) ->
+            val best = today.filter { m.fits(it) && it.backdrop.isNotEmpty() }.maxByOrNull { it.imdb }
+            tile(m.title, n, best, m.colors) { openGenre(MOOD + m.id) }
+        })
+    }
+
+    /** "Platformlar": one tile per streaming platform in its own colours; a tile opens all of it. */
+    private fun addPlatformTiles(mine: List<Pick>, today: List<Pick>) {
+        val counts = mine.flatMap { platformsOf(it) }.groupingBy { it }.eachCount().entries
+            .filter { it.value >= 3 }.sortedByDescending { it.value }
+        if (counts.size < 2) return
+        addRowTitle("Platformlar")
+        tileLine(counts.take(10).map { (name, n) ->
+            val best = today.filter { name in platformsOf(it) && it.backdrop.isNotEmpty() }.maxByOrNull { it.imdb }
+            tile(name, n, best, HomePeek.colors(name)) { openGenre(PLAT + name) }
+        })
+    }
+
+    private fun tileLine(tiles: List<View>) {
+        val line = ui.hbox()
+        line.clipChildren = false
+        line.clipToPadding = false
+        line.setPadding(ui.u(4), ui.u(10), ui.u(40), ui.u(10))
+        tiles.forEach { line.addView(it) }
+        val hs = android.widget.HorizontalScrollView(this)
+        hs.isHorizontalScrollBarEnabled = false
+        hs.clipChildren = false
+        hs.clipToPadding = false
+        Fx.softEdges(hs, ui)
+        hs.addView(line)
+        grid.addView(hs, ui.ll(ui.match, ui.wrap, bottom = 34))
+    }
+
+    /** A big tile: its best film's picture behind its two colours, the name and how many; OK opens [open]. */
+    private fun tile(name: String, count: Int, best: Pick?, colors: Pair<Int, Int>, open: () -> Unit): View {
         val col = ui.vbox()
         col.clipChildren = false
         val box = FrameLayout(this)
         box.isFocusable = true
         box.isClickable = true
-        val (a, b) = genreColors(name)
+        val (a, b) = colors
         box.background = ui.round(a, D.CARD)
         box.clipToOutline = true
         if (best != null) {
@@ -1141,7 +1251,7 @@ class ExploreActivity : Activity() {
             ring.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
             if (f && best != null) stage.focusOn(best)
         }
-        box.setOnClickListener { openGenre(name) }
+        box.setOnClickListener { open() }
         col.addView(box, ui.ll(ui.u(320), ui.u(180)))
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 24)
         col.tag = box

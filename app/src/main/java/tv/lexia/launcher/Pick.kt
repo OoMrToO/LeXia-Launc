@@ -52,7 +52,9 @@ class Pick(
     /** Original-language title, when the feed contains it. */
     val originalTitle: String = "",
     /** ISO-3166 production/origin country codes, if available. */
-    val countries: List<String> = emptyList()
+    val countries: List<String> = emptyList(),
+    /** A series that has finished (ended or cancelled on TMDB): it can be watched to the end. */
+    val ended: Boolean = false
 ) {
     val isSeries: Boolean get() = kind == "tv"
 
@@ -94,6 +96,7 @@ class Pick(
         .put("trailers", JSONArray(trailers.map { JSONObject().put("k", it.key).put("n", it.label) }))
         .put("free", JSONArray(free)).put("imdb_id", imdbId)
         .put("original_title", originalTitle).put("countries", JSONArray(countries))
+        .put("ended", ended)
 
     companion object {
         private val trailerKey = Regex("^[A-Za-z0-9_-]{6,20}$")
@@ -144,7 +147,8 @@ class Pick(
                 strings(x.optJSONArray("free")).map { it.take(40) }.filter { providerName.matches(it) }.take(3),
                 safe(x.optString("imdb_id"), imdbIdPattern),
                 x.optString("original_title"),
-                strings(x.optJSONArray("countries")).map { it.uppercase() }.filter { Regex("^[A-Z]{2}$").matches(it) }.distinct()
+                strings(x.optJSONArray("countries")).map { it.uppercase() }.filter { Regex("^[A-Z]{2}$").matches(it) }.distinct(),
+                x.optBoolean("ended", false)
             )
         }
     }

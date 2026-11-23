@@ -226,6 +226,8 @@ def details_of(c):
         "release": release,
         "runtime": (d.get("runtime") or 0) if c["type"] == "movie" else 0,
         "seasons": d.get("number_of_seasons") or 0,
+        # A series that has finished (ended or cancelled): all of it can be watched now.
+        "ended": c["type"] == "tv" and d.get("status") in ("Ended", "Canceled"),
         "tagline": d.get("tagline") or "",
         "director": director,
         "cast": cast,
@@ -604,6 +606,8 @@ def entry(c, names, full):
     e["imdb_id"] = e["imdb_id"] or d.get("imdb_id", "")
     e["runtime"] = d.get("runtime", 0)
     e["seasons"] = d.get("seasons", 0)
+    if d.get("ended"):
+        e["ended"] = True
     e["release"] = d.get("release") or c.get("release_date", "")
     e["tagline"] = d.get("tagline", "")
     e["cert"] = d.get("cert", "")

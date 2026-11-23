@@ -380,6 +380,12 @@ class MainActivity : Activity() {
         frame.addView(stage, ui.fl(m, m))
         heroTrailer = HeroTrailer(this, stage).also { t ->
             t.onFinished = { schedule() }
+            // The full-screen trailer (sinema anı) in 1080p; a TV that stutters goes back to 720p for good.
+            t.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
+            t.onStutter = {
+                prefs.heroTrailerHd = false
+                t.height = 720
+            }
             t.onShowing = { on ->
                 if (::heroStage.isInitialized) heroStage.trailerShowing(on)
                 trailerLight(on)
@@ -611,6 +617,7 @@ class MainActivity : Activity() {
         s.clipChildren = false
         s.clipToPadding = false
         s.setPadding(ui.u(30), ui.u(44), ui.u(30), ui.u(4))
+        Fx.softEdges(s, ui)
         s.addView(r)
         return s
     }
@@ -948,7 +955,7 @@ class MainActivity : Activity() {
         WatchMarks.add(ui, poster, WatchMarks.of(playback, p), aboveStrip = strip != null)
         if (p.key in watchedNow) addWatchedMark(poster)
         val fx = Fx.decorate(ui, poster, D.CARD)
-        Img.load(this, "w342", p.poster, ui.u(180), img)
+        Img.load(this, "w500", p.poster, ui.u(180), img)
         poster.setOnFocusChangeListener { v, f ->
             ui.lift(v, f, 1.08f, 30)
             fx(f)
@@ -1208,7 +1215,7 @@ class MainActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w342", p.poster, ui.u(180), img)
+        Img.load(this, "w500", p.poster, ui.u(180), img)
         if (badge.isNotEmpty()) addBadge(poster, badge)
         else addMoneyTag(poster, p)
         val strip = if (badge.isEmpty()) episodeBadge(p) else null
@@ -3366,7 +3373,10 @@ class MainActivity : Activity() {
             }
             return true
         }
-        val col = moving ?: return super.dispatchKeyEvent(event)
+        val col = moving ?: run {
+            Fx.edgeNudge(this, event, ui)
+            return super.dispatchKeyEvent(event)
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> moveBy(col, -1)

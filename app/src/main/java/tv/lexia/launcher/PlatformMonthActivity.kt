@@ -237,7 +237,7 @@ class PlatformMonthActivity : Activity() {
         val img = ImageView(this)
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         box.addView(img, ui.fl(ui.match, ui.match))
-        Img.load(this, "w342", p.poster, ui.u(150), img)
+        Img.load(this, "w500", p.poster, ui.u(150), img)
         box.layoutParams = ui.ll(ui.u(150), ui.u(225), right = 18)
         return box
     }
