@@ -86,11 +86,17 @@ internal object TmdbDiscover {
      * name) when given, from [minScore] up, newest first when [newest]. Titles without a poster
      * are left out. Empty when TMDB cannot be reached.
      */
-    fun page(kind: String, page: Int, genre: String = "", minScore: Double = 0.0, newest: Boolean = false): List<Pick> {
+    fun page(kind: String, page: Int, genre: String = "", minScore: Double = 0.0, newest: Boolean = false, country: String = ""): List<Pick> {
         val params = HashMap<String, String>()
         params["page"] = page.toString()
         params["sort_by"] = if (newest) (if (kind == "tv") "first_air_date.desc" else "primary_release_date.desc") else "popularity.desc"
-        params["vote_count.gte"] = if (newest) "40" else "300"
+        // Films of one country (Turkey's own) have fewer votes on TMDB: a lower bar keeps the new ones.
+        params["vote_count.gte"] = when {
+            country.isNotEmpty() -> if (newest) "5" else "30"
+            newest -> "40"
+            else -> "300"
+        }
+        if (country.isNotEmpty()) params["with_origin_country"] = country
         params["include_adult"] = "false"
         if (minScore > 0) params["vote_average.gte"] = minScore.toString()
         if (newest) params[if (kind == "tv") "first_air_date.lte" else "primary_release_date.lte"] =

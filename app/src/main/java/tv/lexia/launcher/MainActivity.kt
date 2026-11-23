@@ -438,11 +438,11 @@ class MainActivity : Activity() {
         )
         boost.alpha = 0f
         frame.addView(boost, ui.fl(m, m))
-        // The light of the hour: cool in the morning, warm amber in the evening, deeper at night.
+        // The light of the hour used to lie over the picture and made films look washed out (the
+        // viewer asked it gone): it stays hidden. The focused app's colour stays, softer than before.
         daylight = View(this)
+        daylight.visibility = View.GONE
         frame.addView(daylight, ui.fl(m, m))
-
-        // Soft colour wash taken from the focused app.
         val tint = View(this)
         tint.background = tintDrawable
         frame.addView(tint, ui.fl(m, m))
@@ -451,8 +451,16 @@ class MainActivity : Activity() {
         frame.addView(content, ui.fl(m, m))
         heroStage = HeroCinema(
             this, ui, frame, content, stage, scrims,
+            // Rain or snow, the hour's light and the app's colour wash: none of them over the film.
+            veils = listOf(weatherLayer, daylight, tint, boost),
             film = { picks.getOrNull(pickIndex) },
-            logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } }
+            logo = { logoView.drawable?.takeIf { logoView.visibility == View.VISIBLE } },
+            // A trailer not known to be dubbed or original may carry Turkish subtitles in its picture.
+            wordsInPicture = {
+                val key = if (::heroTrailer.isInitialized) heroTrailer.where()?.first else null
+                val label = picks.getOrNull(pickIndex)?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+                !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
+            }
         )
 
         root = ui.vbox()
@@ -2584,9 +2592,10 @@ class MainActivity : Activity() {
             tintColor = it.animatedValue as Int
             val al = Color.alpha(tintColor)
             val rgb = tintColor and 0xFFFFFF
+            // A low wash from the corner: a hint of the app's colour, not a filter over the film.
             tintDrawable.colors = intArrayOf(
-                ((al * 0.75f).toInt() shl 24) or rgb,
-                ((al * 0.25f).toInt() shl 24) or rgb,
+                ((al * 0.35f).toInt() shl 24) or rgb,
+                ((al * 0.1f).toInt() shl 24) or rgb,
                 0
             )
         }
@@ -4020,6 +4029,15 @@ class MainActivity : Activity() {
         val (vignette, left, bottom, top) = scrims
         val time = if (on) 1400L else 600L
         vignette.animate().alpha(if (on) 0f else 1f).setDuration(time).start()
+        // Rain or snow only over the still picture: a trailer plays clean.
+        if (::weatherLayer.isInitialized) {
+            weatherLayer.animate().cancel()
+            if (on) weatherLayer.animate().alpha(0f).setDuration(600).withEndAction { weatherLayer.stop() }.start()
+            else {
+                weatherLayer.start()
+                weatherLayer.animate().alpha(1f).setDuration(600).start()
+            }
+        }
         top.animate().alpha(if (on) 0.3f else 1f).setDuration(time).start()
         left.animate().alpha(if (on) 0.7f else 1f).setDuration(time).start()
         bottom.animate().alpha(if (on) 0.8f else 1f).setDuration(time).start()
