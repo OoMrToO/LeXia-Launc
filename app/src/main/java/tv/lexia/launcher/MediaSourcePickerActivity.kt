@@ -938,6 +938,8 @@ class MediaSourcePickerActivity : Activity() {
                 compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
                     // Sites that played before come before ones that would not open.
                     .thenByDescending { memory.trust(sourceName(it.value)) }
+                    // Among them, the sites that usually start within a few seconds.
+                    .thenByDescending { memory.fast(sourceName(it.value)) }
                     .thenByDescending { score(it.value) }
                     .thenBy { it.index }
             )
@@ -1117,6 +1119,9 @@ class MediaSourcePickerActivity : Activity() {
             } else if (store.progress(mediaKey) != null || store.isFinished(mediaKey)) {
                 memory.played(site)
             }
+            // How fast it started, for "Hızlı açılıyor" and the order of the list.
+            val startMs = data?.getLongExtra(LeXiaPlayerActivity.RESULT_START_MS, -1L) ?: -1L
+            if (startMs > 0 && resultCode != PlayerActivity.RESULT_FAILED) memory.started(site, startMs)
         }
         // LeXia's own player marks a finished film or episode; İzlediklerim counts it.
         if (mediaKey.isNotBlank() && MediaPlaybackStore(this).isFinished(mediaKey)) {
@@ -1286,6 +1291,10 @@ class MediaSourcePickerActivity : Activity() {
         // Sites that keep not opening go last (SourceMemory learns it from every try).
         val shaky = HashMap<String, Boolean>()
         fun unreliable(s: MediaStream) = shaky.getOrPut(sourceName(s)) { memory.unreliable(sourceName(s)) }
+        val quick = HashMap<String, Boolean>()
+        fun fast(s: MediaStream) = quick.getOrPut(sourceName(s)) { memory.fast(sourceName(s)) }
+        // Picture class first (4K, Full HD, HD, the rest), so a fast site never pushes a sharper one down.
+        fun tier(s: MediaStream) = s.tags.resolution.let { r -> when { r >= 2160 -> 3; r >= 1080 -> 2; r >= 720 -> 1; else -> 0 } }
         val groups: Map<String, List<MediaStream>> = if (groupByProvider) {
             streams.groupBy { it.addonName.trim().ifBlank { "Diğer kaynaklar" } }
                 .entries.sortedBy { (_, list) -> list.all { unreliable(it) } }
@@ -1304,7 +1313,11 @@ class MediaSourcePickerActivity : Activity() {
         var focus: View? = null
         var firstCard: View? = null
         groups.forEach { (provider, list) ->
-            val ordered = (if (sortByQuality) list.sortedByDescending { score(it) } else list.sortedBy { it.name.lowercase(tr) })
+            val ordered = (
+                if (sortByQuality) list.sortedWith(
+                    compareByDescending<MediaStream> { tier(it) }.thenByDescending { fast(it) }.thenByDescending { score(it) }
+                ) else list.sortedBy { it.name.lowercase(tr) }
+            )
                 .sortedBy { unreliable(it) }
             val note = if (ordered.all { unreliable(it) }) "  ·  SIK AÇILMIYOR" else ""
             if (groupByProvider && groups.size > 1) addSectionTitle("${provider.uppercase(tr)}  ·  ${ordered.size}$note")
@@ -1536,6 +1549,7 @@ class MediaSourcePickerActivity : Activity() {
             text = when {
                 broken -> failed[stream.url] ?: "Oynatılamadı"
                 memory.unreliable(sourceName(stream)) -> "Sık açılmıyor  ·  ${sourceLine(stream)}"
+                memory.fast(sourceName(stream)) -> "⚡ Hızlı açılıyor  ·  ${sourceLine(stream)}"
                 else -> sourceLine(stream)
             }
             textSize = 14f
