@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -101,7 +103,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
                         }
                     }
                 )
-                if (curtain) Curtain()
+                if (curtain) Opening(viewModel)
                 Credits(viewModel)
                 StartClock(viewModel)
                 if (quickFailMs > 0) QuickFail(viewModel, quickFailMs)
@@ -151,94 +153,104 @@ class LeXiaPlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Sinema modu: logo/title shimmers on a dark screen, then black curtains sweep apart like a
-     * real cinema screen. The logo "fills" with the film's accent colour as the curtains open.
+     * Sinema modu, the opening: no curtains. The film's picture rests in the middle with the sides
+     * dark, its logo (or name) in the centre, dim at first, filling from the bottom up like an
+     * hourglass as the source loads (how far ahead it has buffered; a slow creep while nothing has
+     * come yet). When the picture moves, the logo fills to the top and everything fades into the film.
      */
     @Composable
-    private fun Curtain() {
-        val open = remember { Animatable(0f) }
-        val logoReveal = remember { Animatable(0f) }
-        var done by remember { mutableStateOf(false) }
-        val accent = LeXiaCinema.accent.takeIf { it != 0 }?.let { Color(it) } ?: Color(0xFF8AB4FF)
+    private fun Opening(viewModel: PlayerViewModel) {
+        val state by viewModel.uiState.collectAsState()
+        val timeline by viewModel.playbackTimeline.collectAsState()
+        var started by remember { mutableStateOf(false) }
+        if (!started && state.isPlaying && !state.showLoadingOverlay) started = true
+        // Time waited, for the slow creep before the first bytes come.
+        var waited by remember { mutableStateOf(0L) }
         LaunchedEffect(Unit) {
-            logoReveal.animateTo(1f, tween(800, easing = LinearEasing))
-            kotlinx.coroutines.delay(200)
-            open.animateTo(1f, tween(1600, easing = FastOutSlowInEasing))
-            done = true
+            while (!started) {
+                kotlinx.coroutines.delay(100)
+                waited += 100
+            }
         }
-        if (done) return
-        val logo = intent.getStringExtra("logo")?.let { java.net.URLDecoder.decode(it, "UTF-8") }
-        val title = intent.getStringExtra("title")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val half = maxWidth / 2
-            val shift = half * open.value
-            val logoAlpha = (1f - open.value * 1.8f).coerceIn(0f, 1f)
-            val logoScale = 1f + open.value * 0.12f
-            val fillFraction = logoReveal.value
-            if (logoAlpha > 0f) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                        .alpha(logoAlpha),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(Modifier.scale(logoScale).clipToBounds()) {
-                        if (!logo.isNullOrBlank()) {
-                            var failed by remember { mutableStateOf(false) }
-                            if (!failed) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey("curtain_$logo").crossfade(false).build(),
-                                    contentDescription = title,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.height(80.dp).widthIn(max = 420.dp),
-                                    onError = { failed = true },
-                                    alpha = 0.25f + fillFraction * 0.75f
-                                )
-                            } else {
-                                CurtainTitle(title, fillFraction, accent)
-                            }
-                        } else {
-                            CurtainTitle(title, fillFraction, accent)
-                        }
-                    }
+        val ahead = (timeline.bufferedPosition - timeline.currentPosition).coerceAtLeast(0L)
+        val fromBuffer = (ahead / START_BUFFER_MS.toFloat()).coerceIn(0f, 1f) * 0.95f
+        val fromTime = 0.3f * (1f - kotlin.math.exp(-waited / 7000f))
+        val target = if (started) 1f else maxOf(fromBuffer, fromTime).coerceAtMost(0.95f)
+        val fill by androidx.compose.animation.core.animateFloatAsState(
+            target, tween(if (started) 450 else 900, easing = FastOutSlowInEasing), label = "fill"
+        )
+        val shown = remember { Animatable(1f) }
+        LaunchedEffect(started) {
+            if (started) {
+                kotlinx.coroutines.delay(500)
+                shown.animateTo(0f, tween(900, easing = FastOutSlowInEasing))
+            }
+        }
+        if (started && shown.value <= 0f) return
+
+        fun extra(name: String) = intent.getStringExtra(name)?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        val logo = extra("logo")
+        val backdrop = extra("backdrop")
+        val title = extra("title").orEmpty()
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .alpha(shown.value)
+                .background(Color.Black)
+        ) {
+            if (!backdrop.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(backdrop).crossfade(true).build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    alpha = 0.5f
+                )
+            }
+            // The sides and corners dark, the middle open.
+            val radius = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() * 0.62f }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to Color.Transparent,
+                            0.55f to Color.Black.copy(alpha = 0.55f),
+                            1f to Color.Black,
+                            radius = radius
+                        )
+                    )
+            )
+            Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
+                var logoFailed by remember { mutableStateOf(logo.isNullOrBlank()) }
+                if (!logoFailed) {
+                    val request = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey("opening_$logo").crossfade(false).build()
+                    val size = Modifier.height(110.dp).widthIn(max = 480.dp)
+                    // Dim: the empty glass.
+                    AsyncImage(
+                        model = request, contentDescription = title, contentScale = ContentScale.Fit,
+                        modifier = size, alpha = 0.22f, onError = { logoFailed = true }
+                    )
+                    // Bright: the sand, rising from the bottom.
+                    AsyncImage(
+                        model = request, contentDescription = null, contentScale = ContentScale.Fit,
+                        modifier = size.risingFill(fill)
+                    )
+                } else {
+                    val style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, textAlign = TextAlign.Center)
+                    val mod = Modifier.padding(horizontal = 48.dp).widthIn(max = 900.dp)
+                    Text(title, style = style.copy(color = Color.White.copy(alpha = 0.22f)), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = mod)
+                    Text(title, style = style.copy(color = Color.White), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = mod.risingFill(fill))
                 }
             }
-            val shadeL = Brush.horizontalGradient(listOf(Color.Black, Color(0xFF0B0B0D)))
-            Box(
-                Modifier
-                    .offset(x = -shift)
-                    .width(half)
-                    .fillMaxHeight()
-                    .background(shadeL)
-            )
-            Box(
-                Modifier
-                    .offset(x = half + shift)
-                    .width(half)
-                    .fillMaxHeight()
-                    .background(Brush.horizontalGradient(listOf(Color(0xFF0B0B0D), Color.Black)))
-            )
         }
     }
 
-    @Composable
-    private fun CurtainTitle(title: String, fill: Float, accent: Color) {
-        val color = lerp(Color.White.copy(alpha = 0.35f), accent, fill)
-        Text(
-            title,
-            style = TextStyle(fontSize = 42.sp, fontWeight = FontWeight.Light, color = color, letterSpacing = 1.sp),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 48.dp)
-        )
+    /** Draws only the bottom [fill] (0..1) of the content: a level rising like sand in an hourglass. */
+    private fun Modifier.risingFill(fill: Float): Modifier = this.drawWithContent {
+        val top = size.height * (1f - fill.coerceIn(0f, 1f))
+        clipRect(top = top) { this@drawWithContent.drawContent() }
     }
-
-    private fun lerp(a: Color, b: Color, t: Float) = Color(
-        a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t,
-        a.alpha + (b.alpha - a.alpha) * t
-    )
 
     /**
      * The credits of a film: a note when a scene is still to come in or after them (TMDB), and
@@ -428,6 +440,8 @@ class LeXiaPlayerActivity : ComponentActivity() {
     }
 
     companion object {
+        /** How much picture ahead fills the opening's logo to the top (the player starts about there). */
+        private const val START_BUFFER_MS = 4_000L
         const val RESULT_FAILED = Activity.RESULT_FIRST_USER
         const val RESULT_NEXT = Activity.RESULT_FIRST_USER + 1
         /** A film offered during the credits was chosen; its place in the list is [RESULT_SUGGESTION]. */
