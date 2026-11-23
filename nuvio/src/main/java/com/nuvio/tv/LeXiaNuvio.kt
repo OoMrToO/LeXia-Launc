@@ -334,6 +334,10 @@ object LeXiaNuvio {
                 // Nuvio's own TMDB lookups (the pause overlay's synopsis, localized titles) in Turkish.
                 try { com.nuvio.tv.data.local.TmdbSettingsDataStore(dataStoreFactory(app), profileManager).setLanguage("tr") } catch (_: Exception) {}
             }
+            if (done < 4) {
+                // Films move as in the cinema: the TV switches to the film's frame rate (24 Hz) and back after.
+                settings.setFrameRateMatchingMode(com.nuvio.tv.data.local.FrameRateMatchingMode.START_STOP)
+            }
             if (done >= 1) return@runBlocking
             settings.setPreloadNextEpisodeSources(true)
             settings.setStreamAutoPlayNextEpisodeEnabled(true)
@@ -346,7 +350,7 @@ object LeXiaNuvio {
         marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
     }
 
-    private const val PLAYER_DEFAULTS = 3
+    private const val PLAYER_DEFAULTS = 4
 
     /**
      * LeXia's own language choices (Ayarlar › Oynatma ve Takip) for Nuvio's player: the audio and
@@ -369,6 +373,16 @@ object LeXiaNuvio {
 
     private fun playerSettings(context: Context): com.nuvio.tv.data.local.PlayerSettings =
         kotlinx.coroutines.runBlocking { playerSettingsStore(context).playerSettings.first() }
+
+    /** Nuvio's frame rate matching: the TV takes the film's own rate while it plays. */
+    fun frameRateMatching(context: Context): Boolean =
+        playerSettings(context).frameRateMatchingMode != com.nuvio.tv.data.local.FrameRateMatchingMode.OFF
+
+    fun setFrameRateMatching(context: Context, on: Boolean) = kotlinx.coroutines.runBlocking {
+        playerSettingsStore(context).setFrameRateMatchingMode(
+            if (on) com.nuvio.tv.data.local.FrameRateMatchingMode.START_STOP else com.nuvio.tv.data.local.FrameRateMatchingMode.OFF
+        )
+    }
 
     /** Nuvio's night sound ("off", "light", "medium", "strong"): loud scenes come down, quiet ones up. */
     fun nightMode(context: Context): String = playerSettings(context).nightMode.settingValue

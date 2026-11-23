@@ -153,6 +153,7 @@ class MediaSourcePickerActivity : Activity() {
         groupByProvider = sourcePrefs.getBoolean("group_provider", false)
         buildUi()
         updateSourceControls()
+        loadCredits()
         loadContent()
     }
 
@@ -1014,6 +1015,7 @@ class MediaSourcePickerActivity : Activity() {
             }
             override fun finished(key: String) = finished(key)
         }
+        publishCredits()
         // The audio and subtitle languages chosen in LeXia's settings, for Nuvio's player too.
         try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang) } catch (_: Exception) { }
         val episode = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
@@ -1062,6 +1064,16 @@ class MediaSourcePickerActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_PLAY) return
+        // A film offered while the credits rolled: its page opens in place of this one.
+        if (resultCode == LeXiaPlayerActivity.RESULT_SUGGEST) {
+            val chosen = suggested.getOrNull(data?.getIntExtra(LeXiaPlayerActivity.RESULT_SUGGESTION, -1) ?: -1)
+            if (chosen != null) {
+                justFinished = false
+                DetailActivity.open(this, chosen)
+                finish()
+                return
+            }
+        }
         val stream = playing
         playing = null
         // What LeXia learns about the site: it would not open, or it played.
@@ -1375,6 +1387,35 @@ class MediaSourcePickerActivity : Activity() {
      */
     /** The film's own colour, read from its picture; the player takes it too. */
     private var filmAccent = 0
+
+    /** For the credits: a scene in them (TMDB) and films to offer ("Bunu sevdiysen"). */
+    @Volatile private var creditsScene = 0
+    @Volatile private var suggested: List<Pick> = emptyList()
+
+    private fun loadCredits() {
+        if (film.isSeries) return
+        val f = film
+        val watched = prefs.watched
+        worker.execute {
+            creditsScene = try { TmdbDiscover.creditsScene(f) } catch (_: Exception) { 0 }
+            val own = f.similar.filter { it.poster.isNotBlank() && !it.isSeries && it.key !in watched }
+            val more = if (own.size >= 3) emptyList() else try {
+                TmdbDiscover.similar(f).filter { it.poster.isNotBlank() && it.key !in watched }
+            } catch (_: Exception) { emptyList() }
+            suggested = (own + more).distinctBy { it.title }.take(3)
+            // A film that started before this was ready ("Devam et", favourite source) still gets it.
+            runOnUiThread { if (playing != null) publishCredits() }
+        }
+    }
+
+    private fun publishCredits() {
+        com.nuvio.tv.LeXiaCinema.creditsScene = if (film.isSeries) 0 else creditsScene
+        com.nuvio.tv.LeXiaCinema.suggestions = if (film.isSeries) emptyList() else suggested.mapNotNull { p ->
+            p.poster.takeIf { it.isNotBlank() }
+                ?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w342$it" }
+                ?.let { com.nuvio.tv.LeXiaCinema.Suggestion(p.title, it, listOf(p.year, p.genres.firstOrNull().orEmpty()).filter { x -> x.isNotBlank() }.joinToString(" · ")) }
+        }
+    }
 
     private fun sourceName(stream: MediaStream): String {
         val tr = Locale.forLanguageTag("tr-TR")

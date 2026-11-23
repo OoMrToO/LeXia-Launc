@@ -662,6 +662,13 @@ class SettingsActivity : Activity() {
                     "Uyku uyarısı yine görünür.",
                 { prefs.cinemaMode }, { prefs.cinemaMode = it; com.nuvio.tv.LeXiaCinema.enabled = it }
             ),
+            choice(
+                "Sinema akıcılığı",
+                "Film başlarken TV filmin kendi kare hızına (çoğu filmde 24) geçer, kamera kayarken görüntü takılmaz; film bitince eski hâline döner. " +
+                    "Geçişte ekran bir iki saniye kararabilir, bu normaldir. Nuvio'nun oynatıcısında çalışır.",
+                listOf(true, false), listOf("Açık", "Kapalı"),
+                { LeXiaNuvio.frameRateMatching(this) }, { LeXiaNuvio.setFrameRateMatching(this, it) }
+            ),
             toggle(
                 "Nuvio'nun oynatıcısı",
                 "Filmler NuvioTV'nin kendi oynatıcı ekranında açılır: onun düğmeleri, ses ve altyazı menüleri, girişi atlama, sonraki bölüm. " +
