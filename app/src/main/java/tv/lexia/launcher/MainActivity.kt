@@ -4507,6 +4507,12 @@ class MainActivity : Activity() {
         handler.postDelayed(nightTick, 900L)
         handler.removeCallbacks(weekendCheck)
         handler.postDelayed(weekendCheck, 2500L)
+        // The weekend plan: today's film, said once a day.
+        handler.postDelayed({
+            if (!isFinishing && hasWindowFocus()) WeekendActivity.todayOnce(this)?.let {
+                Glass.toast(this, "Bugünkü programın: $it", long = true)
+            }
+        }, 4_000L)
         updateGreeting()
         updateNet()
         if (Cache.clearRequested) {
