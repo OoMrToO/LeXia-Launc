@@ -132,6 +132,7 @@ episodes text
 trailerNative bool
 imdb:$type:$tmdbId text
 contRowAdded bool
+homeV2 bool
 titles text
 finishes text
 cinemaMode bool

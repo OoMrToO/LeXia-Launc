@@ -33,6 +33,7 @@ class Prefs(ctx: Context) {
             "local" to "Yerli yapımlar",
             "like" to "Beğendiklerine benzer",
             "cont" to "Yarım kalanlar",
+            "plat" to "Platformlar",
             "recent" to "Son baktıkların",
             "list" to "Listem"
         )
@@ -162,6 +163,20 @@ class Prefs(ctx: Context) {
             return set
         }
         set(v) = p.edit().putStringSet("hiddenRows", HashSet(v)).apply()
+
+    /**
+     * The Apple TV home (once): "Yarım kalanlar" on and first; "Platformlar" (new) goes right
+     * after it. Later changes in Ayarlar › Satırlar stay as the owner sets them.
+     */
+    fun homeV2() {
+        if (bool("homeV2", false)) return
+        val hidden = hiddenRows.toMutableSet()
+        hidden.remove("cont")
+        hiddenRows = hidden
+        val order = rowOrder.filter { it != "cont" && it != "plat" }
+        rowOrder = listOf("cont", "plat") + order
+        putBool("homeV2", true)
+    }
 
     fun toggleRow(id: String) {
         val h = hiddenRows.toMutableSet()

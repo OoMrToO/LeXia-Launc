@@ -64,6 +64,15 @@ class ExploreActivity : Activity() {
     @Volatile private var gen = 0
 
     companion object {
+        private const val EXTRA_WHERE = "where"
+        private const val EXTRA_SERIES = "series"
+
+        /** Keşfet narrowed to one platform ("Netflix"): from the home screen's platform tiles. */
+        fun openPlatform(a: Activity, name: String, series: Boolean) {
+            a.startActivity(android.content.Intent(a, ExploreActivity::class.java).putExtra(EXTRA_WHERE, name).putExtra(EXTRA_SERIES, series))
+            a.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        }
+
         private const val MAX = 30
         /** A wide (scene) card, in design units. */
         private const val WIDE_W = 420
@@ -97,6 +106,10 @@ class ExploreActivity : Activity() {
         super.onCreate(savedInstanceState)
         ui = Ui(this)
         prefs = Prefs(this)
+        intent.getStringExtra(EXTRA_WHERE)?.takeIf { it.isNotBlank() }?.let {
+            where = it
+            if (intent.getBooleanExtra(EXTRA_SERIES, false)) kind = "tv"
+        }
         val m = ui.match
         val w = ui.wrap
 
@@ -638,7 +651,8 @@ class ExploreActivity : Activity() {
             return
         }
         found = smart?.second ?: ordered(all.filter { matches(it) && inGenrePage(it) })
-        stage.feature(found.filter { it.imdb >= 6.5 }.take(6).ifEmpty { found.take(6) }, "SEÇİMİNE GÖRE")
+        stage.feature(found.filter { it.imdb >= 6.5 }.take(6).ifEmpty { found.take(6) },
+            if (where.isNotEmpty() && genre.isEmpty() && years.isEmpty() && minScore <= 0) "${TrailerActivity.locative(where)} yeni".uppercase(tr) else "SEÇİMİNE GÖRE")
         if (found.isEmpty()) {
             countText.text = "Bu seçimde yapım yok"
             val hint = ui.text("Süz'deki seçimlerden birini gevşet.", 24, C.TEXT2, 400)
