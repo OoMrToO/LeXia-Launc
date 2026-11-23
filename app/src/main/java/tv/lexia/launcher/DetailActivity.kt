@@ -92,6 +92,8 @@ class DetailActivity : Activity() {
     private var filmAccent = 0
     /** The "watched so far" bars on episode cards. */
     private val progressFills = ArrayList<View>()
+    /** Lines that take the film's colour ("3. sezon, 5. bölüm"). */
+    private val accentTexts = ArrayList<android.widget.TextView>()
 
     /** The bar's colour: the film's light, lifted a little; soft white before the picture is in. */
     private fun barColor(): Int =
@@ -140,6 +142,7 @@ class DetailActivity : Activity() {
                 filmAccent = c
                 // Episode cards drawn before the picture came in take the film's colour now.
                 progressFills.forEach { it.setBackgroundColor(barColor()) }
+                accentTexts.forEach { it.setTextColor(barColor()) }
                 tint.background = ui.gradient(
                     GradientDrawable.Orientation.BL_TR,
                     Color.argb(95, Color.red(c), Color.green(c), Color.blue(c)),
@@ -194,7 +197,7 @@ class DetailActivity : Activity() {
         top.addView(tag)
         val why = intent.getStringExtra(WHY) ?: ""
         if (surprise && why.isNotEmpty()) {
-            val reason = ui.text("Neden bu film:  $why", 20, C.ACCENT, 500)
+            val reason = ui.text("Neden bu film:  $why", 20, C.TEXT2, 500)
             top.addView(reason, ui.ll(w, w, top = 10))
         }
         val logo = ImageView(this)
@@ -239,7 +242,10 @@ class DetailActivity : Activity() {
         meta.addView(ui.text(film.details(), 21, C.TEXT2, 500))
         top.addView(meta, ui.ll(w, w, top = 22))
         Episodes.of(film)?.let {
-            val ep = ui.text(Episodes.line(it), 21, C.ACCENT, 600)
+            val ep = ui.text(Episodes.line(it), 21, C.TEXT, 600)
+            // The film's own colour once its picture is in.
+            accentTexts.add(ep)
+            if (filmAccent != 0) ep.setTextColor(barColor())
             top.addView(ep, ui.ll(w, w, top = 16))
         }
         // Tonight's plan: when it ends if started now (from where it was left), and by when to start.
@@ -272,7 +278,7 @@ class DetailActivity : Activity() {
             top.addView(freeCard, ui.ll(w, w, top = 12))
         }
         if (film.overview.isNotBlank()) {
-            val storyLabel = ui.text("HİKÂYE", 13, C.ACCENT, 800)
+            val storyLabel = ui.text("HİKÂYE", 13, C.TEXT3, 800)
             storyLabel.letterSpacing = 0.14f
             top.addView(storyLabel, ui.ll(w, w, top = 24))
             val story = ui.text(film.overview, 21, C.TEXT, 400)
@@ -285,11 +291,10 @@ class DetailActivity : Activity() {
             story.isClickable = true
             story.contentDescription = "Hikâye. Açmak veya kapatmak için OK tuşuna bas"
             fun styleStory(focused: Boolean) {
-                story.background = GradientDrawable().apply {
-                    setColor(if (focused) Color.argb(218, 20, 28, 42) else Color.argb(178, 13, 18, 27))
-                    cornerRadius = ui.uf(18)
-                    setStroke(ui.u(if (focused) 3 else 1), if (focused) C.ACCENT else Color.argb(90, 255, 255, 255))
-                }
+                // Dark glass; selected, the white plate with dark text, as everywhere.
+                story.background = if (focused) ui.round(Color.WHITE, 18)
+                else ui.round(Color.argb(30, 255, 255, 255), 18, 1, Color.argb(30, 255, 255, 255))
+                story.setTextColor(if (focused) C.INK else C.TEXT)
                 story.scaleX = if (focused) 1.015f else 1f
                 story.scaleY = if (focused) 1.015f else 1f
             }

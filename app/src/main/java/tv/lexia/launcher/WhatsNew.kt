@@ -81,7 +81,7 @@ object WhatsNew {
             val row = ui.hbox()
             row.gravity = Gravity.TOP
             val dot = View(a)
-            dot.background = ui.round(C.ACCENT, 5)
+            dot.background = ui.round(Color.WHITE, 5)
             row.addView(dot, ui.ll(ui.u(10), ui.u(10), top = 12, right = 22))
             val t = ui.text(l, 23, C.TEXT2, 400)
             t.setLineSpacing(0f, 1.15f)

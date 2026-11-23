@@ -79,7 +79,7 @@ class CalendarActivity : Activity() {
         // Top: what the chosen card is.
         val head = ui.vbox()
         head.addView(ui.label("TAKVİM"))
-        headTag = ui.text("", 22, C.ACCENT, 600)
+        headTag = ui.text("", 22, C.TEXT2, 600)
         head.addView(headTag, ui.ll(w, w, top = 26))
         headTitle = ui.text("", 64, C.TEXT, 800)
         headTitle.letterSpacing = -0.025f
@@ -244,7 +244,7 @@ class CalendarActivity : Activity() {
         title.maxLines = 1
         title.ellipsize = TextUtils.TruncateAt.END
         title.alpha = 0.8f
-        val line = ui.text(item.line, 16, if (item.mine) C.ACCENT else C.TEXT3, 500)
+        val line = ui.text(item.line, 16, if (item.mine) C.TEXT else C.TEXT3, if (item.mine) 600 else 500)
         line.maxLines = 1
         line.ellipsize = TextUtils.TruncateAt.END
         card.setOnFocusChangeListener { v, f ->

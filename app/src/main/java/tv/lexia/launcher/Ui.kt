@@ -26,7 +26,8 @@ object C {
     val GLASS = Color.parseColor("#6B1C1C22")
     val STROKE = Color.parseColor("#33FFFFFF")
     val CARD = Color.parseColor("#1C1C1F")
-    val ACCENT = Color.parseColor("#9CC8FF")
+    /** Small highlighted words: soft white, as on Apple TV (the film's own colour is Fx.accent). */
+    val ACCENT = Color.parseColor("#E6FFFFFF")
     val INK2 = Color.parseColor("#99000000")
 }
 
