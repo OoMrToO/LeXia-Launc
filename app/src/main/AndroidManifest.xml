@@ -120,6 +120,12 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".SearchActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="adjustNothing|stateHidden" />
+
+        <activity
             android:name=".WatchHistoryActivity"
             android:exported="false"
             android:screenOrientation="landscape" />

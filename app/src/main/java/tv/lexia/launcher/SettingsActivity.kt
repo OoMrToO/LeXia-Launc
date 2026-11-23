@@ -1541,15 +1541,10 @@ class SettingsActivity : Activity() {
             return
         }
         val text = try { f.readText() } catch (e: Exception) { "" }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Son hata")
-            .setMessage(text)
-            .setPositiveButton("Sil") { _, _ ->
-                f.delete()
-                refreshValues()
-            }
-            .setNegativeButton("Kapat", null)
-            .show()
+        Dialogs.message(this, "Son hata", text, primary = "Kapat", secondary = "Sil", onSecondary = {
+            f.delete()
+            refreshValues()
+        })
     }
 
     private fun chooseStartApp() {

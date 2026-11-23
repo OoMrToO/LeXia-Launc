@@ -60,7 +60,7 @@ class SetupActivity : Activity() {
         body.maxWidth = ui.u(1150)
         body.setLineSpacing(0f, 1.35f)
         page.addView(body, ui.ll(ui.wrap, ui.wrap, top = 22))
-        status = ui.text("", 23, C.ACCENT, 600)
+        status = ui.text("", 23, C.TEXT2, 600)
         status.gravity = Gravity.CENTER
         page.addView(status, ui.ll(ui.wrap, ui.wrap, top = 22))
         buttons = ui.hbox()

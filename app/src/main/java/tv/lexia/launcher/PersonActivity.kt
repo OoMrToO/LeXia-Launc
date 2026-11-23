@@ -73,7 +73,7 @@ class PersonActivity : Activity() {
         val title = ui.text(name, 54, C.TEXT, 700)
         title.maxLines = 2
         info.addView(title)
-        val facts = ui.text(if (directing) "Yönetmen" else "Oyuncu", 21, C.ACCENT, 600)
+        val facts = ui.text(if (directing) "Yönetmen" else "Oyuncu", 21, C.TEXT2, 600)
         info.addView(facts, ui.ll(w, w, top = 10))
         val bio = ui.text("Hazırlanıyor…", 21, C.TEXT2, 400)
         bio.maxLines = 9

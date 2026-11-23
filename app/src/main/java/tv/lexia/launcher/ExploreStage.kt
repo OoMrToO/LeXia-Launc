@@ -39,7 +39,7 @@ internal class ExploreStage(private val activity: Activity, private val ui: Ui, 
     private val logo = ImageView(activity)
     private val title = ui.text("", 64, C.TEXT, 800)
     private val titleBig = title.textSize
-    private val kicker = ui.label("", C.ACCENT)
+    private val kicker = ui.label("", C.TEXT2)
     private val meta = ui.text("", 22, C.TEXT2, 500)
     private val story = ui.text("", 22, Color.argb(215, 255, 255, 255), 400)
     /** Oynat · Fragman · Ayrıntılar: only while the showcase has the remote. */

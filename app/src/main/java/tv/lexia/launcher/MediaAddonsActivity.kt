@@ -1,7 +1,6 @@
 package tv.lexia.launcher
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -356,7 +355,10 @@ class MediaAddonsActivity : Activity() {
     }
 
     private fun showAddDialog() {
-        Dialogs.input(this, "Eklenti adresi (Stremio ya da Nuvio deposu)", "https://") { raw ->
+        Dialogs.input(
+            this, "Eklenti ekle", "https://",
+            subtitle = "Stremio eklentisinin ya da Nuvio deposunun adresi. LeXia adresi doğrular."
+        ) { raw ->
             val address = raw.trim()
             if (address.isBlank() || address == "https://" || busy) return@input
             busy = true
@@ -491,86 +493,65 @@ class MediaAddonsActivity : Activity() {
      * gives at the end is entered here with "Eklenti ekle", and replaces this one in its place.
      */
     private fun showConfigure(addon: InstalledMediaAddon) {
-        AlertDialog.Builder(this)
-            .setTitle("${addon.name} · Ayarlar")
-            .setMessage(
-                "Bu adresi telefonunda aç ve ayarları yap:\n\n${addon.configureUrl}\n\n" +
-                    "Sayfanın verdiği yeni eklenti adresini \"Eklenti ekle\" ile buraya gir; eklenti listede aynı yerinde güncellenir."
-            )
-            .setPositiveButton("Tamam", null)
-            .show()
+        Dialogs.message(
+            this, "${addon.name} · Ayarlar",
+            "Bu adresi telefonunda aç ve ayarları yap:\n\n${addon.configureUrl}\n\n" +
+                "Sayfanın verdiği yeni eklenti adresini “Eklenti ekle” ile buraya gir; eklenti listede aynı yerinde güncellenir."
+        )
     }
 
     private fun showScraperSettings(repositoryId: String, scraper: NuvioScraperInfo) {
         val current = runCatching {
             org.json.JSONObject(nuvioRepository.scraperSettings(repositoryId, scraper.id))
         }.getOrDefault(org.json.JSONObject())
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-        }
         val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply {
-            isFillViewport = false
-            addView(rows)
-        }
+        var form: Ui? = null
         fun addSettingRow(key: String = "", value: String = "") {
+            val u = form ?: return
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(4), 0, dp(4))
+                setPadding(0, u.u(6), 0, u.u(6))
             }
-            val keyInput = EditText(this).apply {
-                hint = "Ayar adı"
-                setSingleLine(true)
-                setText(key)
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.GRAY)
-                textSize = 15f
-            }
-            val valueInput = EditText(this).apply {
-                hint = "Değer"
-                setSingleLine(true)
-                setText(value)
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.GRAY)
-                textSize = 15f
-            }
-            row.addView(keyInput, LinearLayout.LayoutParams(0, dp(52), 0.9f))
-            row.addView(valueInput, LinearLayout.LayoutParams(0, dp(52), 1.1f).apply {
-                leftMargin = dp(8)
+            val keyInput = Dialogs.field(this, u, key, "Ayar adı")
+            val valueInput = Dialogs.field(this, u, value, "Değer")
+            row.addView(keyInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.9f))
+            row.addView(valueInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.1f).apply {
+                leftMargin = u.u(12)
             })
-            row.addView(action("Sil").apply {
+            row.addView(action("Sil", small = true).apply {
                 setOnClickListener { rows.removeView(row) }
-            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
+            }, gap())
             rows.addView(row)
         }
-        val keys = current.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val value = current.opt(key)
-            addSettingRow(key, when (value) {
-                null, org.json.JSONObject.NULL -> ""
-                is org.json.JSONObject, is org.json.JSONArray -> value.toString()
-                else -> value.toString()
-            })
-        }
-        container.addView(scroll, LinearLayout.LayoutParams(-1, dp(300)))
-        container.addView(action("+  Ayar ekle").apply {
-            setOnClickListener { addSettingRow() }
-        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("${scraper.name} · Ayarlar")
-            .setMessage("Ayarları anahtar/değer olarak düzenle. Boolean ve sayısal değerler uygun JSON türünde saklanır.")
-            .setView(container)
-            .setNegativeButton("Vazgeç", null)
-            .setPositiveButton("Kaydet", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        Dialogs.form(
+            this, "${scraper.name} · Ayarlar",
+            "Ayarları ad ve değer olarak düzenle. Açık/kapalı (true/false) ve sayılar doğru türde saklanır.",
+            "Kaydet", wide = true,
+            build = { u, content ->
+                form = u
+                val keys = current.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = current.opt(key)
+                    addSettingRow(key, when (value) {
+                        null, org.json.JSONObject.NULL -> ""
+                        else -> value.toString()
+                    })
+                }
+                val scroll = ScrollView(this).apply {
+                    isVerticalScrollBarEnabled = false
+                    addView(rows)
+                }
+                content.addView(scroll, LinearLayout.LayoutParams(-1, u.u(420)))
+                val more = action("+  Ayar ekle", small = true).apply { setOnClickListener { addSettingRow() } }
+                content.addView(more, LinearLayout.LayoutParams(-2, -2).apply { topMargin = u.u(14) })
+                rows.getChildAt(0) ?: more
+            },
+            ok = {
                 try {
                     val output = org.json.JSONObject()
+                    var bad: EditText? = null
                     for (i in 0 until rows.childCount) {
                         val row = rows.getChildAt(i) as? LinearLayout ?: continue
                         val keyInput = row.getChildAt(0) as? EditText ?: continue
@@ -578,7 +559,8 @@ class MediaAddonsActivity : Activity() {
                         val key = keyInput.text.toString().trim()
                         if (key.isBlank()) {
                             keyInput.error = "Ayar adı gerekli"
-                            return@setOnClickListener
+                            bad = keyInput
+                            break
                         }
                         val raw = valueInput.text.toString()
                         val value: Any = when {
@@ -592,17 +574,21 @@ class MediaAddonsActivity : Activity() {
                         }
                         output.put(key, value)
                     }
-                    nuvioRepository.setScraperSettings(repositoryId, scraper.id, output.toString())
-                    dialog.dismiss()
-                    status.text = "${scraper.name} ayarları kaydedildi."
+                    if (bad != null) {
+                        bad.requestFocus()
+                        false
+                    } else {
+                        nuvioRepository.setScraperSettings(repositoryId, scraper.id, output.toString())
+                        status.text = "${scraper.name} ayarları kaydedildi."
+                        true
+                    }
                 } catch (error: Exception) {
                     status.text = "Ayarlar kaydedilemedi: ${error.message ?: "geçersiz değer"}"
+                    Glass.toast(this, "Geçersiz değer")
+                    false
                 }
             }
-        }
-        dialog.show()
-        dialog.window?.setLayout(dp(760), LinearLayout.LayoutParams.WRAP_CONTENT)
-        if (rows.childCount > 0) rows.getChildAt(0).requestFocus()
+        )
     }
 
     private fun refreshNuvioRepository(repositoryId: String, name: String) {

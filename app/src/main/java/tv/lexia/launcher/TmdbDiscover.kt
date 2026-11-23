@@ -204,7 +204,7 @@ internal object TmdbDiscover {
     }
 
     /** A search over every film, series and person TMDB knows; persons come as names. */
-    class Found(val pick: Pick?, val person: String = "", val directing: Boolean = false, val known: String = "")
+    class Found(val pick: Pick?, val person: String = "", val directing: Boolean = false, val known: String = "", val photo: String = "")
 
     fun search(query: String): List<Found> {
         val results = get("search/multi", mapOf("query" to query, "include_adult" to "false"))?.optJSONArray("results") ?: return emptyList()
@@ -218,7 +218,10 @@ internal object TmdbDiscover {
                     val titles = (0 until minOf(2, known?.length() ?: 0)).mapNotNull { j ->
                         known!!.optJSONObject(j)?.let { k -> k.optString("title").ifBlank { k.optString("name") } }
                     }
-                    Found(null, it, o.optString("known_for_department") == "Directing", titles.joinToString(", "))
+                    Found(
+                        null, it, o.optString("known_for_department") == "Directing", titles.joinToString(", "),
+                        o.optString("profile_path").takeIf { p -> p.startsWith("/") }.orEmpty()
+                    )
                 }
                 else -> null
             }

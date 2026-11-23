@@ -4,14 +4,12 @@ import com.nuvio.tv.LeXiaPlayerActivity
 import com.nuvio.tv.data.repository.LeXiaProgress
 import com.nuvio.tv.domain.model.Subtitle as NuvioSubtitle
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.InputType
 import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
@@ -661,41 +659,33 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private fun showEpisodeNumberDialog() {
-        val fields = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(6), dp(12), 0)
-        }
-        val seasonField = EditText(this).apply {
-            hint = "Sezon numarası"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText((typedSeason.takeIf { it > 0 } ?: 1).toString())
-            setTextColor(Color.WHITE)
-        }
-        val episodeField = EditText(this).apply {
-            hint = "Bölüm numarası"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText((typedEpisode.takeIf { it > 0 } ?: 1).toString())
-            setTextColor(Color.WHITE)
-        }
-        fields.addView(seasonField)
-        fields.addView(episodeField)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Bölüm seç")
-            .setView(fields)
-            .setNegativeButton("İptal", null)
-            .setPositiveButton("Kaynakları ara") { _, _ ->
-                val s = seasonField.text.toString().toIntOrNull()
-                val e = episodeField.text.toString().toIntOrNull()
+        var seasonField: EditText? = null
+        var episodeField: EditText? = null
+        Dialogs.form(
+            this, "Bölüm seç", "Sezon ve bölüm numarasını gir; kaynaklar o bölüm için aranır.", "Kaynakları ara",
+            build = { u, content ->
+                val sf = Dialogs.field(this, u, (typedSeason.takeIf { it > 0 } ?: 1).toString(), "Sezon", numeric = true)
+                val ef = Dialogs.field(this, u, (typedEpisode.takeIf { it > 0 } ?: 1).toString(), "Bölüm", numeric = true)
+                content.addView(u.label("SEZON", C.TEXT3))
+                content.addView(sf, LinearLayout.LayoutParams(-1, -2).apply { topMargin = u.u(10) })
+                content.addView(u.label("BÖLÜM", C.TEXT3), LinearLayout.LayoutParams(-2, -2).apply { topMargin = u.u(22) })
+                content.addView(ef, LinearLayout.LayoutParams(-1, -2).apply { topMargin = u.u(10) })
+                seasonField = sf
+                episodeField = ef
+                sf
+            },
+            ok = {
+                val s = seasonField?.text?.toString()?.toIntOrNull()
+                val e = episodeField?.text?.toString()?.toIntOrNull()
                 if (s == null || e == null || s !in 1..100 || e !in 1..2000) {
-                    status.text = "Geçerli bir sezon ve bölüm numarası gir."
+                    Glass.toast(this, "Geçerli bir sezon ve bölüm numarası gir")
+                    false
                 } else {
                     loadTypedEpisode(s, e, if (prefs.playAutoSource) Auto.BEST else Auto.NO)
+                    true
                 }
             }
-            .create()
-        dialog.show()
-        dialog.window?.setLayout(dp(560), LinearLayout.LayoutParams.WRAP_CONTENT)
-        seasonField.requestFocus()
+        )
     }
 
     private fun loadEpisodeStreams(index: Int, auto: Auto) {

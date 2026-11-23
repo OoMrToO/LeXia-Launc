@@ -28,7 +28,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     private var pictureFor = ""
 
     private val panel = LinearLayout(activity)
-    private val kicker = ui.label("", C.ACCENT)
+    private val kicker = ui.label("", C.TEXT2)
     private val logo = ImageView(activity)
     private val title = ui.text("", 60, C.TEXT, 800)
     private val meta = ui.text("", 22, C.TEXT2, 500)

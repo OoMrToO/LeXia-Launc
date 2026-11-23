@@ -90,18 +90,15 @@ object Updater {
      */
     fun askPermission(activity: Activity) {
         waitingForPermission = true
-        android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Güncelleme izni gerekiyor")
-            .setMessage(
-                "LeXia'nın güncelleme kurabilmesi için bir kez izin vermen gerekiyor:\n\n" +
-                    "Ayarlar › Uygulamalar › Güvenlik ve kısıtlamalar › Bilinmeyen kaynaklar › LeXia Launcher'ı aç.\n\n" +
-                    "Sonra geri dön; güncelleme kendiliğinden başlar."
-            )
-            .setPositiveButton("Ayarları aç") { _, _ ->
-                SystemSettings.open(activity, SystemSettings.Screen.ALL)
-            }
-            .setNegativeButton("Vazgeç") { _, _ -> waitingForPermission = false }
-            .show()
+        Dialogs.message(
+            activity, "Güncelleme izni gerekiyor",
+            "LeXia'nın güncelleme kurabilmesi için bir kez izin vermen gerekiyor:\n\n" +
+                "Ayarlar › Uygulamalar › Güvenlik ve kısıtlamalar › Bilinmeyen kaynaklar › LeXia Launcher'ı aç.\n\n" +
+                "Sonra geri dön; güncelleme kendiliğinden başlar.",
+            primary = "Ayarları aç", secondary = "Vazgeç",
+            cancel = { waitingForPermission = false },
+            onPrimary = { SystemSettings.open(activity, SystemSettings.Screen.ALL) }
+        )
     }
 
     /**
