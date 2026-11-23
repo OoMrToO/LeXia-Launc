@@ -35,6 +35,9 @@ class PersonActivity : Activity() {
     private lateinit var ui: Ui
     private val tr = Locale("tr", "TR")
     private lateinit var grid: LinearLayout
+    private val playback by lazy { MediaPlaybackStore(this) }
+    /** Titles watched to the end (İzlediklerim and the "İzledim" mark on a film's page). */
+    private var watched: Set<String> = emptySet()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +98,9 @@ class PersonActivity : Activity() {
         Thread {
             val person = try { TmdbDiscover.person(name, directing) } catch (e: Exception) { null }
             val works = person?.let { worksOf(it, directing) }.orEmpty()
+            val seen = try {
+                WatchHistory(applicationContext).entries().filter { it.finishedAt > 0 }.mapTo(HashSet()) { it.pick.key } + Prefs(applicationContext).watched
+            } catch (e: Exception) { emptySet() }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (person == null) {
@@ -104,6 +110,7 @@ class PersonActivity : Activity() {
                 person.optString("profile_path").takeIf { it.startsWith("/") }?.let { Img.load(this, "w500", it, ui.u(240), img) }
                 facts.text = factsOf(person, directing)
                 bio.text = person.optString("biography").ifBlank { "Hakkında bir yazı yok." }
+                watched = seen
                 show(works)
             }
         }.start()
@@ -185,6 +192,9 @@ class PersonActivity : Activity() {
         img.scaleType = ImageView.ScaleType.CENTER_CROP
         poster.addView(img, ui.fl(ui.match, ui.match))
         Img.load(this, "w342", p.poster, ui.u(cw), img)
+        // Watched to the end: a small mark; left half way: the bar the home screen shows.
+        val mark = WatchMarks.of(playback, p)
+        if (p.key in watched || mark?.finished == true) addSeen(poster) else WatchMarks.add(ui, poster, mark)
         val fx = Fx.decorate(ui, poster, D.CARD)
         val title = ui.text(p.title, 19, C.TEXT2, 500)
         title.maxLines = 1
@@ -206,6 +216,23 @@ class PersonActivity : Activity() {
         col.layoutParams = ui.ll(ui.wrap, ui.wrap, right = 28)
         col.tag = poster
         return col
+    }
+
+    /** "İzledin", top right of the poster. */
+    private fun addSeen(poster: FrameLayout) {
+        val pill = LinearLayout(this)
+        pill.orientation = LinearLayout.HORIZONTAL
+        pill.gravity = Gravity.CENTER_VERTICAL
+        pill.background = ui.round(Color.argb(215, 10, 12, 18), 8)
+        pill.setPadding(ui.u(7), ui.u(3), ui.u(9), ui.u(3))
+        val tick = ImageView(this)
+        tick.setImageResource(R.drawable.ic_check)
+        tick.setColorFilter(C.TEXT)
+        pill.addView(tick, ui.ll(ui.u(14), ui.u(14)))
+        pill.addView(ui.text("İzledin", 13, C.TEXT, 700), ui.ll(ui.wrap, ui.wrap, left = 4))
+        val lp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.END)
+        lp.setMargins(0, ui.u(10), ui.u(10), 0)
+        poster.addView(pill, lp)
     }
 
     override fun finish() {

@@ -297,3 +297,15 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 ## Yeni kayıtlar (23 Kasım 2026 sonrası)
 
 - **Token düzeni (23 Kasım):** CLAUDE.md kısa çekirdeğe indirildi; bu dosya arşiv oldu. `.ignore` (arama dışı: build, aar, pick.json, bu dosya), `scripts/dev-setup.sh`, `scripts/mirror.init.gradle`, `PROGRESS.md` eklendi.
+- **Kaynak güvenilirliği ve açık hata (23 Kasım):** oynatıcı hata sebebini `RESULT_REASON` ile döndürür; `PlayFailure` Türkçe sebebe çevirir (bağlantı/biçim hatası siteye yazılmaz). Otomatik seçilen kaynak açılmazsa 1,8 sn sonra sıradaki denenir (en çok 2 kez, tuşa basınca durur). `SourceMemory` son 30 denemeye ağırlık verir; sık açılmayan sağlayıcı listede sona iner, "Sık açılmıyor" yazar. Oyuncu/yönetmen sayfasında "İzledin" işareti ve yarım kalan çubuğu.
+
+## Kararlar ve öneri listeleri (CLAUDE.md'den taşındı, 23 Kasım)
+
+- Durum: Oynatıcı: Nuvio motoru (ExoPlayer + MPV yedeği, FFmpeg ses, libass), LeXia görünümü (#80), perde + logo dolma, kare hızı uyumu ve jenerik paneli (#81).
+- Durum: Kaynak: Nuvio araması (Stremio eklentileri + Nuvio JS depoları; kullanıcının deposu izlelan), favori kaynak, "Devam et" son kaynakla, 3 saatlik kaynak önbelleği.
+- Durum: Yok (bilerek): torrent/debrid, CloudStream, Trakt/Simkl, birlikte izleme, Plex/Jellyfin, Dolby Vision dönüştürme, çözünürlük uyumu, 64 bit. IntroDB adresi doğrulanmadı.
+- Durum: Hiçbir özellik TV'de tam doğrulanmadı; kullanıcı fotoğrafla geri bildirim veriyor.
+- Ücretli yapay zekâ yok (TMDB + IMDb).
+- Reddedilenler: telefondan yönetim/QR, manzara videoları, kendi fotoğrafları, maç kartı, namaz vakitleri, kur/altın, resmî tatil, hatırlatıcı notlar, çocuk modu, doğum günü, hazır temalar, profiller, LeXia Özet, seriyi tamamla, hava durumu sayfası, hız testi, depolama durumu, ayar yedeği, gece güncellemesi, Watch Next, açılış animasyonu, HDMI kısayolları, afişte hızlı menü, IMDb oy sayısı, film müziği düğmesi, ayarlarda sekmeler/renkli ikonlar/arama, iPhone tarzı anahtarlar, ücretsiz izle satırı; yönetim sayfası, sayaç, duyuru, güncelleme sonrası kart; hero fragmanını önceden yükleme, açılışı hızlandırma (23 Kasım).
+- Sonradan kabul edilenler (artık ret değil): bitiş saati / bu akşamın programı, Türkçe dublajlı fragman önceliği, Yarım kalanlar satırı.
+- Önerildi, cevap bekleyenler (23 Kasım): film sayfası sinema açılışı, oynatıcıda oyuncular paneli (X-Ray), sinema altyazısı, ses dengesi, Oscar rozetleri, usta yönetmenler satırları, sevdiğin sahneler, replik ekran koruyucusu, sezon finali rozeti; daha önce: duraklatmada filmden kareler, "Önceki bölümde", Apple TV tarzı Keşfet.
