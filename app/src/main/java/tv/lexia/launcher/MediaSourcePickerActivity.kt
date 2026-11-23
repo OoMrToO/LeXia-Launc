@@ -147,15 +147,8 @@ class MediaSourcePickerActivity : Activity() {
     /** "Devam et": the source the film or episode last played from, started again without a list. */
     private var resumeTry: MediaStream? = null
 
-    private val screenHeight by lazy {
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.supportedModes.maxOfOrNull { it.physicalHeight }
-            ?: resources.displayMetrics.heightPixels
-    }
-    private val screenHdr by lazy {
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.hdrCapabilities?.supportedHdrTypes?.isNotEmpty() == true
-    }
+    /** What this TV can really show (4K, HDR kinds, Dolby Vision, AV1). */
+    private val tv by lazy { TvAbility.of(this) }
     /** Turkish sound wanted: a dubbed source is the better first choice. */
     private val wantDubbed by lazy { prefs.playAudioLang.ifBlank { Lang.device() } == "tr" }
 
@@ -922,7 +915,7 @@ class MediaSourcePickerActivity : Activity() {
     /** A film was watched to the end in the player just closed: "Beğendin mi?" is asked. */
     @Volatile private var justFinished = false
 
-    private fun score(stream: MediaStream) = stream.tags.score(screenHeight, screenHdr, wantDubbed)
+    private fun score(stream: MediaStream) = stream.tags.score(tv, wantDubbed)
 
     /**
      * The source to start without asking: what the viewer picked for this title last time (so a
@@ -1548,6 +1541,7 @@ class MediaSourcePickerActivity : Activity() {
         val line = TextView(this).apply {
             text = when {
                 broken -> failed[stream.url] ?: "Oynatılamadı"
+                stream.tags.troubleOn(tv).isNotEmpty() -> "${stream.tags.troubleOn(tv)}  ·  ${sourceLine(stream)}"
                 memory.unreliable(sourceName(stream)) -> "Sık açılmıyor  ·  ${sourceLine(stream)}"
                 memory.fast(sourceName(stream)) -> "⚡ Hızlı açılıyor  ·  ${sourceLine(stream)}"
                 else -> sourceLine(stream)

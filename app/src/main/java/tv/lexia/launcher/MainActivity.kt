@@ -1438,6 +1438,14 @@ class MainActivity : Activity() {
             out.add(Notice("now:${p.key}:$name", R.drawable.ic_tv, "Artık ${TrailerActivity.locative(name)}: ${p.title}",
                 (if (day == todayStr()) "Bugün geldi" else "Bu hafta geldi") + ". Listende bekliyordu.") { openNowStreaming(p, name) })
         }
+        // A Listem film whose sources were found for the first time while the TV rested: three days.
+        for (p in prefs.watchlist) {
+            if (p.isSeries) continue
+            val at = playback.readyAt(p.key)
+            if (at <= 0L || System.currentTimeMillis() - at > 3 * 86400_000L || playback.isFinished(p.key)) continue
+            out.add(Notice("ready:${p.key}", R.drawable.ic_film, "Artık izlenebilir: ${p.title}",
+                "Kaynağı bulundu. Listende bekliyordu.") { openDetail(p, null, null) })
+        }
         listNudge()?.let { out.add(it) }
         val reminded = prefs.reminders.map { it.key }.toSet()
         for (p in soon.filter { it.key !in reminded }.take(12)) {

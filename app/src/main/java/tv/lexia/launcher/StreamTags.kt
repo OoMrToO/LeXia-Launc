@@ -24,7 +24,9 @@ internal class StreamTags(
     val turkish: String,
     val threeD: Boolean,
     /** File size in bytes; 0 when unknown. */
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    /** Dolby Vision that also carries HDR10 ("DV HDR10"): a TV without Dolby Vision shows it as HDR10. */
+    val hdrFallback: Boolean = false
 ) {
     /** Filmed off a cinema screen. */
     val cinemaCopy: Boolean get() = source == "CAM"
@@ -59,7 +61,9 @@ internal class StreamTags(
      * larger than the screen is worth a little less than one that fits it exactly: it looks the
      * same and loads slower. [wantDubbed] is true when the viewer's sound language is Turkish.
      */
-    fun score(screenHeight: Int, screenHdr: Boolean, wantDubbed: Boolean): Int {
+    fun score(tv: TvAbility.Ability, wantDubbed: Boolean): Int {
+        val screenHeight = tv.height
+        val screenHdr = tv.anyHdr
         val screen = if (screenHeight >= 2000) 2160 else if (screenHeight >= 1300) 1440 else 1080
         var score = when {
             resolution == 0 -> 600
@@ -69,6 +73,8 @@ internal class StreamTags(
         if (cinemaCopy) score -= 3000
         if (threeD) score -= 2000
         if (hdr.isNotEmpty()) score += if (screenHdr) 40 else -40
+        // What this TV cannot show well goes below every source it can.
+        if (troubleOn(tv).isNotEmpty()) score -= 500
         when (turkish) {
             "Dublaj" -> score += if (wantDubbed) 60 else -20
             "Altyazılı" -> score += if (wantDubbed) 0 else 60
@@ -81,6 +87,14 @@ internal class StreamTags(
             else -> 0
         }
         return score
+    }
+
+    /** Why this source may play badly on this TV ("" when it should play well). */
+    fun troubleOn(tv: TvAbility.Ability): String = when {
+        hdr == "Dolby Vision" && !hdrFallback && !tv.dolbyVision -> "Bu TV'de renkleri bozuk görünebilir"
+        codec == "AV1" && !tv.av1 -> "Bu TV'de takılabilir"
+        codec == "HEVC" && !tv.hevc -> "Bu TV'de takılabilir"
+        else -> ""
     }
 
     companion object {
@@ -154,6 +168,8 @@ internal class StreamTags(
                     hlg.containsMatchIn(text) -> "HLG"
                     else -> ""
                 },
+                hdrFallback = dolbyVision.containsMatchIn(text) &&
+                    (hdr10Plus.containsMatchIn(text) || hdr.containsMatchIn(text)),
                 codec = when {
                     hevc.containsMatchIn(text) -> "HEVC"
                     av1.containsMatchIn(text) -> "AV1"

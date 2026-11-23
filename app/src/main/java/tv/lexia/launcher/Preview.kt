@@ -191,6 +191,42 @@ class Preview(private val a: Activity, private val ui: Ui, private val prefs: Pr
     }
 
     /** The home screen in small, with the background, greeting, clock, weather and card size. */
+    /**
+     * Ayarlar › Altyazı görünümü: a film still with two subtitle lines in the chosen [look]
+     * (0 Klasik, 1 Kutulu, 2 Kalın, 3 Sarı), [size] (Nuvio's percent) and [offset] (percent above the bottom).
+     */
+    fun subtitle(look: Int, size: Int, offset: Int): View {
+        stop()
+        val box = frame()
+        val film = films.firstOrNull() ?: cinema.firstOrNull()
+        if (film != null) {
+            val img = ImageView(a)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            box.addView(img, ui.fl(ui.match, ui.match))
+            Img.load(a, "w780", film.backdrop, ui.u(W), img)
+        } else {
+            val g = View(a)
+            g.background = ui.gradient(GradientDrawable.Orientation.TL_BR, Color.parseColor("#2A3448"), Color.parseColor("#0A0B0E"))
+            box.addView(g, ui.fl(ui.match, ui.match))
+        }
+        // The preview is about a third of the screen: the subtitle shrinks with it.
+        val line = ui.text("— Bu gece her şey değişecek.\n— Hazır mısın?", 11 * size / 100, Color.WHITE, if (look == 2) 800 else 600)
+        line.gravity = Gravity.CENTER
+        line.setLineSpacing(0f, 1.1f)
+        when (look) {
+            1 -> {
+                line.background = ui.round(Color.argb(180, 0, 0, 0), 4)
+                line.setPadding(ui.u(8), ui.u(3), ui.u(8), ui.u(3))
+            }
+            else -> line.setShadowLayer(ui.uf(if (look == 2) 3f else 2f), 0f, 0f, Color.BLACK)
+        }
+        if (look == 3) line.setTextColor(Color.parseColor("#FFD54A"))
+        val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        lp.bottomMargin = (ui.u(H) * (offset.coerceIn(0, 40) + 4) / 100)
+        box.addView(line, lp)
+        return box
+    }
+
     fun home(): View {
         stop()
         val box = frame()
