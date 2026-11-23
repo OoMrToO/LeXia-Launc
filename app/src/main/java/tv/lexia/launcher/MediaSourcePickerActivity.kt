@@ -7,7 +7,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -73,6 +72,7 @@ class MediaSourcePickerActivity : Activity() {
     private val repository by lazy { MediaAddonRepository(this) }
     private val nuvioRepository by lazy { NuvioJsRepository(this) }
     private val prefs by lazy { Prefs(this) }
+    private val ui by lazy { Ui(this) }
     private val playback by lazy { MediaPlaybackStore(this) }
     private val sourcePrefs by lazy { getSharedPreferences("media_source_picker", MODE_PRIVATE) }
     private val worker = Executors.newCachedThreadPool()
@@ -211,15 +211,15 @@ class MediaSourcePickerActivity : Activity() {
         heading.addView(TextView(this).apply {
             text = if (film.isSeries) "DİZİYİ İZLE" else "FİLMİ İZLE"
             textSize = 12f
-            letterSpacing = 0.14f
-            setTextColor(Color.rgb(125, 151, 255))
-            typeface = Typeface.DEFAULT_BOLD
+            letterSpacing = 0.22f
+            setTextColor(Color.argb(150, 255, 255, 255))
+            typeface = ui.font(700)
         })
         val titleText = TextView(this).apply {
             text = film.title
             textSize = 31f
             setTextColor(Color.WHITE)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            typeface = ui.font(500)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -253,7 +253,8 @@ class MediaSourcePickerActivity : Activity() {
         status = TextView(this).apply {
             text = "Kaynaklar hazırlanıyor…"
             textSize = 16f
-            setTextColor(Color.rgb(170, 181, 199))
+            setTextColor(Color.argb(175, 255, 255, 255))
+            typeface = ui.font(400)
             setPadding(0, dp(14), 0, dp(10))
         }
         root.addView(status)
@@ -569,7 +570,7 @@ class MediaSourcePickerActivity : Activity() {
                     outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
                 }
             }
-            setBackgroundColor(Color.rgb(30, 34, 46))
+            setBackgroundColor(Color.argb(40, 255, 255, 255))
         }
         card.addView(still, LinearLayout.LayoutParams(dp(208), dp(117)).apply { rightMargin = dp(18) })
         Img.load(this, "w300", episode.thumbnail, dp(208), still)
@@ -579,7 +580,7 @@ class MediaSourcePickerActivity : Activity() {
             text = episode.title
             textSize = 19f
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = ui.font(700)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         })
@@ -595,14 +596,14 @@ class MediaSourcePickerActivity : Activity() {
         texts.addView(TextView(this).apply {
             text = facts.joinToString("  ·  ")
             textSize = 13f
-            setTextColor(Color.rgb(125, 151, 255))
-            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(hue())
+            typeface = ui.font(700)
             setPadding(0, dp(5), 0, 0)
         })
         if (episode.overview.isNotBlank()) texts.addView(TextView(this).apply {
             text = episode.overview
             textSize = 14f
-            setTextColor(Color.rgb(153, 165, 185))
+            setTextColor(Color.argb(150, 255, 255, 255))
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
             setLineSpacing(0f, 1.1f)
@@ -619,7 +620,7 @@ class MediaSourcePickerActivity : Activity() {
             val fill = View(this).apply {
                 background = GradientDrawable().apply {
                     cornerRadius = dp(2).toFloat()
-                    setColor(Color.rgb(125, 151, 255))
+                    setColor(hue())
                 }
             }
             track.addView(fill, android.widget.FrameLayout.LayoutParams(0, -1))
@@ -632,8 +633,8 @@ class MediaSourcePickerActivity : Activity() {
         card.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         card.setOnFocusChangeListener { view, focused ->
             view.background = if (focused) focusedBackground() else panelBackground()
-            view.scaleX = if (focused) 1.012f else 1f
-            view.scaleY = if (focused) 1.012f else 1f
+            ink(view, focused)
+            grow(view, focused, 1.015f)
         }
         content.addView(card, fullWidthParams(bottom = 10))
         return card
@@ -1266,25 +1267,25 @@ class MediaSourcePickerActivity : Activity() {
             text = "Kaynak özeti"
             textSize = 19f
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = ui.font(700)
         })
         card.addView(TextView(this).apply {
             text = details
             textSize = 14f
-            setTextColor(Color.rgb(190, 200, 225))
+            setTextColor(Color.argb(200, 255, 255, 255))
             setLineSpacing(0f, 1.15f)
             setPadding(0, dp(8), 0, 0)
         })
         if (scoreLine.isNotBlank()) card.addView(TextView(this).apply {
             text = scoreLine
             textSize = 13f
-            setTextColor(Color.rgb(140, 155, 185))
+            setTextColor(Color.argb(140, 255, 255, 255))
             setPadding(0, dp(6), 0, 0)
         })
         if (sizeLine.isNotBlank()) card.addView(TextView(this).apply {
             text = sizeLine
             textSize = 13f
-            setTextColor(Color.rgb(140, 155, 185))
+            setTextColor(Color.argb(140, 255, 255, 255))
             setPadding(0, dp(6), 0, 0)
         })
         content.addView(card, fullWidthParams(bottom = 14))
@@ -1403,25 +1404,25 @@ class MediaSourcePickerActivity : Activity() {
      * text readable (darker on the left and at the bottom, where the list is).
      */
     private fun withBackdrop(page: View): View {
-        val frame = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.rgb(8, 10, 24)) }
+        val frame = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.rgb(8, 8, 10)) }
         val picture = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            alpha = 0.55f
+            alpha = 0.6f
         }
         frame.addView(picture, android.widget.FrameLayout.LayoutParams(-1, -1))
-        // Deep navy shades, turned toward the film's own colour once its picture is in.
+        // Near-black shades, warmed a little toward the film's own colour once its picture is in.
         fun shade(base: Int, alpha: Int, accent: Int) =
-            Fx.blend(base, accent, if (accent == 0) 0f else 0.4f).let { Color.argb(alpha, Color.red(it), Color.green(it), Color.blue(it)) }
+            Fx.blend(base, accent, if (accent == 0) 0f else 0.22f).let { Color.argb(alpha, Color.red(it), Color.green(it), Color.blue(it)) }
         val vertical = View(this)
         val horizontal = View(this)
         fun paint(accent: Int) {
             vertical.background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(shade(Color.rgb(12, 16, 48), 150, accent), shade(Color.rgb(14, 18, 56), 205, accent), shade(Color.rgb(8, 10, 30), 245, accent))
+                intArrayOf(shade(Color.rgb(10, 10, 12), 110, accent), shade(Color.rgb(10, 10, 12), 200, accent), shade(Color.rgb(6, 6, 8), 245, accent))
             )
             horizontal.background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(shade(Color.rgb(8, 10, 30), 170, accent), shade(Color.rgb(30, 40, 120), 40, accent), shade(Color.rgb(8, 10, 30), 120, accent))
+                intArrayOf(shade(Color.rgb(6, 6, 8), 215, accent), shade(Color.rgb(10, 10, 12), 90, accent), shade(Color.rgb(6, 6, 8), 60, accent))
             )
         }
         paint(0)
@@ -1522,17 +1523,7 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun sourceTile(stream: MediaStream, number: Int): View {
         val broken = stream.url in failed
-        fun tileBackground(focused: Boolean) = GradientDrawable().apply {
-            cornerRadius = dp(14).toFloat()
-            if (focused) {
-                colors = intArrayOf(Color.rgb(92, 104, 246), Color.rgb(64, 76, 222))
-                orientation = GradientDrawable.Orientation.TL_BR
-                setStroke(dp(3), Color.WHITE)
-            } else {
-                setColor(Color.argb(186, 42, 48, 98))
-                setStroke(dp(1), Color.argb(40, 255, 255, 255))
-            }
-        }
+        fun tileBackground(focused: Boolean) = if (focused) focusedBackground() else panelBackground()
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1547,7 +1538,7 @@ class MediaSourcePickerActivity : Activity() {
             text = sourceName(stream).ifBlank { "Kaynak $number" }
             textSize = 18f
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = ui.font(700)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -1558,8 +1549,8 @@ class MediaSourcePickerActivity : Activity() {
                 else -> sourceLine(stream)
             }
             textSize = 14f
-            setTextColor(Color.rgb(201, 208, 245))
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(Color.argb(170, 255, 255, 255))
+            typeface = ui.font(500)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(4), 0, 0)
@@ -1572,8 +1563,8 @@ class MediaSourcePickerActivity : Activity() {
         }
         tile.setOnFocusChangeListener { view, focused ->
             view.background = tileBackground(focused)
-            view.animate().scaleX(if (focused) 1.04f else 1f).scaleY(if (focused) 1.04f else 1f).setDuration(140).start()
-            line.setTextColor(if (focused) Color.WHITE else Color.rgb(201, 208, 245))
+            ink(view, focused)
+            grow(view, focused, 1.05f)
             if (focused) focusedUrl = stream.url
         }
         return tile
@@ -1583,9 +1574,9 @@ class MediaSourcePickerActivity : Activity() {
         content.addView(TextView(this).apply {
             text = title
             textSize = 12f
-            letterSpacing = 0.15f
-            setTextColor(Color.rgb(127, 151, 255))
-            typeface = Typeface.DEFAULT_BOLD
+            letterSpacing = 0.22f
+            setTextColor(Color.argb(140, 255, 255, 255))
+            typeface = ui.font(700)
             setPadding(0, dp(4), 0, dp(12))
         })
     }
@@ -1600,12 +1591,12 @@ class MediaSourcePickerActivity : Activity() {
             text = title
             textSize = 22f
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = ui.font(700)
         })
         card.addView(TextView(this).apply {
             text = description
             textSize = 16f
-            setTextColor(Color.rgb(174, 183, 198))
+            setTextColor(Color.argb(170, 255, 255, 255))
             setLineSpacing(0f, 1.2f)
             setPadding(0, dp(8), 0, 0)
         })
@@ -1615,13 +1606,13 @@ class MediaSourcePickerActivity : Activity() {
     private fun badge(label: String, strong: Boolean): TextView = TextView(this).apply {
         text = label
         textSize = 11.5f
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = ui.font(700)
         letterSpacing = 0.04f
-        setTextColor(if (strong) Color.rgb(7, 9, 15) else Color.rgb(205, 213, 230))
+        setTextColor(if (strong) C.INK else Color.argb(215, 255, 255, 255))
         setPadding(dp(8), dp(3), dp(8), dp(3))
         background = GradientDrawable().apply {
             cornerRadius = dp(6).toFloat()
-            setColor(if (strong) Color.rgb(205, 213, 230) else Color.rgb(44, 51, 68))
+            setColor(if (strong) Color.argb(230, 255, 255, 255) else Color.argb(38, 255, 255, 255))
         }
     }
 
@@ -1648,7 +1639,7 @@ class MediaSourcePickerActivity : Activity() {
             text = title
             textSize = 19f
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = ui.font(700)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         })
@@ -1666,7 +1657,7 @@ class MediaSourcePickerActivity : Activity() {
             texts.addView(TextView(this).apply {
                 text = description
                 textSize = 14f
-                setTextColor(Color.rgb(153, 165, 185))
+                setTextColor(Color.argb(150, 255, 255, 255))
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(6), 0, 0)
@@ -1676,15 +1667,15 @@ class MediaSourcePickerActivity : Activity() {
         card.addView(TextView(this).apply {
             text = actionLabel
             textSize = 13f
-            setTextColor(Color.rgb(185, 193, 208))
-            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.argb(185, 255, 255, 255))
+            typeface = ui.font(700)
             gravity = Gravity.CENTER
             setPadding(dp(16), 0, 0, 0)
         })
         card.setOnFocusChangeListener { view, focused ->
             view.background = if (focused) focusedBackground() else panelBackground()
-            view.scaleX = if (focused) 1.012f else 1f
-            view.scaleY = if (focused) 1.012f else 1f
+            ink(view, focused)
+            grow(view, focused, 1.015f)
             if (focused) (view.tag as? String)?.let { focusedUrl = it }
         }
         content.addView(card, fullWidthParams(bottom = 10))
@@ -1694,41 +1685,74 @@ class MediaSourcePickerActivity : Activity() {
     private fun action(label: String, primary: Boolean = false): TextView = TextView(this).apply {
         text = label
         textSize = 15f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = ui.font(500)
         gravity = Gravity.CENTER
         isFocusable = true
         isClickable = true
         setTextColor(Color.WHITE)
         setPadding(dp(18), dp(12), dp(18), dp(12))
         val idle = GradientDrawable().apply {
-            cornerRadius = dp(12).toFloat()
-            setColor(if (primary) Color.rgb(64, 87, 172) else Color.rgb(34, 39, 51))
-            setStroke(dp(1), if (primary) Color.rgb(126, 150, 255) else Color.rgb(62, 71, 91))
+            cornerRadius = dp(14).toFloat()
+            setColor(if (primary) Color.argb(64, 255, 255, 255) else Color.argb(30, 255, 255, 255))
+            setStroke(dp(1), Color.argb(if (primary) 90 else 34, 255, 255, 255))
         }
         // Focused: white with dark text, so the selected button is unmistakable from the sofa.
         val focusedLook = GradientDrawable().apply {
-            cornerRadius = dp(12).toFloat()
+            cornerRadius = dp(14).toFloat()
             setColor(Color.WHITE)
         }
         background = idle
         setOnFocusChangeListener { view, focused ->
             view.background = if (focused) focusedLook else idle
-            (view as TextView).setTextColor(if (focused) Color.rgb(7, 9, 15) else Color.WHITE)
-            view.scaleX = if (focused) 1.04f else 1f
-            view.scaleY = if (focused) 1.04f else 1f
+            (view as TextView).setTextColor(if (focused) C.INK else Color.WHITE)
+            grow(view, focused, 1.06f)
         }
     }
 
+    /** Dark glass over the film's picture, like the rest of LeXia. */
     private fun panelBackground() = GradientDrawable().apply {
-        cornerRadius = dp(15).toFloat()
-        setColor(Color.rgb(20, 24, 34))
-        setStroke(dp(1), Color.rgb(41, 48, 64))
+        cornerRadius = dp(16).toFloat()
+        setColor(Color.argb(34, 255, 255, 255))
+        setStroke(dp(1), Color.argb(26, 255, 255, 255))
     }
 
+    /** Selected: a white plate with dark text, as everywhere else. */
     private fun focusedBackground() = GradientDrawable().apply {
-        cornerRadius = dp(15).toFloat()
-        setColor(Color.rgb(35, 44, 69))
-        setStroke(dp(2), Color.rgb(126, 150, 255))
+        cornerRadius = dp(16).toFloat()
+        setColor(Color.WHITE)
+    }
+
+    /** The film's own colour, lightened for text and bars; soft white until its picture is in. */
+    private fun hue(): Int =
+        if (filmAccent != 0) Fx.blend(filmAccent, Color.WHITE, 0.35f) else Color.argb(200, 255, 255, 255)
+
+    /** Idle colours of texts on a card, to put back when it loses the white plate. */
+    private val idleInk = java.util.WeakHashMap<TextView, Int>()
+
+    /** On the white plate every text of [card] turns dark; badges keep their own look. */
+    private fun ink(card: View, focused: Boolean) {
+        if (card !is android.view.ViewGroup) return
+        for (i in 0 until card.childCount) {
+            val c = card.getChildAt(i)
+            if (c is TextView && c.background == null) {
+                if (focused) {
+                    val idle = idleInk.getOrPut(c) { c.currentTextColor }
+                    c.setTextColor(if (idle == Color.WHITE) C.INK else Color.argb(175, 11, 11, 13))
+                } else {
+                    idleInk[c]?.let { c.setTextColor(it) }
+                }
+            } else if (c is android.view.ViewGroup) {
+                ink(c, focused)
+            }
+        }
+    }
+
+    /** A focused card grows a little with a soft spring; back to size when it is left. */
+    private fun grow(v: View, focused: Boolean, scale: Float) {
+        val to = if (focused) scale else 1f
+        v.animate().scaleX(to).scaleY(to).setDuration(if (focused) D.SPRING else D.FAST)
+            .setInterpolator(if (focused) android.view.animation.OvershootInterpolator(1.4f) else android.view.animation.DecelerateInterpolator())
+            .start()
     }
 
     private fun fullWidthParams(top: Int = 0, bottom: Int = 0) =

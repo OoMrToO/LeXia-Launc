@@ -41,7 +41,9 @@ class SettingsActivity : Activity() {
         /** Named choices; left/right steps through them, OK opens the list (or flips two). */
         val choices: List<String>? = null,
         val selected: () -> Int = { 0 },
-        val pick: (Int) -> Unit = {}
+        val pick: (Int) -> Unit = {},
+        /** The icon of the page this row opens; the big icon on the left turns into it. */
+        val pageIcon: Int = 0
     ) : Item()
 
     /**
@@ -59,6 +61,12 @@ class SettingsActivity : Activity() {
     private lateinit var ui: Ui
     private lateinit var prefs: Prefs
     private lateinit var bigIcon: ImageView
+    private lateinit var disc: FrameLayout
+    private lateinit var subTitle: TextView
+    /** The section of glass rows being filled while a page is built. */
+    private var group: LinearLayout? = null
+    /** What the big icon shows now, so the same icon is not faded in again. */
+    private var iconNow: Any? = null
     private lateinit var pageTitle: TextView
     private lateinit var descText: TextView
     private lateinit var scroll: ScrollView
@@ -94,7 +102,19 @@ class SettingsActivity : Activity() {
         left.setPadding(ui.u(80), 0, ui.u(40), 0)
         bigIcon = ImageView(this)
         bigIcon.setColorFilter(Color.argb(235, 255, 255, 255), PorterDuff.Mode.SRC_IN)
-        left.addView(bigIcon, ui.ll(ui.u(280), ui.u(280)))
+        // The icon sits on a round pane of glass with a soft light behind it, like tvOS.
+        disc = FrameLayout(this)
+        disc.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            colors = intArrayOf(Color.argb(46, 255, 255, 255), Color.argb(14, 255, 255, 255))
+            gradientRadius = ui.uf(200)
+            setStroke(maxOf(1, ui.u(1.5f)), Color.argb(40, 255, 255, 255))
+        }
+        disc.elevation = ui.uf(18)
+        disc.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        disc.addView(bigIcon, FrameLayout.LayoutParams(ui.u(190), ui.u(190), Gravity.CENTER))
+        left.addView(disc, ui.ll(ui.u(330), ui.u(330)))
         previewBox = FrameLayout(this)
         previewBox.visibility = View.GONE
         left.addView(previewBox, ui.ll(ui.u(Preview.W), ui.u(Preview.H)))
@@ -102,6 +122,10 @@ class SettingsActivity : Activity() {
         pageTitle = ui.text("", 46, C.TEXT, 600)
         pageTitle.gravity = Gravity.CENTER
         left.addView(pageTitle, ui.ll(ui.wrap, ui.wrap, top = 44))
+        subTitle = ui.text("", 21, C.TEXT3, 500)
+        subTitle.gravity = Gravity.CENTER
+        subTitle.letterSpacing = 0.04f
+        left.addView(subTitle, ui.ll(ui.wrap, ui.wrap, top = 10))
         descText = ui.text("", 23, C.TEXT2, 400)
         descText.gravity = Gravity.CENTER
         descText.maxWidth = ui.u(560)
@@ -180,9 +204,9 @@ class SettingsActivity : Activity() {
         plate.alpha = 0f
         plateOn = null
         pageTitle.text = page.title
-        bigIcon.setImageResource(page.iconRes)
-        bigIcon.setColorFilter(Color.argb(235, 255, 255, 255), PorterDuff.Mode.SRC_IN)
-        bigIcon.visibility = if (page.preview.isEmpty()) View.VISIBLE else View.GONE
+        showIcon(page.iconRes, null, false)
+        disc.visibility = if (page.preview.isEmpty()) View.VISIBLE else View.GONE
+        subTitle.text = if (stack.size == 1) "LeXia  ·  Sürüm ${Updater.current}" else stack.dropLast(1).joinToString("  ›  ") { it.title }
         previewBox.visibility = if (page.preview.isEmpty()) View.GONE else View.VISIBLE
         showPreview()
         list.removeAllViews()
@@ -206,16 +230,22 @@ class SettingsActivity : Activity() {
                 )
             )
         }
+        group = null
         for (item in items) {
             when (item) {
                 is Header -> {
                     val t = ui.label(item.text, C.TEXT3)
-                    list.addView(t, ui.ll(ui.wrap, ui.wrap, left = 30, top = if (list.childCount == 0) 0 else 40, bottom = 12))
+                    list.addView(t, ui.ll(ui.wrap, ui.wrap, left = 30, top = if (list.childCount == 0) 0 else 44, bottom = 14))
+                    group = null
                 }
-                is Note -> list.addView(noteView(item), ui.ll(ui.match, ui.wrap, bottom = 10))
-                is Row -> list.addView(rowView(item, page), ui.ll(ui.match, ui.wrap, bottom = 6))
+                is Note -> {
+                    group = null
+                    list.addView(noteView(item), ui.ll(ui.match, ui.wrap, bottom = 10))
+                }
+                is Row -> section().addView(rowView(item, page), ui.ll(ui.match, ui.wrap))
             }
         }
+        group = null
         refreshValues()
         val target = rows.getOrNull(focus.coerceIn(0, maxOf(0, rows.size - 1)))
         target?.requestFocus()
@@ -231,6 +261,51 @@ class SettingsActivity : Activity() {
             }
             slideDir = 1
         }
+    }
+
+    /**
+     * The glass pane the next rows go on: each section (under its small heading) is one rounded
+     * pane, like tvOS and iOS settings. The white plate glides over it.
+     */
+    private fun section(): LinearLayout {
+        group?.let { return it }
+        val g = ui.vbox()
+        g.clipChildren = false
+        g.clipToPadding = false
+        g.setPadding(ui.u(8), ui.u(8), ui.u(8), ui.u(8))
+        g.background = ui.round(Color.argb(22, 255, 255, 255), 30, 1, Color.argb(24, 255, 255, 255))
+        list.addView(g, ui.ll(ui.match, ui.wrap, bottom = 6))
+        group = g
+        return g
+    }
+
+    /** The big icon on the left; a new one fades and settles in, an app's own icon keeps its colours. */
+    private fun showIcon(res: Int, drawable: Drawable?, animate: Boolean) {
+        val key: Any = drawable ?: res
+        if (key == iconNow) return
+        iconNow = key
+        fun set() {
+            if (drawable != null) {
+                bigIcon.clearColorFilter()
+                bigIcon.setImageDrawable(drawable)
+            } else {
+                bigIcon.setImageResource(res)
+                bigIcon.setColorFilter(Color.argb(235, 255, 255, 255), PorterDuff.Mode.SRC_IN)
+            }
+        }
+        bigIcon.animate().cancel()
+        if (!animate || Fx.lite) {
+            set()
+            bigIcon.alpha = 1f
+            bigIcon.scaleX = 1f
+            bigIcon.scaleY = 1f
+            return
+        }
+        bigIcon.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(110).withEndAction {
+            set()
+            bigIcon.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(D.MED)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
+        }.start()
     }
 
     /** +1 when a page opens (comes from the right), -1 when going back. */
@@ -355,12 +430,10 @@ class SettingsActivity : Activity() {
             style()
             if (f) {
                 glideTo(v)
-                if (r.icon != null) {
-                    bigIcon.clearColorFilter()
-                    bigIcon.setImageDrawable(r.icon)
-                } else {
-                    bigIcon.setImageResource(page.iconRes)
-                    bigIcon.setColorFilter(Color.argb(235, 255, 255, 255), PorterDuff.Mode.SRC_IN)
+                when {
+                    r.icon != null -> showIcon(0, r.icon, true)
+                    r.pageIcon != 0 -> showIcon(r.pageIcon, null, true)
+                    else -> showIcon(page.iconRes, null, true)
                 }
             } else if (plateOn === v) {
                 // Focus left the list rows (a note, a dialog): the plate fades until a row takes it.
@@ -427,8 +500,17 @@ class SettingsActivity : Activity() {
         row.post {
             if (!row.isAttachedToWindow) return@post
             val lp = plate.layoutParams as FrameLayout.LayoutParams
-            val x = row.left.toFloat()
-            val y = row.top.toFloat()
+            // Rows sit inside their section's pane: add up the offsets to the list.
+            var x = row.left.toFloat()
+            var y = row.top.toFloat()
+            var p = row.parent as? View
+            while (p != null && p !== list) {
+                x += p.left
+                y += p.top
+                p = p.parent as? View
+            }
+            x += list.left
+            y += list.top
             val first = plate.alpha < 0.05f || plateOn == null || Fx.lite
             plateOn = row
             if (lp.width != row.width || lp.height != row.height) {
@@ -540,7 +622,7 @@ class SettingsActivity : Activity() {
     )
 
     private fun sub(title: String, desc: String, page: () -> Page, value: () -> String = { "" }) =
-        Row(title, desc, chevron = true, value = value, action = { push(page()) })
+        Row(title, desc, chevron = true, value = value, action = { push(page()) }, pageIcon = page().iconRes)
 
     private fun mainPage() = Page("Ayarlar", R.drawable.ic_gear) {
         listOf(
