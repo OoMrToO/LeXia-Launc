@@ -132,7 +132,7 @@ class SearchActivity : Activity() {
         page.addView(field, ui.ll(ui.u(1160), ui.u(96)))
 
         status = ui.text("", 21, C.TEXT3, 500)
-        page.addView(status, ui.ll(w, w, left = 34, top = 16))
+        page.addView(status, ui.ll(w, w, left = 2, top = 18))
 
         titlesLabel = ui.label("BUGÜN POPÜLER", C.TEXT3)
         page.addView(titlesLabel, ui.ll(w, w, top = 34, bottom = 6))
@@ -225,16 +225,23 @@ class SearchActivity : Activity() {
             return
         }
         status.text = "Aranıyor…"
+        if (isDestroyed) return
         worker.execute {
             val local = pool
-            val found: List<TmdbDiscover.Found> = if (BuildConfig.TMDB_API_KEY.isBlank()) {
+            val found: List<TmdbDiscover.Found>? = if (BuildConfig.TMDB_API_KEY.isBlank()) {
                 // No TMDB key in this build: today's list only.
                 val n = norm(q)
                 local.filter { norm(it.title).contains(n) }.map { TmdbDiscover.Found(it) }
             } else {
-                try { TmdbDiscover.search(q) } catch (e: Exception) { emptyList() }
+                try { TmdbDiscover.search(q) } catch (e: Exception) { null }
             }
             // Titles of today's list keep their richer data (trailer, IMDb score).
+            if (found == null) {
+                runOnUiThread {
+                    if (mine == token && !isFinishing) status.text = "Arama yapılamadı. İnternet bağlantısını kontrol et."
+                }
+                return@execute
+            }
             val byId = local.filter { it.id > 0 }.associateBy { "${it.kind}:${it.id}" }
             val titles = found.mapNotNull { f -> f.pick?.let { p -> byId["${p.kind}:${p.id}"] ?: p } }
                 .filter { it.poster.isNotBlank() }.take(30)
@@ -420,7 +427,7 @@ class SearchActivity : Activity() {
     /** The focused title's picture, blurred, cross-fading in behind the page. */
     private fun backdrop(p: Pick) {
         val path = p.backdrop
-        if (path.isBlank() || path == backFor || Fx.lite) return
+        if (path.isBlank() || path == backFor || Fx.lite || isDestroyed || isFinishing) return
         backFor = path
         pictures.execute {
             val b: Bitmap? = try {

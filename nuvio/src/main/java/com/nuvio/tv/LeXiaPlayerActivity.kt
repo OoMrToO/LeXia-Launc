@@ -103,6 +103,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
                 )
                 if (curtain) Curtain()
                 Credits(viewModel)
+                StartClock(viewModel)
                 if (quickFailMs > 0) QuickFail(viewModel, quickFailMs)
                 }
             }
@@ -121,6 +122,19 @@ class LeXiaPlayerActivity : ComponentActivity() {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(ms)
             if (!started) answer(RESULT_FAILED, null, null, null, reason = REASON_TIMEOUT)
+        }
+    }
+
+    /** When the player opened, and how long until the picture first moved (-1 until then). */
+    private val openedAt = android.os.SystemClock.elapsedRealtime()
+    private var startMs = -1L
+
+    /** Notes how many milliseconds the source took to show its first moving picture. */
+    @androidx.compose.runtime.Composable
+    private fun StartClock(viewModel: PlayerViewModel) {
+        val state by viewModel.uiState.collectAsState()
+        if (startMs < 0 && state.isPlaying && !state.showLoadingOverlay) {
+            startMs = android.os.SystemClock.elapsedRealtime() - openedAt
         }
     }
 
@@ -408,6 +422,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
             videoId?.let { putExtra(RESULT_VIDEO_ID, it) }
             season?.let { putExtra(RESULT_SEASON, it) }
             episode?.let { putExtra(RESULT_EPISODE, it) }
+            if (startMs > 0) putExtra(RESULT_START_MS, startMs)
         })
         finish()
     }
@@ -423,6 +438,8 @@ class LeXiaPlayerActivity : ComponentActivity() {
         const val RESULT_EPISODE = "lexia.player.episode"
         /** With [RESULT_FAILED]: why it would not play (the player's own message, or [REASON_TIMEOUT]). */
         const val RESULT_REASON = "lexia.player.reason"
+        /** How many milliseconds the source took to start (absent when it never did). */
+        const val RESULT_START_MS = "lexia.player.startMs"
         const val REASON_TIMEOUT = "lexia:timeout"
         /** Milliseconds to wait for the picture before giving up on a remembered source. */
         const val EXTRA_QUICK_FAIL = "lexia.player.quickFail"

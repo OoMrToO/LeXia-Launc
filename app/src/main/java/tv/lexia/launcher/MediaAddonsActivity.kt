@@ -463,6 +463,11 @@ class MediaAddonsActivity : Activity() {
         if (!idle) return
         worker.execute {
             while (true) {
+                // The page was closed: the remaining tries are dropped, not run in the background.
+                if (isDestroyed || Thread.currentThread().isInterrupted) {
+                    testing.clear()
+                    break
+                }
                 val next = synchronized(testing) { testing.firstOrNull() } ?: break
                 val name = known[next].orEmpty()
                 runOnUiThread { status.text = "$name deneniyor…" }

@@ -39,4 +39,21 @@ class SourceMemoryTest {
         memory.forgetPlayed("tt1234567")
         assertNull(memory.lastPlayed("tt1234567"))
     }
+
+    /** "Hızlı açılıyor": learnt from how long each site took to start, leaning on the latest tries. */
+    @Test
+    fun learnsWhichSitesStartFast() {
+        val memory = SourceMemory(app)
+        org.junit.Assert.assertFalse(memory.fast("Vidmody"))
+        memory.started("Vidmody", 3_000)
+        org.junit.Assert.assertTrue(memory.fast("vidmody"))
+        memory.started("Yavaş", 14_000)
+        org.junit.Assert.assertFalse(memory.fast("Yavaş"))
+        // Got quicker: after a few fast starts it counts as fast.
+        repeat(4) { memory.started("Yavaş", 2_000) }
+        org.junit.Assert.assertTrue(memory.fast("Yavaş"))
+        // A value that cannot be a start time is ignored.
+        memory.started("Vidmody", 500_000)
+        assertEquals(3_000L, memory.startMs("Vidmody"))
+    }
 }

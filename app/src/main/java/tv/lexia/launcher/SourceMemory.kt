@@ -42,6 +42,33 @@ internal class SourceMemory(context: Context) {
     }
 
     fun played(site: String) = count(site, true)
+
+    // ---------- How fast a site starts ----------
+
+    private fun speeds(): JSONObject = try {
+        JSONObject(preferences.getString(KEY_SPEED, "{}") ?: "{}")
+    } catch (e: Exception) {
+        JSONObject()
+    }
+
+    /**
+     * How long the site took to show its picture this time. Kept as a running average that leans
+     * on the latest tries (a site that got slower or faster shows it within a few films).
+     */
+    fun started(site: String, ms: Long) = synchronized(LOCK) {
+        val name = site.trim().lowercase()
+        if (name.isEmpty() || ms <= 0 || ms > 120_000) return
+        val all = speeds()
+        val old = all.optLong(name, 0L)
+        all.put(name, if (old <= 0) ms else (old * 2 + ms) / 3)
+        preferences.edit().putString(KEY_SPEED, all.toString()).apply()
+    }
+
+    /** The site's usual start time in milliseconds; 0 when it has never been timed. */
+    fun startMs(site: String): Long = speeds().optLong(site.trim().lowercase(), 0L)
+
+    /** Opens fast: its picture usually comes within [FAST_MS]. */
+    fun fast(site: String): Boolean = startMs(site).let { it in 1..FAST_MS }
     fun failed(site: String) = count(site, false)
 
     /**
@@ -172,6 +199,9 @@ internal class SourceMemory(context: Context) {
     companion object {
         private const val FILE = "source_memory"
         private const val KEY_STATS = "stats"
+        private const val KEY_SPEED = "speed"
+        /** "Hızlı açılıyor": the picture usually comes within this. */
+        const val FAST_MS = 5_000L
         /** Sources found less than three hours ago still play (their addresses carry tokens that expire). */
         private const val KEEP_MS = 3 * 60 * 60 * 1000L
         private const val MAX_KEPT = 80

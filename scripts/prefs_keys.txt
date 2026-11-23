@@ -136,3 +136,5 @@ homeV2 bool
 titles text
 finishes text
 cinemaMode bool
+speed text
+stats text
