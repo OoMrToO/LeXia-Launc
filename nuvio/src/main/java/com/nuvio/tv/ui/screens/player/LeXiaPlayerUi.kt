@@ -179,6 +179,75 @@ internal fun LeXiaQualityCard(viewModel: PlayerViewModel) {
     }
 }
 
+/**
+ * As the film starts, top left: what it holds (violence, language, fear…) on a small card of
+ * LeXia's glass, a thin line in the film's colour beside it, as LeXia's trailer page shows it. It
+ * comes in softly, line by line, stays five seconds and goes; the controls coming up take it away.
+ */
+@Composable
+internal fun LeXiaParentalGuide(
+    warnings: List<ParentalWarning>,
+    isVisible: Boolean,
+    onAnimationComplete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (warnings.isEmpty()) return
+    val accent = remember { lexiaAccent() }
+    val shown = remember { androidx.compose.animation.core.Animatable(0f) }
+    var running by remember { mutableStateOf(false) }
+    LaunchedEffect(isVisible) {
+        if (isVisible && !running) {
+            running = true
+            shown.animateTo(1f, tween(600))
+            delay(5000)
+            shown.animateTo(0f, tween(500))
+            running = false
+            onAnimationComplete()
+        } else if (!isVisible && running) {
+            shown.snapTo(0f)
+            running = false
+            onAnimationComplete()
+        }
+    }
+    if (shown.value <= 0f) return
+    Row(
+        modifier
+            .padding(start = 36.dp, top = 28.dp)
+            .graphicsLayer {
+                alpha = shown.value
+                translationX = (1f - shown.value) * -16.dp.toPx()
+            }
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.40f))))
+            .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.18f))), RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .height((18 * warnings.size + 22).dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Brush.verticalGradient(listOf(lerp(accent, Color.White, 0.3f), accent.copy(alpha = 0.4f))))
+        )
+        Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "İÇERİK",
+                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp, color = lerp(accent, Color.White, 0.45f))
+            )
+            warnings.forEachIndexed { i, w ->
+                // Line by line, as the card comes in.
+                val step = ((shown.value - i * 0.08f) / 0.6f).coerceIn(0f, 1f)
+                Row(Modifier.alpha(step), verticalAlignment = Alignment.CenterVertically) {
+                    Text(w.label, style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f)))
+                    Text("  ·  ", style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.35f)))
+                    Text(w.severity, style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f)))
+                }
+            }
+        }
+    }
+}
+
 /** What really plays now, read from the decoder: "4K", "HDR10", "Dolby Atmos 5.1"… */
 internal fun lexiaQuality(info: PlayerMediaInfo): List<String> = buildList {
     val w = info.videoWidth ?: 0
