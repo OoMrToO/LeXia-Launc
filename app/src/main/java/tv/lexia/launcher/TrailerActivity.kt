@@ -312,7 +312,19 @@ class TrailerActivity : Activity() {
             if (nativeMode) giveUpOnNative()
         }
     }
-    private val hideInfo = Runnable { if (!paused && !onButtons && endCard == null) info.animate().alpha(0f).setDuration(D.MED).start() }
+    /**
+     * The controls go down while the trailer plays; left on the buttons, they go too after a
+     * longer while (TV photo, 24 Kasım: the panel stayed up), and the first key brings them back.
+     */
+    private val hideInfo = Runnable {
+        if (paused || endCard != null || castPanel != null) return@Runnable
+        if (onButtons) {
+            onButtons = false
+            currentFocus?.clearFocus()
+            setButtonsFocusable(false)
+        }
+        info.animate().alpha(0f).setDuration(D.MED).start()
+    }
     /** While the controls are on screen, the time and bar follow the trailer twice a second. */
     private val tick = object : Runnable {
         override fun run() {
@@ -1020,7 +1032,7 @@ class TrailerActivity : Activity() {
         info.alpha = 1f
         readTime()
         placeSubtitles()
-        handler.postDelayed(hideInfo, 4000)
+        handler.postDelayed(hideInfo, if (onButtons) 8000L else 4000L)
     }
 
     /**
