@@ -54,6 +54,8 @@ class MainActivity : Activity() {
         private const val SHORT_MIN = 105
         /** How long a film is on screen before its trailer starts (without sound). */
         private const val HERO_TRAILER_DELAY_MS = 5_000L
+        /** How long the screensaver's trailer marathon lasts before the pictures come back. */
+        private const val SAVER_TRAILERS_MS = 30 * 60_000L
         private const val SHELF_H = 330
         private const val TOP_H = 420
         private const val POSTER_H = 470
@@ -338,6 +340,11 @@ class MainActivity : Activity() {
     private lateinit var heroTrailer: HeroTrailer
     private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
+    /** The screensaver's trailer marathon: trailers play until this time, then the pictures come back. */
+    private var saverTrailersUntil = 0L
+    /** The screensaver's trailer on screen has shown (it played, not failed). */
+    private var saverShown = false
+    private val saverTrailer = Runnable { startSaverTrailer() }
     /** Hands the screen back to the TV's own screensaver and sleep setting. */
     private val holdRelease = Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
 
@@ -381,7 +388,9 @@ class MainActivity : Activity() {
         }
         frame.addView(stage, ui.fl(m, m))
         heroTrailer = HeroTrailer(this, stage).also { t ->
-            t.onFinished = { schedule() }
+            // In the screensaver's trailer marathon the next film comes as soon as one ends; a
+            // trailer that could not play leaves its picture for the usual while.
+            t.onFinished = { if (idle && saverShown) next() else schedule() }
             // The full-screen trailer (sinema anı) in 1080p; a TV that stutters goes back to 720p for good.
             t.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
             t.onStutter = {
@@ -390,7 +399,7 @@ class MainActivity : Activity() {
             }
             t.onShowing = { on ->
                 if (::heroStage.isInitialized) heroStage.trailerShowing(on)
-                trailerLight(on)
+                if (idle) saverTrailerShowing(on) else trailerLight(on)
             }
             t.onCues = { if (::heroStage.isInitialized) heroStage.cues(it) }
         }
@@ -3780,10 +3789,13 @@ class MainActivity : Activity() {
         // the film, Back only wakes; the arrows go on and move as usual.
         if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
             val wasOn = heroStage.on
+            // The screensaver's trailer: OK opens that film (the screensaver ends under it).
+            val film = picks.getOrNull(pickIndex)
             heroStage.wake()
             if (wasOn) when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) }
+                    if (idle) exitIdle()
+                    film?.let { openDetail(it, null, null) }
                     swallowUp = true
                     return true
                 }
@@ -3929,6 +3941,38 @@ class MainActivity : Activity() {
         if (prefs.saverHoldMin > 0) handler.postDelayed(holdRelease, prefs.saverHoldMin * 60000L)
         schedule()
         Housekeeping.prefetch(this)
+        // "Sessiz fragman maratonu": the films' trailers, silent, one after another, for half an hour.
+        saverTrailersUntil = if (prefs.saverStyle == "trailers" && !Fx.lite) System.currentTimeMillis() + SAVER_TRAILERS_MS else 0L
+        handler.removeCallbacks(saverTrailer)
+        if (saverTrailersOn()) handler.postDelayed(saverTrailer, 2_500)
+    }
+
+    private fun saverTrailersOn() = idle && System.currentTimeMillis() < saverTrailersUntil
+
+    /** The film on the screensaver plays its trailer: silent, 720p (light for the TV), full screen. */
+    private fun startSaverTrailer() {
+        if (!saverTrailersOn() || !::heroTrailer.isInitialized) return
+        val p = picks.getOrNull(pickIndex) ?: return
+        if (p.homeTrailer.isBlank()) return
+        handler.removeCallbacks(rotate)
+        progressAnim?.cancel()
+        saverShown = false
+        heroTrailer.sound = false
+        heroTrailer.height = 720
+        heroTrailer.start(p.homeTrailer)
+    }
+
+    /** The screensaver's words and clock make way for the trailer, and come back after it. */
+    private fun saverTrailerShowing(on: Boolean) {
+        if (on) saverShown = true
+        ambient.animate().cancel()
+        ambient.animate().alpha(if (on) 0f else 1f).setStartDelay(0).setDuration(if (on) 900L else 600L).start()
+        // The full-screen trailer's way out brings the home screen back: not while the screensaver runs.
+        if (!on) {
+            content.animate().cancel()
+            content.animate().alpha(0f).setDuration(300).start()
+            for (s in scrims) s.animate().alpha(0.35f).setDuration(600).start()
+        }
     }
 
     /** Screensaver clock size and weather, as chosen in the settings. */
@@ -3949,6 +3993,12 @@ class MainActivity : Activity() {
 
     private fun exitIdle() {
         idle = false
+        handler.removeCallbacks(saverTrailer)
+        saverTrailersUntil = 0L
+        if (::heroTrailer.isInitialized) {
+            heroTrailer.stop()
+            heroTrailer.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
+        }
         Housekeeping.stopPrefetch()
         holdScreen()
         savedPicks?.let {
@@ -4546,6 +4596,8 @@ class MainActivity : Activity() {
         val p = picks.getOrNull(pickIndex) ?: return
         if (::heroTrailer.isInitialized) heroTrailer.stop()
         queueHeroTrailer()
+        handler.removeCallbacks(saverTrailer)
+        if (saverTrailersOn()) handler.postDelayed(saverTrailer, 1_500)
         buildProgress()
         schedule()
         loadBackdrop(pickIndex)

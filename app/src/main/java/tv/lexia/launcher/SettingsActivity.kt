@@ -1242,7 +1242,7 @@ class SettingsActivity : Activity() {
 
     private fun sleepPage() = Page(
         "Ekran koruyucu ve uyku", R.drawable.ic_moon,
-        keys = listOf("saverMin", "saverContent", "saverSec", "saverClock", "saverWeather", "saverHold", "nightSleep"),
+        keys = listOf("saverMin", "saverStyle", "saverContent", "saverSec", "saverClock", "saverWeather", "saverHold", "nightSleep"),
         preview = "saver"
     ) {
         listOf(
@@ -1257,6 +1257,14 @@ class SettingsActivity : Activity() {
                 "Başlama süresi", "Bu kadar süre tuşa basılmazsa yazılar kaybolur, filmler ve saat tam ekran akar.",
                 listOf(1, 2, 5, 10, 0), listOf("1 dk", "2 dk", "5 dk", "10 dk", "Kapalı"),
                 { prefs.saverMin }, { prefs.saverMin = it }
+            ),
+            choice(
+                "Görünüm",
+                "Sessiz fragman maratonu: filmlerin fragmanları sessiz, sırayla, tam ekran oynar; köşede filmin küçük logosu. " +
+                    "Yarım saat sonra resimlere döner. Resimler: filmlerin resimleri yavaşça akar, saat ve bilgileriyle. " +
+                    "Hafif modda her zaman resimler.",
+                listOf("trailers", "stills"), listOf("Sessiz fragman maratonu", "Resimler"),
+                { prefs.saverStyle }, { prefs.saverStyle = it }
             ),
             choice(
                 "İçerik",
