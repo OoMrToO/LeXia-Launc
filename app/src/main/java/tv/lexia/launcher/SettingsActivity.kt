@@ -55,6 +55,8 @@ class SettingsActivity : Activity() {
         val iconRes: Int,
         val keys: List<String> = emptyList(),
         val preview: String = "",
+        /** What "Varsayılana döndür" also puts back beyond [keys] (settings kept elsewhere). */
+        val reset: (() -> Unit)? = null,
         val items: () -> List<Item>
     )
 
@@ -222,6 +224,7 @@ class SettingsActivity : Activity() {
                     action = {
                         Dialogs.confirm(this, "${page.title} varsayılana dönsün mü?", "Bu sayfadaki ayarlar ilk hâline döner.") {
                             prefs.resetKeys(page.keys)
+                            try { page.reset?.invoke() } catch (_: Exception) { }
                             afterChange()
                             Glass.toast(this, "Varsayılana döndü")
                             render(focusedRow(), false)
@@ -341,9 +344,7 @@ class SettingsActivity : Activity() {
         previewBox.removeAllViews()
         previewBox.addView(when (kind) {
             "saver" -> preview.saver()
-            "subtitle" -> preview.subtitle(
-                LeXiaNuvio.subtitleLook(this), LeXiaNuvio.subtitleSize(this), LeXiaNuvio.subtitleOffset(this)
-            )
+            "subtitle" -> subLook().let { (look, size, offset) -> preview.subtitle(look, size, offset) }
             else -> preview.home()
         }, ui.fl(ui.match, ui.match))
     }
@@ -760,35 +761,45 @@ class SettingsActivity : Activity() {
     /** Nuvio's subtitle sizes (percent) for LeXia's four steps. */
     private val subPercents = listOf(95, 120, 145, 175)
 
-    private fun subtitleLookPage() = Page("Altyazı görünümü", R.drawable.ic_eye, preview = "subtitle") {
+    /** Altyazı görünümü's style, size and place, read once (the player's store is slow to ask on every row). */
+    private var subNow: Triple<Int, Int, Int>? = null
+
+    private fun subLook(): Triple<Int, Int, Int> =
+        subNow ?: (try { LeXiaNuvio.subtitleLookNow(this) } catch (_: Exception) { Triple(0, 120, 5) }).also { subNow = it }
+
+    private fun subtitleLookPage() = Page(
+        "Altyazı görünümü", R.drawable.ic_eye, keys = listOf("playSubSize"), preview = "subtitle",
+        reset = { LeXiaNuvio.resetSubtitleLook(this); subNow = null }
+    ) {
         listOf(
             Note("Film oynarken altyazılar böyle görünür. Seçtikçe soldaki resimde hemen görürsün."),
             choice(
                 "Stil",
                 "Klasik: beyaz, ince siyah kenarlı. Kutulu: koyu yarı saydam zemin üstünde. Kalın: kalın harf, belirgin kenar. Sarı: eski sinema altyazısı gibi.",
                 listOf(0, 1, 2, 3), SUB_LOOKS,
-                { LeXiaNuvio.subtitleLook(this) }, { LeXiaNuvio.setSubtitleLook(this, it) }
+                { subLook().first }, { LeXiaNuvio.setSubtitleLook(this, it); subNow = subLook().copy(first = it) }
             ),
             choice(
                 "Boyut",
                 "Oynatıcıdaki Altyazı ayarı düğmesinden de değişir; orada altyazının zamanlaması da düzeltilebilir.",
                 listOf(0, 1, 2, 3), listOf("Küçük", "Normal", "Büyük", "Çok büyük"),
-                { LeXiaNuvio.subtitleSize(this).let { now -> subPercents.indices.minByOrNull { kotlin.math.abs(subPercents[it] - now) } ?: 1 } },
-                { prefs.playSubSize = it; LeXiaNuvio.setSubtitleSize(this, subPercents[it]) }
+                { subLook().second.let { now -> subPercents.indices.minByOrNull { kotlin.math.abs(subPercents[it] - now) } ?: 1 } },
+                { prefs.playSubSize = it; LeXiaNuvio.setSubtitleSize(this, subPercents[it]); subNow = subLook().copy(second = subPercents[it]) }
             ),
             choice(
                 "Konum",
                 "Altyazının ekranın altından ne kadar yukarıda duracağı. Siyah bantlı filmlerde Yüksek, yazıyı görüntünün içine alır.",
                 listOf(0, 1, 2), listOf("Alçak", "Normal", "Yüksek"),
-                { LeXiaNuvio.subtitleOffset(this).let { now -> SUB_OFFSETS.indices.minByOrNull { kotlin.math.abs(SUB_OFFSETS[it] - now) } ?: 1 } },
-                { LeXiaNuvio.setSubtitleOffset(this, SUB_OFFSETS[it]) }
+                { subLook().third.let { now -> SUB_OFFSETS.indices.minByOrNull { kotlin.math.abs(SUB_OFFSETS[it] - now) } ?: 1 } },
+                { LeXiaNuvio.setSubtitleOffset(this, SUB_OFFSETS[it]); subNow = subLook().copy(third = SUB_OFFSETS[it]) }
             )
         )
     }
 
     private fun playbackTrackingPage() = Page(
         "Oynatma ve Takip", R.drawable.ic_tv,
-        keys = listOf("favSource", "playAutoSource", "cinemaMode", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative")
+        keys = listOf("favSource", "playAutoSource", "cinemaMode", "nuvioPlayer", "nuvioEngine", "playAudioLang", "playSubLang", "playSubSmart", "playSubSize", "trailerInApp", "trailerNative"),
+        reset = { LeXiaNuvio.resetSubtitleLook(this); subNow = null }
     ) {
         listOf(
             Header("KAYNAK"),
@@ -864,7 +875,7 @@ class SettingsActivity : Activity() {
                 { prefs.playSubSmart }, { prefs.playSubSmart = it }
             ),
             sub("Altyazı görünümü", "Altyazının stili, boyutu ve ekrandaki yeri; önizlemeyle.", { subtitleLookPage() },
-                value = { SUB_LOOKS[LeXiaNuvio.subtitleLook(this).coerceIn(0, SUB_LOOKS.size - 1)] }),
+                value = { SUB_LOOKS[subLook().first.coerceIn(0, SUB_LOOKS.size - 1)] }),
             Note("Harfleri bozuk gelen Türkçe altyazılar (ş, ğ, ı yerine başka işaretler) oynatılırken kendiliğinden düzeltilir."),
             Header("FRAGMANLAR"),
             toggle("Fragmanları LeXia içinde oynat", "Desteklenen YouTube fragmanları uygulamadan çıkmadan oynatılır.",

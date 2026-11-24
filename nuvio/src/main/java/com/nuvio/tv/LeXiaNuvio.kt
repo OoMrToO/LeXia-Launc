@@ -439,6 +439,25 @@ object LeXiaNuvio {
 
     fun subtitleSize(context: Context): Int = playerSettings(context).subtitleStyle.size
 
+    /** Ayarlar › Altyazı görünümü back to its first state: Klasik, Normal size, Normal place. */
+    fun resetSubtitleLook(context: Context) {
+        setSubtitleLook(context, 0)
+        setSubtitleSize(context, 120)
+        setSubtitleOffset(context, 5)
+    }
+
+    /** Style, size and place in one read (the settings page keeps them, not reading on every row). */
+    fun subtitleLookNow(context: Context): Triple<Int, Int, Int> {
+        val s = playerSettings(context).subtitleStyle
+        val look = when {
+            s.textColor == SUB_YELLOW -> 3
+            android.graphics.Color.alpha(s.backgroundColor) > 0 -> 1
+            s.bold -> 2
+            else -> 0
+        }
+        return Triple(look, s.size, s.verticalOffset)
+    }
+
     /** Subtitle size, percent (Nuvio: 50…200, default 120). */
     fun setSubtitleSize(context: Context, percent: Int) = kotlinx.coroutines.runBlocking {
         playerSettingsStore(context).setSubtitleSize(percent)
