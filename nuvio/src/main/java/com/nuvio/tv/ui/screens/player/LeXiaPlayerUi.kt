@@ -122,6 +122,63 @@ internal fun lexiaSpan(ms: Long): String {
     }
 }
 
+/**
+ * As the film starts: for three seconds, top right, a small glass card with what really plays
+ * ("4K  ·  Dolby Vision  ·  Dolby Atmos 5.1"), the first in the film's colour, as on Apple TV and
+ * Netflix. Once per opening; nothing when the decoder tells nothing.
+ */
+@Composable
+internal fun LeXiaQualityCard(viewModel: PlayerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    var started by remember { mutableStateOf(false) }
+    if (!started && state.isPlaying && !state.showLoadingOverlay) started = true
+    var items by remember { mutableStateOf(emptyList<String>()) }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(started) {
+        if (!started) return@LaunchedEffect
+        // After the opening has faded into the film.
+        delay(1800)
+        repeat(4) {
+            if (items.isEmpty()) {
+                items = lexiaQuality(viewModel.playerMediaInfo())
+                if (items.isEmpty()) delay(700)
+            }
+        }
+        if (items.isEmpty()) return@LaunchedEffect
+        shown = true
+        delay(3200)
+        shown = false
+    }
+    val accent = remember { lexiaAccent() }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+        AnimatedVisibility(shown, enter = fadeIn(tween(600)), exit = fadeOut(tween(700))) {
+            Row(
+                Modifier
+                    .padding(top = 28.dp, end = 34.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.06f))))
+                    .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.25f))), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items.forEachIndexed { i, label ->
+                    if (i > 0) Box(Modifier.size(3.dp).background(Color.White.copy(alpha = 0.5f), CircleShape))
+                    Text(
+                        label,
+                        style = TextStyle(
+                            fontSize = if (i == 0) 15.sp else 13.sp,
+                            fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium,
+                            letterSpacing = 0.4.sp,
+                            color = if (i == 0) lerp(accent, Color.White, 0.35f) else Color.White.copy(alpha = 0.92f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** What really plays now, read from the decoder: "4K", "HDR10", "Dolby Atmos 5.1"… */
 internal fun lexiaQuality(info: PlayerMediaInfo): List<String> = buildList {
     val w = info.videoWidth ?: 0

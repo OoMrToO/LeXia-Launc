@@ -105,6 +105,7 @@ class LeXiaPlayerActivity : ComponentActivity() {
                 )
                 if (curtain) Opening(viewModel)
                 Credits(viewModel)
+                com.nuvio.tv.ui.screens.player.LeXiaQualityCard(viewModel)
                 StartClock(viewModel)
                 if (quickFailMs > 0) QuickFail(viewModel, quickFailMs)
                 }

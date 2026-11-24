@@ -1229,6 +1229,18 @@ class MediaSourcePickerActivity : Activity() {
                 }
                 // Watched to the end: the episode list opens on the one after it.
                 if (episodeIndex >= 0) episodes.getOrNull(episodeIndex + 1)?.let { remember("episodes", it.id) }
+                // The season's last episode: a small celebration card first.
+                val cur = episodes.getOrNull(episodeIndex)
+                if (cur != null && MediaPlaybackStore(this).isFinished(mediaKey) &&
+                    episodes.none { it.season == cur.season && it.episode > cur.episode }) {
+                    val nextFirst = episodes.filter { it.season == cur.season + 1 }.minByOrNull { it.episode }
+                        ?.takeIf { e -> e.released.isBlank() || (Episodes.daysUntil(e.released.take(10)) ?: 1) <= 0 }
+                    val nextIndex = nextFirst?.let { episodes.indexOf(it) } ?: -1
+                    SeasonDone.show(this, film, cur.season, episodes.filter { it.season == cur.season },
+                        if (nextIndex >= 0) ({ loadEpisodeStreams(nextIndex, Auto.NEXT_EPISODE) }) else null
+                    ) { loadEpisodes() }
+                    return
+                }
                 loadEpisodes()
             }
             else -> if (streams.isNotEmpty()) renderStreams()

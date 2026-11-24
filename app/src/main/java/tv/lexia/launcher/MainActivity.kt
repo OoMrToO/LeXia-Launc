@@ -343,6 +343,8 @@ class MainActivity : Activity() {
     private lateinit var heroTrailer: HeroTrailer
     private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
+    /** The side panel's glass, whose light glides as the remote moves over the apps. */
+    private var sideGlass: LiquidGlass? = null
     /** The screensaver's trailer marathon: trailers play until this time, then the pictures come back. */
     private var saverTrailersUntil = 0L
     /** The screensaver's trailer on screen has shown (it played, not failed). */
@@ -1800,6 +1802,9 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         panel.background = bg
+        // Liquid Glass over it: the sheen and the rim of light, which glides as the remote moves.
+        val glass = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r))
+        panel.foreground = glass
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))
@@ -1808,6 +1813,7 @@ class MainActivity : Activity() {
         var tintNow = base
         var tintAnim: ValueAnimator? = null
         fun tint(img: ImageView?) {
+            glass.sweep(Fx.lastDir)
             if (Fx.lite) return
             val bmp = (img?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
             val a = bmp?.let { Fx.accent(it) } ?: 0
@@ -2898,6 +2904,10 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
         panel.background = bg
+        val glass = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f))
+        glass.light = 0.12f
+        panel.foreground = glass
+        sideGlass = glass
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(40), ui.u(64), ui.u(40), ui.u(36))
@@ -3018,6 +3028,7 @@ class MainActivity : Activity() {
                 .translationZ(if (f) ui.uf(24) else 0f).translationY(if (f) -ui.uf(4) else 0f)
                 .setDuration(if (Fx.lite) 0L else D.FAST).setInterpolator(DecelerateInterpolator(2f)).start()
             gloss.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            if (f) sideGlass?.sweep(Fx.lastDir)
             name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ui.uf(4) else 0f).setDuration(D.FAST).start()
         }
         return col
