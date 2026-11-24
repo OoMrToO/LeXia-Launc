@@ -377,3 +377,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Oynatıcı pencereleri LeXia renklerinde (LeXiaTheme.kt: Nuvio temasına LeXia paleti; seçilen beyaz + koyu yazı, beyaz odak çerçevesi, LeXia camı; Nuvio kodu değişmedi). Ayarlar bölüm camları ve büyük ikon diski Liquid Glass (kenar ışığı satırla kayar); film sayfası hikâye kutusu ve Oynat, Keşfet kutuları, arama kutusu cam (24 Kasım).
 - Ana ekran üst çubuğu: düğmeler açılınca arkalarında Liquid Glass kapsül belirir, kenar ışığı düğmeler arasında kayar (24 Kasım).
 - Film başındaki içerik uyarısı (Nuvio ParentalGuideOverlay) LeXia kartıyla değişti: LeXiaParentalGuide (cam kart, film renginde çizgi, "İÇERİK", satır satır gelir, 5 sn). PlayerScreen.kt'de 5. "LeXia:" çağrısı; CLAUDE.md güncellendi (24 Kasım).
+- Dizide "Sonraki bölüm" kartı geç çıkıyordu (Nuvio varsayılanı %99: 56 dk bölümde son 34 sn, jenerik bilgisi yok); LeXia varsayılanı %97 (PLAYER_DEFAULTS 5) (24 Kasım).
