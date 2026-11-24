@@ -359,3 +359,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Bildirim paneli görünümü: satırlarda afiş/platform ikonu, YAKLAŞANLAR büyük geri sayım kartları, panel odaktaki filmin rengini alır, sıralı giriş, platform yenileri satır altında afiş şeridi, zilde sayı (24 Kasım).
 - Fragman sayfası: kontroller açıkken altyazı onların üstüne kalkar, kapanınca yerine iner (TV fotoğrafı, 24 Kasım).
 - Fragman sayfası: düğmelerde kalınca da panel 8 sn sonra iner; ilk tuş geri getirir (24 Kasım).
+- Nuvio adı ekrandan kalktı: ayarlar/kaynak sayfası/eklentiler yazıları, Nuvio kaynak dosyalarındaki adlar lexia_names.xml ile örtüldü (24 Kasım).

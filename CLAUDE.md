@@ -24,7 +24,7 @@ Sahibinin Grundig Google TV'si için (kumanda/D-pad, Türkiye). Süren iş: `PRO
 
 ## Değişmez kurallar
 - **Nuvio kodu değiştirilmez**; ekler `LeXia*.kt`'ye. İstisna: `PlayerScreen.kt`'deki 4 "LeXia:" çağrısı. Eksik bağımlılığa "LeXia stand-in" dolgu.
-- **Nuvio ekranı/uygulaması asla görünmez**; her şey LeXia görünümüyle.
+- **Nuvio ekranı/uygulaması asla görünmez**; her şey LeXia görünümüyle. **"Nuvio" adı hiçbir yazıda geçmez** (ayarlar dahil; "sağlayıcı", "yeni oynatıcı" denir). Nuvio'nun kendi yazıları `app/src/main/res/values*/lexia_names.xml` ile örtülür; Nuvio güncellenince yeniden üretilir.
 - **R8:** Nuvio'dan yeni kütüphane gelince kuralı `app/proguard-rules.pro`'ya ekle; yoksa sürüm derlemesi sessizce bozulur.
 - **Ayar anahtarı:** yeni anahtar türüyle `scripts/prefs_keys.txt`'ye; `MediaPlaybackStore`'da `val key = prefix(…)` sonra `"${key}_…"`.
 - **Nuvio ayarları** `LeXiaNuvio` ile DataStore'a; tek seferlik varsayılan için `PLAYER_DEFAULTS` +1. DataStore nesneleri tekil.
