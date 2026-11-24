@@ -100,7 +100,7 @@ class MediaAddonsActivity : Activity() {
             setPadding(ui.u(6), ui.u(6), ui.u(6), ui.u(80))
         }
         scroll.addView(list)
-        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(ui.clipBox(scroll), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // The blurred home screen behind dark glass, as in Ayarlar.
         val bg = ui.gradient(

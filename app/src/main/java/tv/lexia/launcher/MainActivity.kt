@@ -2479,7 +2479,7 @@ class MainActivity : Activity() {
         scroll.clipChildren = false
         scroll.clipToPadding = false
         scroll.addView(box)
-        panel.addView(scroll, ui.ll(ui.match, 0, weight = 1f))
+        panel.addView(ui.clipBox(scroll), ui.ll(ui.match, 0, weight = 1f))
 
         val div = View(this)
         div.setBackgroundColor(C.STROKE)

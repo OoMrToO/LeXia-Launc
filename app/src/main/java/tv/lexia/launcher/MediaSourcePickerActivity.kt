@@ -305,7 +305,7 @@ class MediaSourcePickerActivity : Activity() {
             clipToPadding = false
         }
         scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(ui.clipBox(scroll), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(withBackdrop(root))
         // The remote starts on a button; a focused container would swallow every D-pad press.
         manage.requestFocus()
@@ -551,7 +551,14 @@ class MediaSourcePickerActivity : Activity() {
             isClickable = true
             tag = "episode:${episode.id}"
             alpha = if (isUnreleased(episode)) 0.6f else 1f
-            setOnClickListener { onClick() }
+            // Not out yet: no source can be found, so say when it comes instead of searching.
+            setOnClickListener {
+                if (isUnreleased(episode)) {
+                    val day = releaseDay(episode)
+                    Glass.toast(this@MediaSourcePickerActivity,
+                        if (day.isNotBlank()) "Bu bölüm $day tarihinde yayınlanacak" else "Bu bölüm henüz yayınlanmadı")
+                } else onClick()
+            }
         }
         val still = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -564,11 +571,17 @@ class MediaSourcePickerActivity : Activity() {
             setBackgroundColor(Color.argb(40, 255, 255, 255))
         }
         card.addView(still, LinearLayout.LayoutParams(dp(208), dp(117)).apply { rightMargin = dp(18) })
-        Img.load(this, "w300", episode.thumbnail, dp(208), still)
+        // No still yet (a series not out): the series' own picture, dimmed, instead of an empty box.
+        if (episode.thumbnail.isNotBlank()) Img.load(this, "w300", episode.thumbnail, dp(208), still)
+        else if (film.backdrop.isNotBlank()) {
+            still.alpha = 0.5f
+            Img.load(this, "w300", film.backdrop, dp(208), still)
+        }
+        val named = !placeholderName(episode.title)
 
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         texts.addView(TextView(this).apply {
-            text = episode.title
+            text = if (named) episode.title else if (episode.episode > 0) "${episode.episode}. Bölüm" else "Bölüm"
             textSize = 19f
             setTextColor(Color.WHITE)
             typeface = ui.font(700)
@@ -578,7 +591,7 @@ class MediaSourcePickerActivity : Activity() {
         val progress = playback.progress(episode.id)
         val finished = progress == null && playback.isFinished(episode.id)
         val facts = listOfNotNull(
-            if (episode.episode > 0) "${episode.episode}. Bölüm" else null,
+            if (episode.episode > 0 && named) "${episode.episode}. Bölüm" else null,
             "✓ İzlendi".takeIf { finished },
             releaseDay(episode).takeIf { it.isNotBlank() },
             episode.runtime.takeIf { it > 0 }?.let { "$it dk" },
@@ -631,9 +644,17 @@ class MediaSourcePickerActivity : Activity() {
         return card
     }
 
+    /** "TBA", "TBD", "Episode 3": a name not given yet. */
+    private fun placeholderName(title: String): Boolean {
+        val t = title.trim()
+        return t.isEmpty() || t.equals("TBA", true) || t.equals("TBD", true) ||
+            Regex("""(?i)^(episode|bölüm)\s*\d+$""").matches(t) || Regex("""(?i)^\d+\.\s*bölüm$""").matches(t)
+    }
+
     private fun isUnreleased(e: MediaEpisode): Boolean {
         val day = e.released.take(10)
-        if (day.length < 10) return false
+        // No date and no name yet ("TBA"): announced, not out.
+        if (day.length < 10) return placeholderName(e.title) && e.thumbnail.isBlank()
         return day > SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
     }
 
@@ -1018,6 +1039,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun playInNuvio(stream: MediaStream) {
         val store = MediaPlaybackStore(this)
         val watchKey = film.key
+        val playedKey = mediaKey
         val markWatched = !film.isSeries
         fun finished(key: String) {
             store.clear(key)
@@ -1035,10 +1057,12 @@ class MediaSourcePickerActivity : Activity() {
                 if (store.save(key, positionMs, durationMs)) finished(key) else store.saveLast(watchKey, key)
             }
             override fun finished(key: String) = finished(key)
+            override fun subtitleDelayMs(): Long = store.subtitleDelayMs(playedKey)
+            override fun saveSubtitleDelay(delayMs: Long) = store.saveSubtitleDelay(playedKey, delayMs)
         }
         publishCredits()
         // The audio and subtitle languages chosen in LeXia's settings, for Nuvio's player too.
-        try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang) } catch (_: Exception) { }
+        try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang, prefs.playSubSmart) } catch (_: Exception) { }
         val episode = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
         val season = episode?.season ?: typedSeason.takeIf { film.isSeries && it > 0 }
         val number = episode?.episode ?: typedEpisode.takeIf { film.isSeries && it > 0 }

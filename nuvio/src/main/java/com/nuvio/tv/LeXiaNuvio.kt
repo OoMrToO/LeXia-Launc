@@ -391,10 +391,15 @@ object LeXiaNuvio {
         }.take(5)
     }
 
-    fun syncLanguages(context: Context, audio: String, subtitle: String) {
+    /**
+     * LeXia's language choices for Nuvio's player. [smart]: "Ses aynı dildeyse altyazı açılmasın"
+     * = Nuvio's forced-subtitles rule (when the sound is in the subtitle language, only forced ones).
+     */
+    fun syncLanguages(context: Context, audio: String, subtitle: String, smart: Boolean = true) {
         val store = playerSettingsStore(context)
         val now = playerSettings(context)
         kotlinx.coroutines.runBlocking {
+            if (now.subtitleStyle.useForcedSubtitles != smart) store.setUseForcedSubtitles(smart)
             val a = audio.ifBlank { com.nuvio.tv.data.local.AudioLanguageOption.DEVICE }
             if (now.preferredAudioLanguage != a) store.setPreferredAudioLanguage(a)
             if (subtitle.isNotBlank() && subtitle != "off" && now.subtitleStyle.preferredLanguage != subtitle) {
@@ -433,6 +438,25 @@ object LeXiaNuvio {
     }
 
     fun subtitleSize(context: Context): Int = playerSettings(context).subtitleStyle.size
+
+    /** Ayarlar › Altyazı görünümü back to its first state: Klasik, Normal size, Normal place. */
+    fun resetSubtitleLook(context: Context) {
+        setSubtitleLook(context, 0)
+        setSubtitleSize(context, 120)
+        setSubtitleOffset(context, 5)
+    }
+
+    /** Style, size and place in one read (the settings page keeps them, not reading on every row). */
+    fun subtitleLookNow(context: Context): Triple<Int, Int, Int> {
+        val s = playerSettings(context).subtitleStyle
+        val look = when {
+            s.textColor == SUB_YELLOW -> 3
+            android.graphics.Color.alpha(s.backgroundColor) > 0 -> 1
+            s.bold -> 2
+            else -> 0
+        }
+        return Triple(look, s.size, s.verticalOffset)
+    }
 
     /** Subtitle size, percent (Nuvio: 50…200, default 120). */
     fun setSubtitleSize(context: Context, percent: Int) = kotlinx.coroutines.runBlocking {

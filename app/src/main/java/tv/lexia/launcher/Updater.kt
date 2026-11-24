@@ -117,7 +117,7 @@ object Updater {
         progress("İndiriliyor…")
         Thread {
             try {
-                val apk = download(link) { pct -> activity.runOnUiThread { progress("İndiriliyor %$pct") } }
+                val apk = download(link, java.io.File(activity.cacheDir, "update.apk")) { pct -> activity.runOnUiThread { progress("İndiriliyor %$pct") } }
                 val installer = activity.packageManager.packageInstaller
                 // Clear sessions left behind by earlier failed tries.
                 for (old in installer.mySessions) {
@@ -134,10 +134,11 @@ object Updater {
                 }
                 val id = installer.createSession(params)
                 installer.openSession(id).use { s ->
-                    s.openWrite("update.apk", 0, apk.size.toLong()).use { out ->
-                        out.write(apk)
+                    s.openWrite("update.apk", 0, apk.length()).use { out ->
+                        apk.inputStream().use { it.copyTo(out, 64 * 1024) }
                         s.fsync(out)
                     }
+                    apk.delete()
                     val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                         (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                     val intent = Intent(activity, InstallReceiver::class.java)
@@ -159,6 +160,8 @@ object Updater {
                 }
             } finally {
                 busy = false
+                // A failed or finished try leaves no 100 MB file behind.
+                java.io.File(activity.cacheDir, "update.apk").delete()
             }
         }.start()
     }
@@ -166,10 +169,11 @@ object Updater {
     private class ServerError(code: Int) : java.io.IOException("HTTP $code")
 
     /**
-     * Downloads the APK fully. Tries the given link, then the plain file on the other host and on
+     * Downloads the APK fully into [target] (on disk: the APK is over 100 MB and a weak TV has too
+     * little memory to hold it). Tries the given link, then the plain file on the other host and on
      * the site, then the link once more; a host sometimes answers 5xx for a while.
      */
-    private fun download(link: String, percent: (Int) -> Unit): ByteArray {
+    private fun download(link: String, target: java.io.File, percent: (Int) -> Unit): java.io.File {
         var last: Exception = java.io.IOException("download failed")
         val file = if (link.endsWith("/apk/test.apk")) "/apk/test.apk" else "/apk/app.apk"
         val others = Net.hosts().map { it + file }.filter { it != link }
@@ -185,8 +189,9 @@ object Updater {
                 val code = c.responseCode
                 if (code != HttpURLConnection.HTTP_OK) throw ServerError(code)
                 val total = c.contentLength.toLong()
-                val out = java.io.ByteArrayOutputStream(if (total > 0) total.toInt() else 2 * 1024 * 1024)
-                c.inputStream.use { input ->
+                target.delete()
+                var written = 0L
+                java.io.FileOutputStream(target).buffered(256 * 1024).use { out -> c.inputStream.use { input ->
                     val buf = ByteArray(64 * 1024)
                     var done = 0L
                     var shown = -1
@@ -195,6 +200,7 @@ object Updater {
                         if (n < 0) break
                         out.write(buf, 0, n)
                         done += n
+                        written = done
                         if (total > 0) {
                             val pct = (done * 100 / total).toInt()
                             if (pct / 5 != shown) {
@@ -203,9 +209,9 @@ object Updater {
                             }
                         }
                     }
-                }
-                if (total > 0 && out.size().toLong() != total) throw java.io.IOException("short download")
-                return out.toByteArray()
+                } }
+                if (total > 0 && written != total) throw java.io.IOException("short download")
+                return target
             } catch (e: Exception) {
                 last = e
             }
