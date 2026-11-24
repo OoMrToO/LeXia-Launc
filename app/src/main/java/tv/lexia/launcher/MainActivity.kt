@@ -54,6 +54,11 @@ class MainActivity : Activity() {
         private const val SHORT_MIN = 105
         /** How long a film is on screen before its trailer starts (without sound). */
         private const val HERO_TRAILER_DELAY_MS = 5_000L
+        /** The side panel of apps: its width and its tiles' (two 16:9 tiles to a row). */
+        private const val SIDE_PANEL_W = 700
+        private const val SIDE_TILE_W = 284
+        /** How long the screensaver's trailer marathon lasts before the pictures come back. */
+        private const val SAVER_TRAILERS_MS = 30 * 60_000L
         private const val SHELF_H = 330
         private const val TOP_H = 420
         private const val POSTER_H = 470
@@ -338,6 +343,11 @@ class MainActivity : Activity() {
     private lateinit var heroTrailer: HeroTrailer
     private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
+    /** The screensaver's trailer marathon: trailers play until this time, then the pictures come back. */
+    private var saverTrailersUntil = 0L
+    /** The screensaver's trailer on screen has shown (it played, not failed). */
+    private var saverShown = false
+    private val saverTrailer = Runnable { startSaverTrailer() }
     /** Hands the screen back to the TV's own screensaver and sleep setting. */
     private val holdRelease = Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
 
@@ -381,7 +391,9 @@ class MainActivity : Activity() {
         }
         frame.addView(stage, ui.fl(m, m))
         heroTrailer = HeroTrailer(this, stage).also { t ->
-            t.onFinished = { schedule() }
+            // In the screensaver's trailer marathon the next film comes as soon as one ends; a
+            // trailer that could not play leaves its picture for the usual while.
+            t.onFinished = { if (idle && saverShown) next() else schedule() }
             // The full-screen trailer (sinema anı) in 1080p; a TV that stutters goes back to 720p for good.
             t.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
             t.onStutter = {
@@ -390,8 +402,9 @@ class MainActivity : Activity() {
             }
             t.onShowing = { on ->
                 if (::heroStage.isInitialized) heroStage.trailerShowing(on)
-                trailerLight(on)
+                if (idle) saverTrailerShowing(on) else trailerLight(on)
             }
+            t.onCues = { if (::heroStage.isInitialized) heroStage.cues(it) }
         }
 
         // Dip to black between films, like a cut in the cinema.
@@ -464,7 +477,8 @@ class MainActivity : Activity() {
                 val key = if (::heroTrailer.isInitialized) heroTrailer.where()?.first else null
                 val label = picks.getOrNull(pickIndex)?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
                 !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
-            }
+            },
+            captionsAllowed = { heroCaptionsAllowed(heroTrailer.where()?.first, picks.getOrNull(pickIndex)) }
         )
 
         root = ui.vbox()
@@ -2891,14 +2905,24 @@ class MainActivity : Activity() {
         val head = ui.label("UYGULAMALAR")
         panel.addView(head, ui.ll(ui.wrap, ui.wrap, left = 26, bottom = 22))
 
+        // Apple TV style: the apps as picture tiles, two to a row; the selected one rises with its
+        // name under it.
         val box = ui.vbox()
         box.clipChildren = false
         box.clipToPadding = false
-        box.setPadding(0, ui.u(4), 0, ui.u(4))
+        box.setPadding(ui.u(14), ui.u(14), ui.u(14), ui.u(14))
         var first: View? = null
         val pm = packageManager
-        for (app in Apps.shown(this, prefs)) {
-            val item = sideRow(app.label, try { app.info.loadIcon(pm) } catch (e: Exception) { null }, 0)
+        var line: LinearLayout? = null
+        for ((n, app) in Apps.shown(this, prefs).withIndex()) {
+            val item = appTile(app, pm)
+            if (n % 2 == 0) {
+                line = ui.hbox()
+                line.clipChildren = false
+                line.clipToPadding = false
+                box.addView(line, ui.ll(ui.match, ui.wrap, bottom = 10))
+            }
+            line?.addView(item, ui.ll(ui.u(SIDE_TILE_W), ui.wrap, right = if (n % 2 == 0) 24 else 0))
             item.setOnClickListener {
                 closeMenu(false)
                 launch(app)
@@ -2920,7 +2944,6 @@ class MainActivity : Activity() {
                 ), owner ?: hero)
                 true
             }
-            box.addView(item, ui.ll(ui.match, ui.u(78), bottom = 4))
             if (first == null) first = item
         }
         val scroll = ScrollView(this)
@@ -2939,12 +2962,65 @@ class MainActivity : Activity() {
         panel.addView(all, ui.ll(ui.match, ui.u(78)))
         if (first == null) first = all
 
-        layer.addView(panel, ui.fl(ui.u(520), ui.match, Gravity.START))
-        // Right or Back closes it (see dispatchKeyEvent and onBackPressed).
+        layer.addView(panel, ui.fl(ui.u(SIDE_PANEL_W), ui.match, Gravity.START))
+        // Right (from the right column) or Back closes it (see dispatchKeyEvent and onBackPressed).
         showOverlay(layer, first, owner ?: hero)
         sidePanel = layer
-        panel.translationX = -ui.uf(520)
+        panel.translationX = -ui.uf(SIDE_PANEL_W)
         panel.animate().translationX(0f).setDuration(D.MED).setInterpolator(DecelerateInterpolator(2.2f)).start()
+    }
+
+    /**
+     * An app in the side panel, as on Apple TV: its TV picture (or its icon on its own colour) in a
+     * rounded 16:9 tile; selected, the tile rises with a soft light and a white rim, and the name
+     * shows under it.
+     */
+    private fun appTile(app: AppEntry, pm: android.content.pm.PackageManager): LinearLayout {
+        val w = SIDE_TILE_W
+        val h = w * 9 / 16
+        val col = ui.vbox()
+        col.isFocusable = true
+        col.isClickable = true
+        col.isLongClickable = true
+        col.clipChildren = false
+        col.clipToPadding = false
+        col.gravity = Gravity.CENTER_HORIZONTAL
+        val tile = FrameLayout(this)
+        tile.clipToOutline = true
+        val banner = try { app.info.loadBanner(pm) } catch (e: Exception) { null }
+        if (banner != null) {
+            tile.background = ui.round(Color.parseColor("#1C1C22"), 16)
+            val img = ImageView(this)
+            img.setImageDrawable(banner)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            tile.addView(img, ui.fl(ui.match, ui.match))
+        } else {
+            val icon = try { app.info.loadIcon(pm) } catch (e: Exception) { null }
+            Apps.iconCard(ui, tile, app.key, icon, null, 16, h)
+        }
+        // The light that crosses the glass when it is selected.
+        val gloss = View(this)
+        gloss.background = ui.gradient(GradientDrawable.Orientation.TL_BR,
+            Color.argb(70, 255, 255, 255), Color.argb(10, 255, 255, 255), Color.TRANSPARENT, radius = 16)
+        gloss.alpha = 0f
+        tile.addView(gloss, ui.fl(ui.match, ui.match))
+        col.addView(tile, ui.ll(ui.u(w), ui.u(h)))
+        val name = ui.text(app.label, 19, C.TEXT, 600)
+        name.gravity = Gravity.CENTER
+        name.maxLines = 1
+        name.ellipsize = TextUtils.TruncateAt.END
+        name.alpha = 0f
+        col.addView(name, ui.ll(ui.u(w), ui.wrap, top = 12))
+        col.setOnFocusChangeListener { _, f ->
+            tile.foreground = if (f) ui.round(Color.TRANSPARENT, 16, 3, Color.WHITE) else null
+            tile.animate().cancel()
+            tile.animate().scaleX(if (f) 1.08f else 1f).scaleY(if (f) 1.08f else 1f)
+                .translationZ(if (f) ui.uf(24) else 0f).translationY(if (f) -ui.uf(4) else 0f)
+                .setDuration(if (Fx.lite) 0L else D.FAST).setInterpolator(DecelerateInterpolator(2f)).start()
+            gloss.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ui.uf(4) else 0f).setDuration(D.FAST).start()
+        }
+        return col
     }
 
     /** One line of the side panel: the app's icon (or a symbol) and its name. */
@@ -3778,10 +3854,13 @@ class MainActivity : Activity() {
         // the film, Back only wakes; the arrows go on and move as usual.
         if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
             val wasOn = heroStage.on
+            // The screensaver's trailer: OK opens that film (the screensaver ends under it).
+            val film = picks.getOrNull(pickIndex)
             heroStage.wake()
             if (wasOn) when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) }
+                    if (idle) exitIdle()
+                    film?.let { openDetail(it, null, null) }
                     swallowUp = true
                     return true
                 }
@@ -3822,9 +3901,16 @@ class MainActivity : Activity() {
         }
         resetIdle()
         if (event.action == KeyEvent.ACTION_DOWN && movingRow == null && moving == null) {
+            // Right closes the side panel only from its right column (in the grid it moves across).
             if (sidePanel != null && event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                closeMenu()
-                return true
+                val here = currentFocus
+                val panelRoot = sidePanel as? ViewGroup
+                val across = if (here != null && panelRoot != null)
+                    android.view.FocusFinder.getInstance().findNextFocus(panelRoot, here, View.FOCUS_RIGHT) else null
+                if (across == null) {
+                    closeMenu()
+                    return true
+                }
             }
             val f = currentFocus
             if (menu == null && updateWall == null && appsSide() && event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
@@ -3927,6 +4013,38 @@ class MainActivity : Activity() {
         if (prefs.saverHoldMin > 0) handler.postDelayed(holdRelease, prefs.saverHoldMin * 60000L)
         schedule()
         Housekeeping.prefetch(this)
+        // "Sessiz fragman maratonu": the films' trailers, silent, one after another, for half an hour.
+        saverTrailersUntil = if (prefs.saverStyle == "trailers" && !Fx.lite) System.currentTimeMillis() + SAVER_TRAILERS_MS else 0L
+        handler.removeCallbacks(saverTrailer)
+        if (saverTrailersOn()) handler.postDelayed(saverTrailer, 2_500)
+    }
+
+    private fun saverTrailersOn() = idle && System.currentTimeMillis() < saverTrailersUntil
+
+    /** The film on the screensaver plays its trailer: silent, 720p (light for the TV), full screen. */
+    private fun startSaverTrailer() {
+        if (!saverTrailersOn() || !::heroTrailer.isInitialized) return
+        val p = picks.getOrNull(pickIndex) ?: return
+        if (p.homeTrailer.isBlank()) return
+        handler.removeCallbacks(rotate)
+        progressAnim?.cancel()
+        saverShown = false
+        heroTrailer.sound = false
+        heroTrailer.height = 720
+        heroTrailer.start(p.homeTrailer)
+    }
+
+    /** The screensaver's words and clock make way for the trailer, and come back after it. */
+    private fun saverTrailerShowing(on: Boolean) {
+        if (on) saverShown = true
+        ambient.animate().cancel()
+        ambient.animate().alpha(if (on) 0f else 1f).setStartDelay(0).setDuration(if (on) 900L else 600L).start()
+        // The full-screen trailer's way out brings the home screen back: not while the screensaver runs.
+        if (!on) {
+            content.animate().cancel()
+            content.animate().alpha(0f).setDuration(300).start()
+            for (s in scrims) s.animate().alpha(0.35f).setDuration(600).start()
+        }
     }
 
     /** Screensaver clock size and weather, as chosen in the settings. */
@@ -3947,6 +4065,12 @@ class MainActivity : Activity() {
 
     private fun exitIdle() {
         idle = false
+        handler.removeCallbacks(saverTrailer)
+        saverTrailersUntil = 0L
+        if (::heroTrailer.isInitialized) {
+            heroTrailer.stop()
+            heroTrailer.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
+        }
         Housekeeping.stopPrefetch()
         holdScreen()
         savedPicks?.let {
@@ -4491,6 +4615,12 @@ class MainActivity : Activity() {
      * While the trailer plays the shades over the picture lighten, so it shows in full colour:
      * only the side and the bottom behind the text stay (lighter), the vignette and the top go.
      */
+    /** Our subtitles on the full-screen trailer: not on a dubbed one, nor one with Turkish words in its picture. */
+    private fun heroCaptionsAllowed(key: String?, p: Pick?): Boolean {
+        val label = p?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+        return "dubla" !in label && "altyaz" !in label && "türkçe" !in label
+    }
+
     private fun trailerLight(on: Boolean) {
         if (scrims.size < 4) return
         val (vignette, left, bottom, top) = scrims
@@ -4538,6 +4668,8 @@ class MainActivity : Activity() {
         val p = picks.getOrNull(pickIndex) ?: return
         if (::heroTrailer.isInitialized) heroTrailer.stop()
         queueHeroTrailer()
+        handler.removeCallbacks(saverTrailer)
+        if (saverTrailersOn()) handler.postDelayed(saverTrailer, 1_500)
         buildProgress()
         schedule()
         loadBackdrop(pickIndex)

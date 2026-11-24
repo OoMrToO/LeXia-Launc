@@ -7,6 +7,9 @@ package com.nuvio.tv.ui.screens.player
 import android.text.format.DateFormat
 import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -217,7 +220,10 @@ private fun Badge(label: String, isAccent: Boolean = false) {
     )
 }
 
-/** Glass pill button for the top row: icon + optional label, expands on focus. */
+/**
+ * The top floor's buttons: round glass icons; the selected one turns white (dark icon) and opens
+ * to show its name. A changed speed ("1,5×") shows even while closed.
+ */
 @Composable
 private fun PillButton(
     icon: ImageVector? = null,
@@ -232,15 +238,17 @@ private fun PillButton(
     accent: Color
 ) {
     var focused by remember { mutableStateOf(false) }
-    val bg by animateColorAsState(if (focused) GlassHi else Glass, tween(140), label = "pbg")
-    val borderColor by animateColorAsState(if (focused) Color.White.copy(alpha = 0.18f) else GlassBorder, tween(140), label = "pbd")
-    val fg = if (focused) Color.White else Color.White.copy(alpha = 0.80f)
-    val grow by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "pgrow")
+    val bg by animateColorAsState(if (focused) Color.White else Glass, tween(140), label = "pbg")
+    val borderColor by animateColorAsState(if (focused) Color.White else GlassBorder, tween(140), label = "pbd")
+    val fg = if (focused) Color(0xFF0B0B0D) else Color.White.copy(alpha = 0.85f)
+    val grow by animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "pgrow")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .scale(grow)
-            .height(32.dp)
+            .animateContentSize(tween(180))
+            .height(34.dp)
+            .widthIn(min = 34.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(bg)
             .border(1.dp, borderColor, RoundedCornerShape(20.dp))
@@ -272,16 +280,16 @@ private fun PillButton(
                 }
             }
             .focusable()
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = if (focused) 14.dp else 9.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
     ) {
         when {
-            painter != null -> Icon(painter, label, tint = fg, modifier = Modifier.size(14.dp))
-            icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(14.dp))
+            painter != null -> Icon(painter, label, tint = fg, modifier = Modifier.size(16.dp))
+            icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(16.dp))
         }
-        if (text != null || label.isNotBlank()) {
+        if ((focused && (text != null || label.isNotBlank())) || (!focused && text != null)) {
             Text(
-                text ?: label,
+                if (focused && text != null) "$label · $text" else text ?: label,
                 style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.2.sp, color = fg),
                 maxLines = 1
             )
@@ -303,8 +311,8 @@ private fun TransportPlayButton(
     pause: Painter
 ) {
     var focused by remember { mutableStateOf(false) }
-    val bg by animateColorAsState(if (focused) Color.White.copy(alpha = 0.22f) else Glass, tween(140), label = "tpbg")
-    val borderColor by animateColorAsState(if (focused) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.18f), tween(140), label = "tpbd")
+    val bg by animateColorAsState(if (focused) Color.White else Glass, tween(140), label = "tpbg")
+    val borderColor by animateColorAsState(if (focused) Color.White else Color.White.copy(alpha = 0.18f), tween(140), label = "tpbd")
     val grow by animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "tpgrow")
     Box(
         contentAlignment = Alignment.Center,
@@ -335,7 +343,7 @@ private fun TransportPlayButton(
             }
             .focusable()
     ) {
-        Icon(if (isPlaying) pause else play, if (isPlaying) "Durdur" else "Oynat", tint = Color.White, modifier = Modifier.size(24.dp))
+        Icon(if (isPlaying) pause else play, if (isPlaying) "Durdur" else "Oynat", tint = if (focused) Color(0xFF0B0B0D) else Color.White, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -352,14 +360,17 @@ private fun TransportButton(
     onFocused: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val fg by animateColorAsState(if (focused) Color.White else Color.White.copy(alpha = 0.85f), tween(140), label = "tbfg")
-    val grow by animateFloatAsState(if (focused) 1.12f else 1f, tween(160), label = "tbgrow")
+    val fg by animateColorAsState(if (focused) Color(0xFF0B0B0D) else Color.White.copy(alpha = 0.85f), tween(140), label = "tbfg")
+    val plate by animateColorAsState(if (focused) Color.White else Color.Transparent, tween(140), label = "tbbg")
+    val grow by animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "tbgrow")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         modifier = Modifier
             .scale(grow)
-            .padding(4.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(plate)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onFocused()
@@ -384,7 +395,7 @@ private fun TransportButton(
             icon != null -> Icon(icon, label, tint = fg, modifier = Modifier.size(28.dp))
         }
         if (showLabel) {
-            Text(label, style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Normal, color = if (focused) Color.White else Dim), maxLines = 1)
+            Text(label, style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Normal, color = if (focused) Color(0xFF0B0B0D) else Dim), maxLines = 1)
         }
     }
 }
@@ -408,7 +419,7 @@ private fun LeXiaBar(
     val shown by animateFloatAsState(progress, tween(100), label = "progress")
     BoxWithConstraints(modifier.fillMaxWidth().height(30.dp)) {
         val w = maxWidth
-        val barH = if (focused) 6.dp else 4.dp
+        val barH = if (focused) 5.dp else 3.dp
         Box(
             Modifier
                 .align(Alignment.BottomStart)
@@ -429,10 +440,13 @@ private fun LeXiaBar(
                     }
                 }
         )
-        val dot = if (focused) 16.dp else 12.dp
+        // The knob shows only while skipping, as the time bubble does.
+        val dot = 14.dp
+        val knob by animateFloatAsState(if (bubble != null) 1f else 0f, tween(220), label = "knob")
         Box(
             Modifier
                 .align(Alignment.BottomStart)
+                .alpha(knob)
                 .offset(x = w * shown - dot / 2, y = -(7.dp + barH / 2) + dot / 2)
                 .size(dot)
                 .shadow(if (focused) 10.dp else 4.dp, CircleShape, ambientColor = accent, spotColor = accent)
@@ -530,6 +544,7 @@ internal fun LeXiaPlayerControls(
     val timeline by viewModel.playbackTimeline.collectAsState()
     val live = timeline.isLive
     val topFocus = remember { FocusRequester() }
+    var topHasFocus by remember { mutableStateOf(false) }
     var barFocused by remember { mutableStateOf(false) }
     var seekDelta by remember { mutableLongStateOf(0L) }
     var seekShownAt by remember { mutableLongStateOf(0L) }
@@ -589,7 +604,10 @@ internal fun LeXiaPlayerControls(
                 ))
         )
 
-        // Top row: film title left, pills + clock right
+        // The upper floor: the options (sound, subtitles, source …) stay out of sight until ▲ from
+        // the bar takes the focus there; they slide down softly, and go when the focus leaves.
+        // The clock stays.
+        val topShown by animateFloatAsState(if (topHasFocus) 1f else 0f, tween(if (topHasFocus) 320 else 220), label = "top")
         Row(
             Modifier
                 .align(Alignment.TopCenter)
@@ -598,17 +616,25 @@ internal fun LeXiaPlayerControls(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                uiState.title.uppercase(),
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.9.sp, color = Color.White.copy(alpha = 0.92f)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp)
-            )
+            // Top left, with the controls: the film's logo (its name when it has none).
+            Box(Modifier.weight(1f, fill = false).widthIn(max = 420.dp)) {
+                val series = uiState.currentSeason != null && uiState.currentEpisode != null
+                LogoOrTitle(uiState.logo, if (series) uiState.contentName ?: uiState.title else uiState.title, 52, Alignment.TopStart)
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+              Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .onFocusChanged { topHasFocus = it.hasFocus }
+                    .graphicsLayer {
+                        alpha = topShown
+                        translationY = (1f - topShown) * -18.dp.toPx()
+                    }
+              ) {
                 if (uiState.audioTracks.isNotEmpty()) PillButton(painter = audio, label = "Ses", onClick = onShowAudioDialog, down = barTarget, onFocused = onResetHideTimer, accent = accent)
                 if (uiState.subtitleTracks.isNotEmpty() || uiState.addonSubtitles.isNotEmpty()) PillButton(painter = subs, label = "Altyazı", onClick = onShowSubtitleDialog, down = barTarget, onFocused = onResetHideTimer, accent = accent)
                 PillButton(painter = sourceIcon, label = "Kaynak", onClick = onShowSourcesPanel, focusRequester = topFocus, down = barTarget, onFocused = onResetHideTimer, accent = accent)
@@ -618,6 +644,7 @@ internal fun LeXiaPlayerControls(
                 PillButton(painter = aspect, label = "Görüntü", onClick = onToggleAspectRatio, down = barTarget, onFocused = onResetHideTimer, accent = accent)
                 PillButton(icon = Icons.Default.Info, label = "Bilgi", onClick = onShowStreamInfo, focusRequester = streamInfoFocusRequester, down = barTarget, onFocused = onResetHideTimer, accent = accent)
                 PillButton(icon = Icons.Default.Sync, label = if (uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) "ExoPlayer" else "MPV", onClick = { showEngineConfirm = true }, down = barTarget, onFocused = onResetHideTimer, accent = accent)
+              }
                 LeXiaClock(style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Light, letterSpacing = 0.3.sp))
             }
         }
@@ -642,12 +669,7 @@ internal fun LeXiaPlayerControls(
                 ) {
                     Column(Modifier.weight(1f, fill = false)) {
                         val series = uiState.currentSeason != null && uiState.currentEpisode != null
-                        Text(
-                            if (series) uiState.contentName ?: uiState.title else uiState.title,
-                            style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.2.sp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        // The name is the logo at the top left now; here only which episode, or year · source.
                         val meta = buildString {
                             if (series) {
                                 append("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
@@ -660,10 +682,9 @@ internal fun LeXiaPlayerControls(
                         if (meta.isNotBlank()) {
                             Text(
                                 meta,
-                                style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = Dim, letterSpacing = 0.2.sp),
+                                style = TextStyle(fontSize = if (series) 14.sp else 11.5.sp, fontWeight = FontWeight.Normal, color = if (series) Color.White.copy(alpha = 0.9f) else Dim, letterSpacing = 0.2.sp),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 4.dp)
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -674,6 +695,28 @@ internal fun LeXiaPlayerControls(
                         }
                     }
                 }
+            }
+
+            // "︿": the options are above.
+            val chevron by animateFloatAsState(if (topHasFocus) 0f else 0.7f, tween(200), label = "chev")
+            Box(Modifier.fillMaxWidth().padding(bottom = 4.dp).alpha(chevron), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.size(width = 20.dp, height = 10.dp).drawBehind {
+                        val p = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(2.dp.toPx(), size.height - 2.dp.toPx())
+                            lineTo(size.width / 2f, 2.dp.toPx())
+                            lineTo(size.width - 2.dp.toPx(), size.height - 2.dp.toPx())
+                        }
+                        drawPath(
+                            p, Color.White,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 1.6.dp.toPx(),
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+                    }
+                )
             }
 
             // Progress bar
@@ -817,8 +860,9 @@ internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerC
 }
 
 /**
- * Paused for a while: centered film title, metadata dots, description, glass play button.
- * Big time bottom-left, remaining bottom-right, thin accent mini-bar at the very bottom.
+ * Paused: the film's logo (its name when it has none) alone in the middle of the darkened picture,
+ * as on the home screen; for a series, which episode under it. No story, no controls, no times:
+ * the remote brings the controls back.
  */
 @Composable
 internal fun LeXiaPauseOverlay(
@@ -827,107 +871,60 @@ internal fun LeXiaPauseOverlay(
     viewModel: PlayerViewModel,
     modifier: Modifier = Modifier
 ) {
-    val accent = remember { lexiaAccent() }
-    AnimatedVisibility(visible, enter = fadeIn(tween(450)), exit = fadeOut(tween(220)), modifier = modifier) {
-        val timeline by viewModel.playbackTimeline.collectAsState()
-        val progress = if (timeline.duration > 0) (timeline.currentPosition.toFloat() / timeline.duration).coerceIn(0f, 1f) else 0f
+    AnimatedVisibility(visible, enter = fadeIn(tween(600)), exit = fadeOut(tween(220)), modifier = modifier) {
         Box(Modifier.fillMaxSize()) {
-            // Blurred dark backdrop
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.65f)))
-
-            // Centered content
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)))
             Column(
                 Modifier
                     .align(Alignment.Center)
-                    .widthIn(max = 600.dp)
-                    .padding(horizontal = 36.dp),
+                    .padding(horizontal = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 val series = uiState.currentSeason != null && uiState.currentEpisode != null
                 val filmTitle = if (series) uiState.contentName ?: uiState.title else uiState.title
-
-                // Film title (large, light weight)
-                Text(
-                    filmTitle,
-                    style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.6.sp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-
-                // Metadata row with dots
-                val metaItems = buildList {
-                    uiState.releaseYear?.takeIf { it.isNotBlank() }?.let { add(it) }
-                    if (timeline.duration > 0) add(lexiaSpan(timeline.duration))
-                    if (series) {
-                        add("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
-                        uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { add(it) }
-                    }
-                }
-                if (metaItems.isNotEmpty()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        metaItems.forEachIndexed { i, item ->
-                            if (i > 0) Box(Modifier.size(3.dp).background(Dim2, CircleShape))
-                            Text(item, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, color = Dim))
-                        }
-                    }
-                }
-
-                // Description
-                (LeXiaCinema.description.takeIf { it.isNotBlank() && LeXiaCinema.descriptionOf == (if (series) "${uiState.currentSeason}:${uiState.currentEpisode}" else "") } ?: uiState.description)?.takeIf { it.isNotBlank() }?.let {
+                PauseLogo(uiState.logo, filmTitle)
+                if (series) {
                     Text(
-                        it,
-                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Light, lineHeight = 21.sp, color = Color.White.copy(alpha = 0.45f)),
-                        maxLines = 3,
+                        "${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm" +
+                            (uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""),
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Dim),
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 480.dp)
+                        textAlign = TextAlign.Center
                     )
                 }
-
-                // Glass play button
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .border(1.5.dp, Color.White.copy(alpha = 0.20f), CircleShape)
-                ) {
-                    Icon(Icons.Default.PlayArrow, "Devam et", tint = Color.White, modifier = Modifier.size(28.dp))
-                }
-            }
-
-            // Bottom: big time left, remaining right
-            if (!uiState.isLive && timeline.duration > 0) {
-                val left = (timeline.duration - timeline.currentPosition).coerceAtLeast(0)
-                // Big time bottom-left
                 Text(
-                    formatTime(timeline.currentPosition),
-                    style = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.ExtraLight, color = Color.White.copy(alpha = 0.85f)),
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 24.dp)
+                    "OK: devam et",
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Dim2, letterSpacing = 0.6.sp),
+                    modifier = Modifier.padding(top = 10.dp)
                 )
-                // Remaining + end time bottom-right
-                Column(
-                    Modifier.align(Alignment.BottomEnd).padding(end = 36.dp, bottom = 24.dp),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("${lexiaSpan(left)} kaldı", style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = Dim))
-                    Text("bitiş ${endTimeText(left, uiState.playbackSpeed)}", style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Light, color = Dim2))
-                }
-            }
-
-            // Thin accent mini-bar at the very bottom
-            if (timeline.duration > 0) {
-                MiniBar(progress, accent, Modifier.align(Alignment.BottomCenter))
             }
         }
+    }
+}
+
+/** The pause screen's logo: large and centred; the name in large light letters when there is no logo. */
+@Composable
+private fun PauseLogo(logo: String?, title: String) {
+    var failed by remember(logo) { mutableStateOf(logo.isNullOrBlank()) }
+    if (!failed) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey(logo).crossfade(true).build(),
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.Center,
+            modifier = Modifier.height(150.dp).widthIn(max = 560.dp),
+            onError = { failed = true }
+        )
+    } else {
+        Text(
+            title,
+            style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.6.sp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

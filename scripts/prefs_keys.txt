@@ -90,6 +90,7 @@ saverContent text
 saverHold int
 saverMin int
 saverSec int
+saverStyle text
 saverWeather bool
 seenBuild int
 seenNews text

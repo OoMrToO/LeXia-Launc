@@ -98,6 +98,9 @@ class Prefs(ctx: Context) {
     var saverWeather: Boolean get() = bool("saverWeather", true); set(v) = putBool("saverWeather", v)
     /** Seconds between films in the screensaver. */
     var saverSec: Int get() = int("saverSec", 20); set(v) = putInt("saverSec", v)
+
+    /** Screensaver look: "trailers" (silent trailer marathon, half an hour, then pictures) or "stills" (pictures). */
+    var saverStyle: String get() = str("saverStyle").ifEmpty { "trailers" }; set(v) = putStr("saverStyle", v)
     /** Nightly sleep time as minutes after midnight; -1 = off. */
     var nightSleep: Int get() = int("nightSleep", -1); set(v) = putInt("nightSleep", v)
 

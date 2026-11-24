@@ -178,12 +178,14 @@ class Ui(private val ctx: Context) {
         t.isFocusable = true
         t.isClickable = true
         fun style(f: Boolean) {
+            // Only the selected button is white: a "main" one is a brighter glass with a white rim
+            // (a near-white plate looked selected, and the remote's place was lost; TV, 24 Kasım).
             t.background = when {
                 f -> round(Color.WHITE, height / 2)
-                primary -> round(Color.parseColor("#E6FFFFFF"), height / 2)
+                primary -> round(Color.argb(64, 255, 255, 255), height / 2, 2, Color.argb(150, 255, 255, 255))
                 else -> round(C.GLASS, height / 2, 1)
             }
-            t.setTextColor(if (f || primary) C.INK else C.TEXT)
+            t.setTextColor(if (f) C.INK else C.TEXT)
         }
         style(false)
         t.setOnFocusChangeListener { _, f ->

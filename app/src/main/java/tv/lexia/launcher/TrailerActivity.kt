@@ -89,12 +89,15 @@ class TrailerActivity : Activity() {
         @Volatile private var pendingStart = 0
 
         /** A film's trailer to show first: Turkish-dubbed, then the film's main one. */
-        fun bestTrailer(p: Pick): String {
+        /** The film's trailer in Turkish first: dubbed, then with Turkish subtitles in its picture, then its own. */
+        fun bestTrailer(p: Pick): String = turkishTrailer(p) ?: p.trailer
+
+        /** The film's Turkish-dubbed trailer, else its Turkish-subtitled one; null when it has neither. */
+        fun turkishTrailer(p: Pick): String? {
             val tr = java.util.Locale("tr", "TR")
-            return p.trailers.firstOrNull { v ->
-                val l = v.label.lowercase(tr)
-                "dubla" in l && "altyaz" !in l && ID.matches(v.key)
-            }?.key ?: p.trailer
+            fun label(v: Video) = v.label.lowercase(tr)
+            return (p.trailers.firstOrNull { v -> "dubla" in label(v) && "altyaz" !in label(v) && ID.matches(v.key) }
+                ?: p.trailers.firstOrNull { v -> "altyaz" in label(v) && ID.matches(v.key) })?.key
         }
 
         /** A marathon of these films' trailers (each film's dubbed one first). */
@@ -224,6 +227,10 @@ class TrailerActivity : Activity() {
     private lateinit var hint: TextView
     /** Big play sign in a glass circle while paused. */
     private lateinit var center: TextView
+    /** Paused: the film's logo (or name) alone in the middle, no controls (as on the home screen). */
+    private lateinit var pauseBox: LinearLayout
+    private lateinit var pauseLogo: ImageView
+    private lateinit var pauseTitle: TextView
     /** "+30 sn" while skipping with the arrows held. */
     private lateinit var bubble: TextView
     /** Seek target shown in the player HUD; real frame thumbnails need source-side indexes. */
@@ -274,6 +281,21 @@ class TrailerActivity : Activity() {
     private var endCard: View? = null
     /** The end card's primary action follows the current film's accent colour. */
     private var accentAction: TextView? = null
+    /** The controls' upper floor (story and buttons): it slides up with ▲ and down with ▼. */
+    private lateinit var tray: LinearLayout
+    /** On the lower floor, left above the bar: the film's small logo (or name) while the tray is down. */
+    private lateinit var mini: FrameLayout
+    private lateinit var miniLogo: ImageView
+    private lateinit var miniTitle: TextView
+    /** "︿" over the bar: there is more above. */
+    private lateinit var chevron: View
+    private var trayOpen = false
+    /** Icon-only buttons: what they show while not selected (an icon, or a short sign such as "CC"). */
+    private val compactGlyph = HashMap<TextView, String>()
+    private val scrubDone = Runnable {
+        knob.animate().alpha(0f).setDuration(D.MED).start()
+        tip.animate().alpha(0f).setDuration(D.MED).start()
+    }
     private var countdown: Runnable? = null
 
     private val skipEnd = Runnable { skipSum = 0; bubble.animate().alpha(0f).setDuration(D.MED).start() }
@@ -317,13 +339,15 @@ class TrailerActivity : Activity() {
      * longer while (TV photo, 24 Kasım: the panel stayed up), and the first key brings them back.
      */
     private val hideInfo = Runnable {
-        if (paused || endCard != null || castPanel != null) return@Runnable
+        if (endCard != null || castPanel != null || (paused && onButtons)) return@Runnable
         if (onButtons) {
             onButtons = false
             currentFocus?.clearFocus()
             setButtonsFocusable(false)
         }
-        info.animate().alpha(0f).setDuration(D.MED).start()
+        info.animate().alpha(0f).setDuration(D.MED).withEndAction { if (!onButtons) setTray(false) }.start()
+        // Paused: the controls give the middle back to the film's logo.
+        if (paused) showPauseLogo()
     }
     /** While the controls are on screen, the time and bar follow the trailer twice a second. */
     private val tick = object : Runnable {
@@ -346,6 +370,13 @@ class TrailerActivity : Activity() {
         prefs = Prefs(this)
         films = pendingFilms
         pendingFilms = emptyList()
+        // Which films are only in cinemas: their "Filmi izle" does not show.
+        Thread {
+            cinemaNow = DetailActivity.cinemaLists(applicationContext)?.first ?: emptySet()
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && ::buttons.isInitialized && buttons.findFocus() == null) bindFilm()
+            }
+        }.start()
         // A film's main trailer asked for: its Turkish-dubbed one first, when it has one.
         films.firstOrNull { it.trailer == id }?.let { id = bestTrailer(it) }
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
@@ -382,6 +413,27 @@ class TrailerActivity : Activity() {
         val clp = ui.fl(ui.u(150), ui.u(150), Gravity.CENTER)
         clp.bottomMargin = ui.u(130)
         frame.addView(center, clp)
+
+        pauseBox = ui.vbox()
+        pauseBox.gravity = Gravity.CENTER_HORIZONTAL
+        pauseLogo = ImageView(this)
+        pauseLogo.adjustViewBounds = true
+        pauseLogo.maxWidth = ui.u(900)
+        pauseLogo.maxHeight = ui.u(330)
+        pauseLogo.scaleType = ImageView.ScaleType.FIT_CENTER
+        pauseBox.addView(pauseLogo, ui.ll(ui.wrap, ui.wrap))
+        pauseTitle = ui.text("", 72, C.TEXT, 800)
+        pauseTitle.gravity = Gravity.CENTER
+        pauseTitle.maxWidth = ui.u(1300)
+        pauseTitle.maxLines = 2
+        pauseTitle.setShadowLayer(ui.uf(30), 0f, ui.uf(4), Color.argb(150, 0, 0, 0))
+        pauseBox.addView(pauseTitle, ui.ll(ui.wrap, ui.wrap))
+        val pauseHint = ui.text("OK: devam et   ·   ▲ seçenekler", 20, C.TEXT2, 600)
+        pauseHint.letterSpacing = 0.04f
+        pauseBox.addView(pauseHint, ui.ll(ui.wrap, ui.wrap, top = 34))
+        pauseBox.alpha = 0f
+        pauseBox.visibility = View.GONE
+        frame.addView(pauseBox, ui.fl(ui.wrap, ui.wrap, Gravity.CENTER))
 
         bubble = ui.text("", 30, C.INK, 800)
         bubble.gravity = Gravity.CENTER
@@ -501,10 +553,28 @@ class TrailerActivity : Activity() {
     /** The trailer on screen is Turkish-dubbed: then no subtitles. */
     private fun currentTrailerDubbed(): Boolean = trailerLanguage() == "dub"
 
+    /** Films whose trailer was already changed for a Turkish one (or chosen by hand): once is enough. */
+    private val switchedFor = HashSet<String>()
+
     private fun playNative(source: TrailerSource, startSec: Int) {
         // Now the video itself is known: its badge says what it really is.
         val before = trailerLanguage()
         shownSource = source
+        // An original trailer with no subtitles at all: the film's dubbed or Turkish-subtitled one
+        // plays instead, once, with a short word.
+        val f = film()
+        val lang = trailerLanguage()
+        if (source.turkishSubtitles == null && startSec == 0 && lang != "dub" && lang != "sub" && lang != "tr" &&
+            f != null && switchedFor.add(f.key)) {
+            val alt = turkishTrailer(f)
+            if (alt != null && alt != id) {
+                id = alt
+                shownSource = null
+                Glass.toast(this, "Türkçe fragmana geçildi")
+                startTrailer(0)
+                return
+            }
+        }
         if (trailerLanguage() != before && buttons.findFocus() == null) bindFilm()
         web?.let {
             it.evaluateJavascript("try{if(player)player.stopVideo();}catch(x){}", null)
@@ -519,13 +589,7 @@ class TrailerActivity : Activity() {
             v.isFocusable = false
             v.descendantFocusability = FrameLayout.FOCUS_BLOCK_DESCENDANTS
             v.subtitleView?.apply {
-                setApplyEmbeddedFontSizes(false)
-                setStyle(
-                    CaptionStyleCompat(
-                        Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
-                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, ui.font(600)
-                    )
-                )
+                TrailerCaptions.style(this, ui)
                 setBottomPaddingFraction(subtitleLift)
             }
             // Under the black shield and the controls, where the web view sits too.
@@ -763,17 +827,28 @@ class TrailerActivity : Activity() {
         infoStory.setLineSpacing(0f, 1.2f)
         head.addView(infoStory, ui.ll(ui.u(1050), ui.wrap, top = 14))
 
-        // Bottom: buttons with the next trailer on the right, the bar, the times, the keys.
+        // Bottom, two floors (as on Apple TV): above, the story and the buttons, which slide up with
+        // ▲ and down with ▼; below, only the film's small logo, the bar and the times.
         val foot = ui.vbox()
         foot.clipChildren = false
         foot.clipToPadding = false
-        foot.addView(head, ui.ll(ui.match, ui.wrap, bottom = 30))
+        tray = ui.vbox()
+        tray.clipChildren = false
+        tray.clipToPadding = false
+        tray.addView(head, ui.ll(ui.match, ui.wrap, bottom = 30))
         val row = ui.hbox()
         row.clipChildren = false
         row.clipToPadding = false
+        row.gravity = Gravity.CENTER_VERTICAL
         buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.clipToPadding = false
+        buttons.gravity = Gravity.CENTER_VERTICAL
+        // A selected icon button opens to show its name: the row makes room smoothly.
+        buttons.layoutTransition = android.animation.LayoutTransition().apply {
+            enableTransitionType(android.animation.LayoutTransition.CHANGING)
+            setDuration(220)
+        }
         row.addView(buttons, ui.ll(0, ui.wrap, weight = 1f))
         nextCard = ui.hbox()
         nextCard.setPadding(ui.u(10), ui.u(10), ui.u(24), ui.u(10))
@@ -792,36 +867,65 @@ class TrailerActivity : Activity() {
         nextCard.addView(nextText, ui.ll(ui.wrap, ui.wrap, left = 16))
         nextCard.visibility = View.GONE
         row.addView(nextCard)
-        foot.addView(row, ui.ll(ui.match, ui.wrap))
+        tray.addView(row, ui.ll(ui.match, ui.wrap, bottom = 34))
+        tray.visibility = View.GONE
+        foot.addView(tray, ui.ll(ui.match, ui.wrap))
+
+        // The lower floor's top line: the small logo on the left, "︿" in the middle.
+        val floor = FrameLayout(this)
+        floor.clipChildren = false
+        mini = FrameLayout(this)
+        miniLogo = ImageView(this)
+        miniLogo.adjustViewBounds = true
+        miniLogo.maxHeight = ui.u(60)
+        miniLogo.maxWidth = ui.u(300)
+        miniLogo.scaleType = ImageView.ScaleType.FIT_START
+        mini.addView(miniLogo, ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START))
+        miniTitle = ui.text("", 28, C.TEXT, 700)
+        miniTitle.maxLines = 1
+        miniTitle.ellipsize = TextUtils.TruncateAt.END
+        miniTitle.maxWidth = ui.u(700)
+        mini.addView(miniTitle, ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START))
+        floor.addView(mini, ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START))
+        val up = ImageView(this)
+        up.setImageDrawable(chevronUp())
+        chevron = up
+        floor.addView(up, ui.fl(ui.u(34), ui.u(18), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+        foot.addView(floor, ui.ll(ui.match, ui.u(64)))
 
         // The bar: a thick track, white fill, a round knob with the time over it.
         val barBox = FrameLayout(this)
         barBox.clipChildren = false
         track = FrameLayout(this)
-        track.background = ui.round(Color.argb(56, 255, 255, 255), 3)
+        track.background = ui.round(Color.argb(46, 255, 255, 255), 2)
         barFill = View(this)
         barFill.background = ui.round(Color.WHITE, 4)
         barFill.pivotX = 0f
         barFill.scaleX = 0f
         track.addView(barFill, ui.fl(ui.match, ui.match))
-        val tlp = ui.fl(ui.match, ui.u(5), Gravity.CENTER_VERTICAL)
+        val tlp = ui.fl(ui.match, ui.u(4), Gravity.CENTER_VERTICAL)
         barBox.addView(track, tlp)
         knob = View(this)
         knob.background = ui.round(Color.WHITE, 13, 6, Color.argb(50, 255, 255, 255))
+        // The knob and the time over it show only while skipping.
+        knob.alpha = 0f
         barBox.addView(knob, ui.fl(ui.u(20), ui.u(20), Gravity.CENTER_VERTICAL))
         tip = ui.text("0:00", 22, C.TEXT, 700)
         tip.setPadding(ui.u(12), ui.u(5), ui.u(12), ui.u(5))
-        tip.background = ui.round(Color.argb(140, 0, 0, 0), 8)
+        tip.background = ui.round(Color.argb(150, 0, 0, 0), 10)
+        tip.alpha = 0f
         val tipLp = ui.fl(ui.wrap, ui.wrap, Gravity.TOP)
         tipLp.topMargin = -ui.u(60)
         barBox.addView(tip, tipLp)
-        foot.addView(barBox, ui.ll(ui.match, ui.u(30), top = 30))
+        foot.addView(barBox, ui.ll(ui.match, ui.u(30), top = 14))
         val times = ui.hbox()
         times.addView(ui.text("0:00", 20, C.TEXT2, 600), ui.ll(0, ui.wrap, weight = 1f))
         timeLeft = ui.text("", 20, C.TEXT2, 600)
         times.addView(timeLeft)
         foot.addView(times, ui.ll(ui.match, ui.wrap, top = 8))
+        // The keys line is gone: "︿" says there is more above.
         hint = ui.text("", 18, Color.argb(130, 255, 255, 255), 500)
+        hint.visibility = View.GONE
         foot.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 16))
         val flp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM)
         flp.setMargins(ui.u(110), 0, ui.u(110), ui.u(52))
@@ -849,6 +953,7 @@ class TrailerActivity : Activity() {
                     infoLogo.setImageBitmap(b)
                     infoLogo.visibility = View.VISIBLE
                     infoTitle.visibility = View.GONE
+                    fillMini()
                 }
             }.start()
         }
@@ -904,41 +1009,46 @@ class TrailerActivity : Activity() {
         // Buttons: list (or remind), details, the platform's app.
         buttons.removeAllViews()
         if (p != null) {
-            // The film itself, from the trailer (not before it is out).
-            if (!upcoming(p) && p.id > 0) {
+            // The film itself, from the trailer (not before it is out, nor while it is only in cinemas).
+            if (!upcoming(p) && !inCinemas(p) && p.id > 0) {
                 val watch = ui.pill(if (p.isSeries) "▶   Diziyi izle" else "▶   Filmi izle", 64, 23)
                 styleAccentAction(watch)
                 watch.setOnClickListener { toFilm(p) }
                 buttons.addView(watch)
             }
-            buttons.addView(listButton(p, false))
+            // The rest are round glass icons; the selected one opens to show its name.
+            buttons.addView(compact(listButton(p, false), null))
             val more = ui.iconPill("Detaylar", R.drawable.ic_info)
             more.setOnClickListener { details(p) }
-            buttons.addView(more)
+            buttons.addView(compact(more, ""))
             if (p.trailers.size > 1) {
                 val pick = ui.iconPill("Fragmanlar · ${p.trailers.size}", R.drawable.ic_film)
                 pick.setOnClickListener { chooseTrailer(p) }
-                buttons.addView(pick)
+                buttons.addView(compact(pick, ""))
             }
             if (hasSubtitles) {
-                val subs = ui.pill(if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı", 64, 23)
+                val subs = ui.pill("", 64, 23)
+                compact(subs, "CC")
+                relabel(subs, if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı")
                 subs.setOnClickListener {
                     subtitlesOn = !subtitlesOn
                     exo?.let { e ->
                         e.trackSelectionParameters = e.trackSelectionParameters.buildUpon()
                             .setTrackTypeDisabled(MediaC.TRACK_TYPE_TEXT, !subtitlesOn).build()
                     }
-                    subs.text = if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı"
+                    relabel(subs, if (subtitlesOn) "Altyazı: Açık" else "Altyazı: Kapalı")
                 }
                 buttons.addView(subs)
             }
             if (p.cast.isNotEmpty()) {
                 val cast = ui.iconPill("Oyuncular", R.drawable.ic_eye)
                 cast.setOnClickListener { toggleCast(p) }
-                buttons.addView(cast)
+                buttons.addView(compact(cast, ""))
             }
         }
         setButtonsFocusable(false)
+        fillMini()
+        if (!trayOpen) chevron.alpha = if (buttons.childCount > 0) 0.7f else 0f
         // The next trailer, in a marathon.
         val next = at + 1
         if (list.size > 1 && next < list.size) {
@@ -1008,6 +1118,7 @@ class TrailerActivity : Activity() {
             // closed LeXia on the TV during marathons. The next one loads when its turn comes.
         }
         center.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setDuration(D.MED).start()
+        hidePauseLogo()
         status.animate().alpha(0f).setDuration(D.MED).start()
         // A moment after it starts: YouTube shows its title over the first frames.
         handler.postDelayed({ if (playing && !paused && endCard == null) shieldTo(0f) }, 600)
@@ -1018,11 +1129,45 @@ class TrailerActivity : Activity() {
     private fun onPaused() {
         paused = true
         guide.hide(quick = true)
-        center.scaleX = 0.8f
-        center.scaleY = 0.8f
-        center.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(D.MED).start()
+        center.animate().cancel()
+        center.alpha = 0f
         shieldTo(0.6f)
-        showInfo()
+        if (onButtons) {
+            showInfo()
+            return
+        }
+        handler.removeCallbacks(hideInfo)
+        info.animate().cancel()
+        info.animate().alpha(0f).setDuration(D.MED).start()
+        showPauseLogo()
+    }
+
+    /** The film's logo in the middle while paused; the controls come back with ▲ or the arrows. */
+    private fun showPauseLogo() {
+        if (!paused || endCard != null) return
+        val logo = infoLogo.drawable?.takeIf { infoLogo.visibility == View.VISIBLE }
+        pauseLogo.setImageDrawable(logo)
+        pauseLogo.visibility = if (logo != null) View.VISIBLE else View.GONE
+        pauseTitle.text = film()?.title ?: currentTitle
+        pauseTitle.visibility = if (logo == null && pauseTitle.text.isNotBlank()) View.VISIBLE else View.GONE
+        if (pauseBox.visibility == View.VISIBLE && pauseBox.alpha >= 1f) return
+        pauseBox.animate().cancel()
+        pauseBox.visibility = View.VISIBLE
+        if (Fx.lite) {
+            pauseBox.alpha = 1f
+            return
+        }
+        pauseBox.alpha = 0f
+        pauseBox.scaleX = 0.96f
+        pauseBox.scaleY = 0.96f
+        pauseBox.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(600)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
+    }
+
+    private fun hidePauseLogo() {
+        if (pauseBox.visibility != View.VISIBLE) return
+        pauseBox.animate().cancel()
+        pauseBox.animate().alpha(0f).setDuration(D.FAST).withEndAction { pauseBox.visibility = View.GONE }.start()
     }
 
     /** Shows the controls; they fade after four seconds while the trailer plays. */
@@ -1030,6 +1175,7 @@ class TrailerActivity : Activity() {
         handler.removeCallbacks(hideInfo)
         info.animate().cancel()
         info.alpha = 1f
+        hidePauseLogo()
         readTime()
         placeSubtitles()
         handler.postDelayed(hideInfo, if (onButtons) 8000L else 4000L)
@@ -1147,6 +1293,7 @@ class TrailerActivity : Activity() {
         onButtons = true
         setButtonsFocusable(true)
         showInfo()
+        setTray(true)
         buttons.getChildAt(0)?.requestFocus()
     }
 
@@ -1154,7 +1301,103 @@ class TrailerActivity : Activity() {
         onButtons = false
         currentFocus?.clearFocus()
         setButtonsFocusable(false)
+        setTray(false)
         showInfo()
+    }
+
+    /**
+     * Makes [t] a round glass icon that opens to show its name when selected. [glyph]: what it
+     * shows closed when it has no icon ("CC"); null takes the sign its name starts with ("+", "✓").
+     */
+    private fun compact(t: TextView, glyph: String?): TextView {
+        compactGlyph[t] = glyph ?: "\u0000"
+        if (t.tag == null) t.tag = t.text.toString()
+        val style = t.onFocusChangeListener
+        t.setOnFocusChangeListener { v, f ->
+            style?.onFocusChange(v, f)
+            showCompact(t)
+        }
+        showCompact(t)
+        return t
+    }
+
+    /** A button's name; an icon button keeps it for when it is selected. */
+    private fun relabel(t: TextView, label: String) {
+        t.tag = label
+        if (compactGlyph.containsKey(t)) showCompact(t) else t.text = label
+    }
+
+    private fun showCompact(t: TextView) {
+        val label = t.tag as? String ?: t.text.toString()
+        val g = compactGlyph[t] ?: return
+        val open = t.isFocused
+        val hasIcon = t.compoundDrawables[0] != null
+        t.text = when {
+            open -> label
+            hasIcon -> ""
+            g == "\u0000" -> label.substringBefore(' ').ifBlank { label.take(1) }
+            else -> g
+        }
+        t.compoundDrawablePadding = if (open) ui.u(12) else 0
+        t.compoundDrawables[0]?.setTint(if (open) C.INK else C.TEXT)
+        // Closed: a circle as wide as it is high.
+        val side = if (open) ui.u(38) else if (hasIcon) ui.u(19) else ui.u(14)
+        t.setPadding(side, 0, side, 0)
+        t.minWidth = if (open) 0 else ui.u(64)
+    }
+
+    /** The upper floor (story and buttons) slides up or down. */
+    private fun setTray(open: Boolean) {
+        if (open == trayOpen) return
+        trayOpen = open
+        val ease = android.view.animation.DecelerateInterpolator(2.2f)
+        tray.animate().cancel()
+        if (open) {
+            tray.visibility = View.VISIBLE
+            tray.alpha = 0f
+            tray.translationY = ui.uf(46)
+            tray.animate().alpha(1f).translationY(0f).setDuration(if (Fx.lite) 0L else 380L).setInterpolator(ease).start()
+            mini.animate().alpha(0f).setDuration(D.FAST).start()
+            chevron.animate().alpha(0f).setDuration(D.FAST).start()
+        } else {
+            tray.animate().alpha(0f).translationY(ui.uf(34)).setDuration(if (Fx.lite) 0L else 260L)
+                .withEndAction { if (!trayOpen) tray.visibility = View.GONE }.start()
+            fillMini()
+            mini.animate().alpha(1f).setDuration(D.MED).start()
+            chevron.animate().alpha(if (buttons.childCount > 0) 0.7f else 0f).setDuration(D.MED).start()
+        }
+    }
+
+    /** The small logo (or name) on the lower floor, from the film's. */
+    private fun fillMini() {
+        val logo = infoLogo.drawable?.takeIf { infoLogo.visibility == View.VISIBLE }
+        miniLogo.setImageDrawable(logo)
+        miniLogo.visibility = if (logo != null) View.VISIBLE else View.GONE
+        miniTitle.text = film()?.title ?: infoTitle.text
+        miniTitle.visibility = if (logo == null) View.VISIBLE else View.GONE
+    }
+
+    /** "︿", drawn: two thin white strokes. */
+    private fun chevronUp(): android.graphics.drawable.Drawable = object : android.graphics.drawable.Drawable() {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = ui.uf(3)
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        override fun draw(c: android.graphics.Canvas) {
+            val b = bounds
+            val p = android.graphics.Path()
+            p.moveTo(b.left + ui.uf(4), b.bottom - ui.uf(4))
+            p.lineTo(b.exactCenterX(), b.top + ui.uf(4))
+            p.lineTo(b.right - ui.uf(4), b.bottom - ui.uf(4))
+            c.drawPath(p, paint)
+        }
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
     }
 
     private fun skip(s: Int) {
@@ -1178,7 +1421,12 @@ class TrailerActivity : Activity() {
         handler.removeCallbacks(skipEnd)
         handler.postDelayed(skipEnd, 900)
         tip.text = clock(target.toDouble())
+        tip.animate().cancel()
         tip.alpha = 1f
+        knob.animate().cancel()
+        knob.alpha = 1f
+        handler.removeCallbacks(scrubDone)
+        handler.postDelayed(scrubDone, 1500)
         handler.removeCallbacks(hideInfo)
         handler.postDelayed(hideInfo, 1800)
     }
@@ -1193,15 +1441,33 @@ class TrailerActivity : Activity() {
 
     private fun upcoming(p: Pick) = releasePhase(p) == TrailerReleasePhase.UPCOMING
 
+    /** Keys of the films in Turkish cinemas now (pick.json's "Sinemada"), read once off the main thread. */
+    @Volatile private var cinemaNow: Set<String>? = null
+
+    /**
+     * The film is only in cinemas: on the "Sinemada" list, or out in the last two months with no
+     * platform and no digital release yet; and never played here (no source was found for it).
+     */
+    private fun inCinemas(p: Pick): Boolean {
+        if (p.isSeries) return false
+        val store = MediaPlaybackStore(this)
+        if (store.last(p.key).isNotBlank() || store.isAvailable(p.key)) return false
+        if (p.key in (cinemaNow ?: emptySet())) return true
+        val d = p.release.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil) ?: return false
+        val digitalOut = p.digital.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil)?.let { it <= 0 } ?: false
+        return d in -60..0 && p.provider.isEmpty() && p.where.isEmpty() && !digitalOut
+    }
+
     /** "Listeme ekle" (or, before its release, "Çıkınca haber ver"), as a button that switches. */
     private fun listButton(p: Pick, primary: Boolean): TextView {
         val b = ui.pill("", 64, 23, primary = primary)
+        if (upcoming(p)) ui.setPillIcon(b, R.drawable.ic_bell)
         fun label() {
-            b.text = if (upcoming(p)) {
-                if (prefs.reminders.any { it.key == p.key }) "✓   Haber verilecek" else "Çıkınca haber ver"
+            relabel(b, if (upcoming(p)) {
+                if (prefs.reminders.any { it.key == p.key }) "Haber verilecek" else "Çıkınca haber ver"
             } else {
                 if (prefs.watchlist.any { it.key == p.key }) "✓   Listemde" else "+   Listeme ekle"
-            }
+            })
         }
         label()
         b.setOnClickListener {
@@ -1312,12 +1578,14 @@ class TrailerActivity : Activity() {
         row.clipToPadding = false
         if (p != null) {
             // Streaming/source discovery stays inside LeXia; no external platform is shown.
-            if (!upcoming(p) && p.id > 0) {
-                val watch = ui.pill("▶   Filmi izle", 68, 24, primary = true)
+            if (!upcoming(p) && !inCinemas(p) && p.id > 0) {
+                // The end card's main action: tinted, white only when selected (as on the controls).
+                val watch = ui.pill("▶   Filmi izle", 68, 24)
+                styleAccentAction(watch)
                 watch.setOnClickListener { toFilm(p) }
                 row.addView(watch)
             } else {
-                row.addView(listButton(p, primary = true))
+                row.addView(listButton(p, primary = false).also { styleAccentAction(it) })
             }
             if (!upcoming(p) && p.release.isNotEmpty()) {
                 val save = ui.pill(if (prefs.watchlist.any { it.key == p.key }) "✓   Listemde" else "+   Listeme ekle", 64, 23)
@@ -1527,11 +1795,27 @@ class TrailerActivity : Activity() {
         savePlace()
         // The sound fades, then the player is let go before the page leaves, so the home screen
         // comes back smoothly instead of waiting on a black screen while the video shuts down.
-        if (nativeMode) fadeVolume(0f, 250) else web?.evaluateJavascript("fadeTo(0,250)", null)
+        // Geri closes it as a cinema would: the curtains meet over the picture while the sound fades,
+        // and only then the page goes (a sudden black screen looked like a fault, TV 24 Kasım).
+        val slow = !Fx.lite
+        if (nativeMode) fadeVolume(0f, if (slow) 380 else 250) else web?.evaluateJavascript("fadeTo(0,${if (slow) 380 else 250})", null)
+        if (slow) {
+            info.animate().cancel()
+            info.animate().alpha(0f).setDuration(200).start()
+            pauseBox.animate().cancel()
+            pauseBox.animate().alpha(0f).setDuration(200).start()
+            for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
+                v.animate().cancel()
+                v.visibility = View.VISIBLE
+                if (curtainOpen || v.translationY != 0f) v.translationY = dir * v.height
+                v.animate().translationY(0f).setStartDelay(0).setDuration(380)
+                    .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator()).start()
+            }
+        }
         handler.postDelayed({
             releasePlayers()
             finish()
-        }, if (Fx.lite) 120L else 260L)
+        }, if (slow) 420L else 120L)
     }
 
     @Deprecated("Deprecated in Java")
@@ -1655,6 +1939,8 @@ class TrailerActivity : Activity() {
             if (v.key == id) return@list
             removeEnd()
             leaveButtons()
+            // Chosen by hand: this film's trailer is not changed for a Turkish one any more.
+            switchedFor.add(p.key)
             id = v.key
             shownSource = null
             playing = false
@@ -1763,13 +2049,15 @@ class TrailerActivity : Activity() {
     /** The main end-card action follows the film colour and becomes a clear white focus plate. */
     private fun styleAccentAction(button: TextView) {
         fun style(focused: Boolean) {
+            // Unfocused it is only tinted with the film's colour (a solid plate looked like the
+            // selection, TV photo 24 Kasım); the white plate is the selection alone.
             button.background = ui.round(
-                if (focused) Color.WHITE else barColor,
+                if (focused) Color.WHITE else accentWash(60),
                 D.PANEL,
-                if (focused) 0 else 1,
-                if (focused) Color.WHITE else accentWash(210)
+                if (focused) 0 else 2,
+                if (focused) Color.WHITE else accentWash(190)
             )
-            button.setTextColor(if (focused) C.INK else accentInk())
+            button.setTextColor(if (focused) C.INK else Color.WHITE)
         }
         style(button.isFocused)
         button.setOnFocusChangeListener { view, focused ->
