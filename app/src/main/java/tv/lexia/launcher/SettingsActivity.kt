@@ -656,7 +656,7 @@ class SettingsActivity : Activity() {
             sub("Filmler", "Günün filmleri, sevdiğin türler ve geçiş süresi.", { filmsPage() }),
             Row(
                 "Medya kaynakları",
-                "Stremio eklentileri ve Nuvio JS depoları: ekle, aç ya da kapat, dene, kaldır.",
+                "Stremio eklentileri ve sağlayıcı depoları: ekle, aç ya da kapat, dene, kaldır.",
                 chevron = true,
                 value = { "${MediaAddonRepository(this).installedAddons().size + NuvioJsRepository(this).installedRepositories().size} kurulu" },
                 action = { startActivity(Intent(this, MediaAddonsActivity::class.java)) }
@@ -722,7 +722,7 @@ class SettingsActivity : Activity() {
         return choice(
             "Favori kaynak",
             "Seçince Oynat önce yalnızca bu kaynakta arar ve bulduğunu liste göstermeden açar; dizide sonraki bölümler de buradan devam eder. " +
-                "Burada bulunamazsa diğer kaynaklar aranır ve liste açılır. Liste Ayarlar › Medya kaynakları'nda açık olan Nuvio sağlayıcılarıdır.",
+                "Burada bulunamazsa diğer kaynaklar aranır ve liste açılır. Liste Ayarlar › Medya kaynakları'nda açık olan sağlayıcılardır.",
             ids, names,
             { prefs.favSource.takeIf { it in ids } ?: "" },
             { id ->
@@ -825,32 +825,32 @@ class SettingsActivity : Activity() {
             choice(
                 "Sinema akıcılığı",
                 "Film başlarken TV filmin kendi kare hızına (çoğu filmde 24) geçer, kamera kayarken görüntü takılmaz; film bitince eski hâline döner. " +
-                    "Geçişte ekran bir iki saniye kararabilir, bu normaldir. Nuvio'nun oynatıcısında çalışır.",
+                    "Geçişte ekran bir iki saniye kararabilir, bu normaldir. Yeni oynatıcıda çalışır.",
                 listOf(true, false), listOf("Açık", "Kapalı"),
                 { LeXiaNuvio.frameRateMatching(this) }, { LeXiaNuvio.setFrameRateMatching(this, it) }
             ),
             toggle(
-                "Nuvio'nun oynatıcısı",
-                "Filmler NuvioTV'nin kendi oynatıcı ekranında açılır: onun düğmeleri, ses ve altyazı menüleri, girişi atlama, sonraki bölüm. " +
+                "Yeni oynatıcı",
+                "Filmler LeXia'nın yeni oynatıcı ekranında açılır: düğmeleri, ses ve altyazı menüleri, girişi atlama, sonraki bölüm. " +
                     "Kapatırsan LeXia'nın önceki oynatıcısı açılır.",
                 { prefs.nuvioPlayer }, { prefs.nuvioPlayer = it }
             ),
             toggle(
-                "Nuvio oynatma motoru",
-                "LeXia'nın önceki oynatıcısında da videolar Nuvio'nun koduyla açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) Nuvio'nun çözücüsüyle çalınır. " +
+                "Gelişmiş oynatma motoru",
+                "LeXia'nın önceki oynatıcısında da videolar yeni oynatıcının koduyla açılır, TV'nin çözemediği sesler (AC3, DTS, TrueHD) onun çözücüsüyle çalınır. " +
                     "Bir videoda sorun olursa kapatıp eski yolla deneyebilirsin.",
                 { prefs.nuvioEngine }, { prefs.nuvioEngine = it }
             ),
             Header("SİNEMA SESİ"),
             choice(
                 "Gece sesi",
-                "Patlamalar ve müzik kısılır, fısıltılar yükselir: geceleri sesi açıp kısmadan izlersin. Nuvio'nun oynatıcısında çalışır.",
+                "Patlamalar ve müzik kısılır, fısıltılar yükselir: geceleri sesi açıp kısmadan izlersin. Yeni oynatıcıda çalışır.",
                 listOf("off", "light", "medium", "strong"), listOf("Kapalı", "Hafif", "Orta", "Güçlü"),
                 { LeXiaNuvio.nightMode(this) }, { LeXiaNuvio.setNightMode(this, it) }
             ),
             choice(
                 "Diyalog netleştirme",
-                "Konuşmalar müziğin ve efektlerin önüne çıkar (çok kanallı seslerde orta kanal yükseltilir). Nuvio'nun oynatıcısında çalışır.",
+                "Konuşmalar müziğin ve efektlerin önüne çıkar (çok kanallı seslerde orta kanal yükseltilir). Yeni oynatıcıda çalışır.",
                 listOf(0, 3, 6), listOf("Kapalı", "Hafif (+3 dB)", "Güçlü (+6 dB)"),
                 { LeXiaNuvio.dialogueBoost(this).let { if (it >= 6) 6 else if (it >= 3) 3 else 0 } },
                 { LeXiaNuvio.setDialogueBoost(this, it) }
@@ -1053,9 +1053,24 @@ class SettingsActivity : Activity() {
     /** Platforms in today's film list: which ones the home screen, the screensaver and the bell follow. */
     private val FIXED_PLATFORMS = listOf("Netflix", "Disney+", "Prime Video", "Max", "Apple TV+", "TV+", "TOD", "MUBI", "Tabii", "Exxen", "Gain", "puhutv", "BluTV")
 
-    private fun noticesPage() = Page("Bildirimler", R.drawable.ic_bell, keys = listOf("noticeOff")) {
+    private fun noticesPage() = Page("Bildirimler", R.drawable.ic_bell, keys = listOf("noticeOff", "noticeOnlyMine", "noticeHidden", "noticePlatOff", "noticeShortcutsOff")) {
         val items = ArrayList<Item>()
         items.add(Note("Zildeki bildirimlerden istemediğini kapat. Kapalı türler zilde ve kırmızı noktada görünmez."))
+        items.add(toggle("Yalnızca takip ettiklerim",
+            "Listem, hatırlattığın filmler, izlediğin diziler ve platformların. Senin seçmediğin vizyon filmleri zile düşmez.",
+            { prefs.noticeOnlyMine }, { prefs.noticeOnlyMine = it }))
+        items.add(Row("Gizlediklerini geri getir",
+            "Zilde gizlediğin ve temizlediğin bildirimler, kapattığın platformlar ve üstteki kısayollar geri gelir.",
+            value = {
+                val n = prefs.noticePlatOff.size + prefs.noticeShortcutsOff.size + (if (prefs.noticeHidden.length > 2) 1 else 0)
+                if (n == 0) "Gizli yok" else "Geri getir"
+            },
+            action = {
+                prefs.noticeHidden = ""
+                prefs.noticePlatOff = emptySet()
+                prefs.noticeShortcutsOff = emptySet()
+                Glass.toast(this, "Gizlenen bildirimler geri geldi")
+            }))
         val kinds = listOf(
             Triple("new", "Yeni bölüm çıktı", "İzlediğin dizilerin bu hafta çıkan bölümleri."),
             Triple("ep", "Yaklaşan bölümler", "Listem'deki dizilerin yeni bölüm günleri."),

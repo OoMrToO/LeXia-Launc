@@ -57,6 +57,8 @@ import java.util.concurrent.Executors
 class TrailerActivity : Activity() {
 
     companion object {
+        /** Where the subtitles sit with the controls away: a little above the bottom edge. */
+        private const val SUBTITLE_LOW = 0.09f
         /** How strongly the film's colours glow around a wide trailer. */
         private const val GLOW_ALPHA = 0.45f
         private const val EXTRA_ID = "id"
@@ -173,6 +175,10 @@ class TrailerActivity : Activity() {
     /** LeXia's own player and its picture; made the first time a trailer plays in it. */
     private var exo: ExoPlayer? = null
     private var playerView: PlayerView? = null
+    /** The controls' block (story, buttons, bar): the subtitles rise above it while it shows. */
+    private var infoFoot: View? = null
+    private var subtitleLift = SUBTITLE_LOW
+    private var subtitleAnim: android.animation.ValueAnimator? = null
     /** The trailer on screen plays in LeXia's own player (not the web view). */
     private var nativeMode = false
     private var nativeStarted = false
@@ -306,11 +312,24 @@ class TrailerActivity : Activity() {
             if (nativeMode) giveUpOnNative()
         }
     }
-    private val hideInfo = Runnable { if (!paused && !onButtons && endCard == null) info.animate().alpha(0f).setDuration(D.MED).start() }
+    /**
+     * The controls go down while the trailer plays; left on the buttons, they go too after a
+     * longer while (TV photo, 24 Kasım: the panel stayed up), and the first key brings them back.
+     */
+    private val hideInfo = Runnable {
+        if (paused || endCard != null || castPanel != null) return@Runnable
+        if (onButtons) {
+            onButtons = false
+            currentFocus?.clearFocus()
+            setButtonsFocusable(false)
+        }
+        info.animate().alpha(0f).setDuration(D.MED).start()
+    }
     /** While the controls are on screen, the time and bar follow the trailer twice a second. */
     private val tick = object : Runnable {
         override fun run() {
             if (info.alpha > 0f) readTime()
+            placeSubtitles()
             handler.postDelayed(this, 500)
         }
     }
@@ -507,7 +526,7 @@ class TrailerActivity : Activity() {
                         CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, ui.font(600)
                     )
                 )
-                setBottomPaddingFraction(0.09f)
+                setBottomPaddingFraction(subtitleLift)
             }
             // Under the black shield and the controls, where the web view sits too.
             frame.addView(v, frame.indexOfChild(shield), ui.fl(ui.match, ui.match))
@@ -807,6 +826,7 @@ class TrailerActivity : Activity() {
         val flp = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM)
         flp.setMargins(ui.u(110), 0, ui.u(110), ui.u(52))
         info.addView(foot, flp)
+        infoFoot = foot
         frame.addView(info, ui.fl(ui.match, ui.match))
         track.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeKnob() }
     }
@@ -1011,7 +1031,30 @@ class TrailerActivity : Activity() {
         info.animate().cancel()
         info.alpha = 1f
         readTime()
-        handler.postDelayed(hideInfo, 4000)
+        placeSubtitles()
+        handler.postDelayed(hideInfo, if (onButtons) 8000L else 4000L)
+    }
+
+    /**
+     * The subtitles never sit under the controls (TV photo, 24 Kasım): while the controls show they
+     * rise softly above them, and come back down to their place when the controls fade.
+     */
+    private fun placeSubtitles() {
+        val sv = playerView?.subtitleView ?: return
+        val foot = infoFoot ?: return
+        val h = frame.height
+        val target = if (info.alpha > 0.05f && h > 0 && foot.height > 0)
+            ((h - foot.top).toFloat() / h + 0.02f).coerceIn(SUBTITLE_LOW, 0.8f) else SUBTITLE_LOW
+        if (kotlin.math.abs(target - subtitleLift) < 0.005f) return
+        subtitleAnim?.cancel()
+        subtitleAnim = android.animation.ValueAnimator.ofFloat(subtitleLift, target).apply {
+            duration = if (Fx.lite) 0L else 350L
+            addUpdateListener {
+                subtitleLift = it.animatedValue as Float
+                sv.setBottomPaddingFraction(subtitleLift)
+            }
+            start()
+        }
     }
 
     /** Asks the player where it is ("72.4|150.2|1") and moves the bar, the knob and the times. */

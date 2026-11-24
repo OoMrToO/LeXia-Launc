@@ -59,6 +59,11 @@ navSound bool
 nightSleep int
 noticesRead set
 noticeOff set
+noticeHidden text
+noticeSeenAt text
+noticePlatOff set
+noticeShortcutsOff set
+noticeOnlyMine bool
 nowStreaming set
 order text
 pickDate text

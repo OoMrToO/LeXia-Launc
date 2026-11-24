@@ -57,7 +57,7 @@ class MediaAddonsActivity : Activity() {
         root.addView(ui.label("MEDYA KAYNAKLARI", C.TEXT3))
         root.addView(ui.text("Eklentiler", 56, C.TEXT, 700), LinearLayout.LayoutParams(-2, -2).apply { topMargin = ui.u(10) })
         val intro = ui.text(
-            "Stremio eklentileri ve Nuvio depoları. Kaynak aranırken açık olanlar sorulur. " +
+            "Stremio eklentileri ve sağlayıcı depoları. Kaynak aranırken açık olanlar sorulur. " +
                 "Bir sağlayıcının çalışıp çalışmadığını “Dene” ile hemen görebilirsin.",
             24, C.TEXT2, 400
         )
@@ -139,14 +139,14 @@ class MediaAddonsActivity : Activity() {
         val nuvioCount = nuvioRepos.sumOf { it.scrapers.size }
         val nuvioOn = nuvioRepos.sumOf { r -> r.scrapers.count { it.enabled } }
         if (!busy && testing.isEmpty()) {
-            status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} Nuvio deposu  ·  $nuvioCount sağlayıcı, $nuvioOn açık"
+            status.text = "${addons.size} Stremio eklentisi  ·  ${nuvioRepos.size} sağlayıcı deposu  ·  $nuvioCount sağlayıcı, $nuvioOn açık"
         }
 
         if (addons.isEmpty() && nuvioRepos.isEmpty()) {
             list.addView(
                 infoCard(
                     "İlk kaynağını ekle",
-                    "“Eklenti ekle” ile bir Stremio eklentisinin ya da Nuvio deposunun adresini gir. LeXia adresi doğrular."
+                    "“Eklenti ekle” ile bir Stremio eklentisinin ya da sağlayıcı deposunun adresini gir. LeXia adresi doğrular."
                 ),
                 cardParams()
             )
@@ -157,7 +157,7 @@ class MediaAddonsActivity : Activity() {
             val on = nuvioRepository.pluginsEnabled()
             val row = card(horizontal = true)
             val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            texts.addView(ui.text("Nuvio sağlayıcıları", 30, C.TEXT, 600))
+            texts.addView(ui.text("Sağlayıcılar", 30, C.TEXT, 600))
             texts.addView(ui.text(
                 if (on) "Kaynak aranırken depolardaki sağlayıcılar da sorulur." else "Kapalı: kaynak aranırken depolar sorulmaz.",
                 21, C.TEXT2, 400
@@ -189,7 +189,7 @@ class MediaAddonsActivity : Activity() {
 
     private fun repoCard(repo: NuvioRepositoryInfo): View {
         val card = card()
-        card.addView(ui.label("NUVIO DEPOSU", C.TEXT3))
+        card.addView(ui.label("SAĞLAYICI DEPOSU", C.TEXT3))
         card.addView(ui.text(repo.name, 36, C.TEXT, 700), LinearLayout.LayoutParams(-2, -2).apply { topMargin = ui.u(6) })
         val on = repo.scrapers.count { it.enabled }
         card.addView(ui.text(
@@ -357,7 +357,7 @@ class MediaAddonsActivity : Activity() {
     private fun showAddDialog() {
         Dialogs.input(
             this, "Eklenti ekle", "https://",
-            subtitle = "Stremio eklentisinin ya da Nuvio deposunun adresi. LeXia adresi doğrular."
+            subtitle = "Stremio eklentisinin ya da sağlayıcı deposunun adresi. LeXia adresi doğrular."
         ) { raw ->
             val address = raw.trim()
             if (address.isBlank() || address == "https://" || busy) return@input
