@@ -1765,11 +1765,10 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
-        scroll.clipChildren = false
         val box = ui.vbox()
         box.clipChildren = false
         box.clipToPadding = false
-        box.setPadding(0, ui.u(6), 0, ui.u(6))
+        box.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
         scroll.addView(box)
         if (list.isEmpty()) {
             val e = ui.emptyState(R.drawable.ic_bell, "Her şey sakin",
@@ -1801,7 +1800,12 @@ class MainActivity : Activity() {
                 if (first == null) first = row
             }
         }
-        panel.addView(scroll, ui.ll(ui.match, 0, weight = 1f))
+        // Rows that scroll up are cut at the list's top, so they never draw over the calendar rows
+        // and the title (TV photo, 24 Kasım): the panel lets its children draw outside, this box does
+        // not. The side room in the list keeps the focused row's lift whole.
+        val clip = FrameLayout(this)
+        clip.addView(scroll, ui.fl(ui.match, ui.match))
+        panel.addView(clip, ui.ll(ui.match, 0, weight = 1f))
 
         layer.addView(panel, ui.fl(ui.u(640), ui.match, Gravity.END))
         showOverlay(layer, first, bell)

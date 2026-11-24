@@ -193,13 +193,15 @@ class ExploreActivity : Activity() {
         scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
-        // Rows that scroll up go under the showcase, not over its words; a little room on top keeps
-        // the first row's lifted poster whole.
-        scroll.clipChildren = true
+        // A little room on top keeps the first row's lifted poster whole.
         scroll.clipToPadding = false
         scroll.setPadding(0, ui.u(24), 0, 0)
         scroll.addView(grid, FrameLayout.LayoutParams(m, w))
-        page.addView(scroll, ui.ll(m, 0, left = -20, right = -20, weight = 1f))
+        // Rows that scroll up are cut at the list's top edge, so they never draw over the showcase
+        // and the top bar: the page lets its children draw outside (lifted posters), this box does not.
+        val clip = FrameLayout(this)
+        clip.addView(scroll, ui.fl(m, m))
+        page.addView(clip, ui.ll(m, 0, left = -20, right = -20, weight = 1f))
         frame.addView(page, ui.fl(m, m))
         setContentView(frame)
         Sound.attach(this)
@@ -270,6 +272,10 @@ class ExploreActivity : Activity() {
     private fun days(p: Pick): Int? = Episodes.daysUntil(p.release) ?: Episodes.daysUntil(p.digital)
 
     private fun yearOf(p: Pick): Int = p.year.take(4).toIntOrNull() ?: 0
+
+    /** Keşfet's rows: the newest first, the better scored first within a year. */
+    private fun newestFirst(list: List<Pick>): List<Pick> =
+        list.sortedWith(compareByDescending<Pick> { yearOf(it) }.thenByDescending { it.imdb })
 
     private fun matchesYears(p: Pick): Boolean {
         val y = yearOf(p)
@@ -789,8 +795,8 @@ class ExploreActivity : Activity() {
             addPlatformTiles(mine, today)
             if (kind == "tv") {
                 // For a series to start now and see to the end.
-                addRow("Tek sezonluk mini diziler", today.filter { it.seasons == 1 && it.ended }.sortedByDescending { it.imdb })
-                addRow("Bitmiş diziler: hepsini izle", today.filter { it.ended && it.seasons > 1 }.sortedByDescending { it.imdb })
+                addRow("Tek sezonluk mini diziler", newestFirst(today.filter { it.seasons == 1 && it.ended }))
+                addRow("Bitmiş diziler: hepsini izle", newestFirst(today.filter { it.ended && it.seasons > 1 }))
             }
         }
         addRow("IMDb 8 ve üstü", today.filter { it.imdb >= 8.0 }.sortedByDescending { it.imdb },
@@ -808,21 +814,20 @@ class ExploreActivity : Activity() {
         val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         addRow(
             if (kind == "tv") "Yabancı diziler" else "Yabancı filmler",
-            mine.filter { !from(it, "local") && !from(it, "history") && yearOf(it) >= thisYear - 3 }
-                .sortedWith(compareByDescending<Pick> { yearOf(it) }.thenByDescending { it.imdb }),
+            newestFirst(mine.filter { !from(it, "local") && !from(it, "history") && yearOf(it) >= thisYear - 3 }),
             more = if (tmdb) { pg: Int -> TmdbDiscover.page(kind, pg, genre = g, newest = true) } else null
         )
         val related = mine.flatMap { it.similar }.filter { it.isSeries == (kind == "tv") && inGenrePage(it) }.distinctBy { seenKey(it) }
             .filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
-        addRow("Benzer yapımlar", related.sortedByDescending { it.imdb })
+        addRow("Benzer yapımlar", newestFirst(related))
         if (sub) {
-            if (g.isNotEmpty()) addRow("Daha fazla ${g.lowercase(tr)}", emptyList()) { TmdbDiscover.page(kind, it, genre = g) }
+            if (g.isNotEmpty()) addRow("Daha fazla ${g.lowercase(tr)}", emptyList()) { TmdbDiscover.page(kind, it, genre = g, newest = true) }
             return
         }
         val genres = mine.flatMap { it.genres }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.map { it.key }.take(6)
         for (name in genres) {
-            addRow(name, today.filter { name in it.genres }.sortedByDescending { it.imdb }) { TmdbDiscover.page(kind, it, genre = name) }
+            addRow(name, newestFirst(today.filter { name in it.genres })) { TmdbDiscover.page(kind, it, genre = name, newest = true) }
         }
     }
 
