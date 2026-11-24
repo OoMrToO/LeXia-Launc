@@ -18,14 +18,26 @@ import java.util.Locale
  * story stand at the top; on a platform's tile, what is new there. Rest on a poster a few seconds
  * and its picture turns into its trailer, without sound (Ayarlar › Görünüm's hero trailer setting
  * covers it too). Back on the film at the top, it all fades and the home screen's own film returns.
+ *
+ * Under the rows the poster's picture lives on as its atmosphere: a small, heavily blurred and
+ * darkened copy, made once per film off the main thread and kept in a little cache, rising from
+ * the bottom of the screen in the film's own colours and cross-fading with the picture. No
+ * picture (or one that will not load): the LeXia background, never the previous film's.
  */
-internal class HomePeek(private val activity: Activity, private val ui: Ui, stage: FrameLayout, content: FrameLayout) {
+internal class HomePeek(
+    private val activity: Activity,
+    private val ui: Ui,
+    stage: FrameLayout,
+    ambience: FrameLayout,
+    content: FrameLayout
+) {
 
     private val tr = Locale("tr", "TR")
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val backs = arrayOf(ImageView(activity), ImageView(activity))
+    private val glows = arrayOf(ImageView(activity), ImageView(activity))
     private var front = 0
-    private var pictureFor = ""
+    @Volatile private var pictureFor = ""
 
     private val panel = LinearLayout(activity)
     private val kicker = ui.label("", C.TEXT2)
@@ -54,12 +66,20 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
             stage.addView(it, ui.fl(ui.match, ui.match))
         }
         stage.addView(trailerStage, ui.fl(ui.match, ui.match))
+        glows.forEach {
+            it.scaleType = ImageView.ScaleType.CENTER_CROP
+            it.alpha = 0f
+            ambience.addView(it, ui.fl(ui.match, ui.match))
+        }
         trailer.sound = false
         trailer.onShowing = { on ->
             backs.forEachIndexed { i, b ->
                 b.animate().cancel()
                 b.animate().alpha(if (on || i != front) 0f else 1f).setDuration(900).start()
             }
+            // The still picture's atmosphere steps back over the moving one, so it does not veil it.
+            glows[front].animate().cancel()
+            if (glows[front].drawable != null) glows[front].animate().alpha(if (on) 0.5f else 1f).setDuration(900).start()
         }
         panel.orientation = LinearLayout.VERTICAL
         panel.alpha = 0f
@@ -123,7 +143,9 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         strip.removeAllViews()
         films.filter { it.backdrop.isNotEmpty() }.take(4).forEach { strip.addView(mini(it)) }
         strip.visibility = if (strip.childCount > 0) View.VISIBLE else View.GONE
-        films.firstOrNull { it.backdrop.isNotEmpty() }?.let { picture(it.backdrop, it.key) }
+        // None of them with a picture: the LeXia background, not the film seen before.
+        val first = films.firstOrNull { it.backdrop.isNotEmpty() }
+        picture(first?.backdrop.orEmpty(), first?.key ?: "platform:$name")
         stopTrailer()
     }
 
@@ -182,6 +204,7 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
         panel.animate().cancel()
         panel.animate().alpha(0f).setDuration(D.MED).withEndAction { if (!showing) panel.visibility = View.GONE }.start()
         backs.forEach { it.animate().cancel(); it.animate().alpha(0f).setDuration(600).start() }
+        glows.forEach { it.animate().cancel(); it.animate().alpha(0f).setDuration(600).start() }
     }
 
     private fun facts(p: Pick): String {
@@ -207,24 +230,46 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     }
 
     private fun picture(path: String, id: String) {
-        if (path.isEmpty() || pictureFor == id) return
+        if (pictureFor == id) return
         pictureFor = id
+        if (path.isEmpty()) {
+            show(null, null)
+            return
+        }
         Thread {
             // The full picture on screens wider than 1280, as the home screen's own: no soft upscaling.
             val size = if (activity.resources.displayMetrics.widthPixels > 1280) "original" else "w1280"
             val b: Bitmap? = Net.bitmap("https://image.tmdb.org/t/p/$size$path", activity.resources.displayMetrics.widthPixels, true)
+            // Moved on while it loaded: no work for a film no longer under the remote.
+            val glow = if (b != null && pictureFor == id) glowOf(path, b) else null
             activity.runOnUiThread {
-                if (b == null || activity.isFinishing || pictureFor != id || !showing) return@runOnUiThread
-                val next = 1 - front
-                backs[next].setImageBitmap(b)
-                backs[next].animate().cancel()
-                backs[next].alpha = 0f
-                val ms = if (Fx.lite) 0L else 700L
-                backs[next].animate().alpha(1f).setDuration(ms).start()
-                backs[front].animate().alpha(0f).setDuration(ms).start()
-                front = next
+                if (activity.isFinishing || pictureFor != id || !showing) return@runOnUiThread
+                show(b, glow)
             }
         }.start()
+    }
+
+    /** The picture and its atmosphere come in together, the old ones go; none: the LeXia background. */
+    private fun show(b: Bitmap?, glow: Bitmap?) {
+        val next = 1 - front
+        val ms = if (Fx.lite) 0L else 700L
+        if (b != null) backs[next].setImageBitmap(b)
+        else backs[next].setImageDrawable(ui.gradient(
+            GradientDrawable.Orientation.TL_BR,
+            Color.parseColor("#1A1F29"), Color.parseColor("#0A0B0E"), Color.BLACK
+        ))
+        backs[next].animate().cancel()
+        backs[next].alpha = 0f
+        backs[next].animate().alpha(1f).setDuration(ms).start()
+        backs[front].animate().cancel()
+        backs[front].animate().alpha(0f).setDuration(ms).start()
+        glows[next].animate().cancel()
+        glows[next].setImageBitmap(glow)
+        glows[next].alpha = 0f
+        if (glow != null) glows[next].animate().alpha(1f).setDuration(ms).start()
+        glows[front].animate().cancel()
+        glows[front].animate().alpha(0f).setDuration(ms).start()
+        front = next
     }
 
     /** One of a platform's newest, small: its picture and its name. */
@@ -263,6 +308,47 @@ internal class HomePeek(private val activity: Activity, private val ui: Ui, stag
     companion object {
         /** How long the remote rests on a poster before its trailer starts. */
         private const val TRAILER_AFTER_MS = 3_500L
+
+        /** Atmospheres already made, by picture: about 60 KB each, so a whole row stays cheap. */
+        private val glowCache = android.util.LruCache<String, Bitmap>(24)
+
+        /**
+         * A film's atmosphere from its picture: shrunk and blurred into colour with no shapes left,
+         * kept dark (never brighter than a third, so white text always reads over it), a touch
+         * richer in colour, and fading in from about the middle of the screen to the bottom.
+         * Made once per picture on a background thread; never in light mode.
+         */
+        private fun glowOf(path: String, b: Bitmap): Bitmap? {
+            if (Fx.lite) return null
+            glowCache.get(path)?.let { return it }
+            val g = Fx.blurred(b, 12, 4) ?: return null
+            return try {
+                val w = g.width
+                val h = g.height
+                val px = IntArray(w * h)
+                g.getPixels(px, 0, w, 0, 0, w, h)
+                val hsv = FloatArray(3)
+                for (y in 0 until h) {
+                    // Smooth rise: nothing over the picture's upper part, full under the rows.
+                    val t = ((y.toFloat() / (h - 1).coerceAtLeast(1) - 0.40f) / 0.38f).coerceIn(0f, 1f)
+                    val a = (t * t * (3 - 2 * t) * 235).toInt()
+                    for (x in 0 until w) {
+                        val i = y * w + x
+                        Color.colorToHSV(px[i], hsv)
+                        hsv[1] = (hsv[1] * 1.15f).coerceAtMost(0.9f)
+                        hsv[2] = 0.03f + hsv[2] * 0.30f
+                        px[i] = Color.HSVToColor(a, hsv)
+                    }
+                }
+                // A copy of an opaque photo may say it has no transparency: the fade would be lost.
+                g.setHasAlpha(true)
+                g.setPixels(px, 0, w, 0, 0, w, h)
+                glowCache.put(path, g)
+                g
+            } catch (e: Throwable) {
+                null
+            }
+        }
 
         /** A platform's colours for its tile: deep, then lighter (as its badge, Ui.setWhere). */
         fun colors(name: String): Pair<Int, Int> {
