@@ -357,3 +357,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Sinema Gecesi: açıklama yerine filmin sloganı/özetin ilk cümlesi; 5 sn sonra arkada fragman, kumanda durunca ana ekrandaki gibi tam ekran (HeroCinema) (24 Kasım).
 - Bildirimler: Temizle, basılı tut menüsü (gizle / türü / platformu kapat), kısayolları gizleme, yalnızca takip ettiklerim (varsayılan), okunan 3 gün sonra kalkar, takip edilen film/dizi son 7 günde YAKLAŞANLAR'da geri sayımla (24 Kasım).
 - Bildirim paneli görünümü: satırlarda afiş/platform ikonu, YAKLAŞANLAR büyük geri sayım kartları, panel odaktaki filmin rengini alır, sıralı giriş, platform yenileri satır altında afiş şeridi, zilde sayı (24 Kasım).
+- Fragman sayfası: kontroller açıkken altyazı onların üstüne kalkar, kapanınca yerine iner (TV fotoğrafı, 24 Kasım).
