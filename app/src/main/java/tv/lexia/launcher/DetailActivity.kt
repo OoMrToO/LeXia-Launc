@@ -950,7 +950,7 @@ class DetailActivity : Activity() {
             MovieNight.choose(this, film) { updateNightBtn() }
             return
         }
-        Dialogs.list(this, "Film gecesi", listOf("Saati değiştir" to MovieNight.day(plan.at), "İptal et" to ""),
+        Dialogs.list(this, "Akşam planı", listOf("Saati değiştir" to MovieNight.day(plan.at), "İptal et" to ""),
             subtitle = film.title, icon = R.drawable.ic_moon) { i ->
             if (i == 0) MovieNight.choose(this, film) { updateNightBtn() }
             else {

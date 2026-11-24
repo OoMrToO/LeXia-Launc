@@ -983,7 +983,7 @@ class SettingsActivity : Activity() {
             ),
             toggle(
                 "Günaydın kartı",
-                "Sabah ilk açılışta birkaç saniyelik özet: hava, bugün çıkan bölümler, vizyona girenler, akşamki film gecesi.",
+                "Sabah ilk açılışta birkaç saniyelik özet: hava, bugün çıkan bölümler, vizyona girenler, akşam planın.",
                 { prefs.morningCard }, { prefs.morningCard = it }
             ),
             toggle(
@@ -1064,7 +1064,7 @@ class SettingsActivity : Activity() {
             Triple("plat", "Platformlara gelenler", "Seçtiğin platformların yeni yapımları."),
             Triple("now", "Artık platformda", "Listem'deki bir film bir platforma gelince."),
             Triple("ready", "Artık izlenebilir", "Listem'deki bir filmin kaynağı ilk kez bulununca."),
-            Triple("night", "Film gecesi", "Planladığın film gecesine kalan süre."),
+            Triple("night", "Akşam planı", "Bu akşam izlemeyi planladığın filme kalan süre."),
             Triple("listold", "Listende bekleyenler", "Hafta sonu, Listem'de uzun süredir bekleyen bir film.")
         )
         for ((id, title, desc) in kinds) {

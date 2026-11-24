@@ -78,10 +78,10 @@ object MovieNight {
         var times = slots.map { at(0, it.first, it.second) }.filter { it > now + 10 * 60_000L }
         if (times.isEmpty()) times = slots.map { at(1, it.first, it.second) }
         val names = times.map { day(it) }
-        Dialogs.list(a, "Film gecesi", names.map { it to "" }, subtitle = film.title, icon = R.drawable.ic_moon) { i ->
+        Dialogs.list(a, "Akşam planı", names.map { it to "" }, subtitle = film.title, icon = R.drawable.ic_moon) { i ->
             val o = JSONObject().put("at", times[i]).put("film", film.toJson())
             prefs.movieNight = o.toString()
-            Glass.toast(a, "Film gecesi: ${names[i]} · ${film.title}")
+            Glass.toast(a, "Akşam planı: ${names[i]} · ${film.title}")
             done()
         }
     }
@@ -111,7 +111,7 @@ object MovieNight {
         val col = ui.vbox()
         col.clipChildren = false
         col.clipToPadding = false
-        col.addView(ui.label("FİLM GECESİ  ·  ${time(plan.at)}", Color.parseColor("#FFD9A8")))
+        col.addView(ui.label("AKŞAM PLANI  ·  ${time(plan.at)}", Color.parseColor("#FFD9A8")))
         val title = ui.text(film.title, 84, C.TEXT, 800)
         title.letterSpacing = -0.02f
         title.maxLines = 2

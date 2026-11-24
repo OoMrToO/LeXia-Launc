@@ -926,7 +926,8 @@ class MediaSourcePickerActivity : Activity() {
             auto != Auto.NO -> "$count bulundu  ·  En uygun kaynak açılıyor…"
             searching -> "$count bulundu  ·  Diğer eklentiler aranıyor…"
             failed.isNotEmpty() -> "${lastFailure.ifBlank { "Kaynak açılmadı" }}  ·  Başka bir kaynak seç."
-            else -> "$count  ·  ${streams.map { it.addonName.trim().lowercase() }.distinct().size} sağlayıcı"
+            // The count is in the list's title: the line only says what to do.
+            else -> "Bir kaynak seç"
         }
     }
 
@@ -1260,71 +1261,26 @@ class MediaSourcePickerActivity : Activity() {
 
     // ---------- The source list ----------
 
-    /** A quick, factual overview of the source pool; unknown tags are not guessed. */
+    /**
+     * One quiet line under the title: what the sources offer (4K, Full HD, HDR, dubbing, Atmos), only
+     * what there is. The count is in the title already; nothing technical.
+     */
     private fun addSourceSummary() {
         val tags = streams.map { it.tags }
-        val providers = streams.map { it.addonName.trim() }.filter { it.isNotBlank() }.distinct().size
-        // The existing preference-aware source score provides a TV-specific quality estimate.
-        val ranked = streams.map { score(it) }.sortedDescending()
-        val topScore = ranked.firstOrNull() ?: 0
-        val topCount = ranked.count { it >= topScore - 80 }
-        val fourK = tags.count { it.resolution >= 2160 }
-        val fullHd = tags.count { it.resolution in 1080..2159 }
-        val hdr = tags.count { it.hdr.isNotBlank() }
-        val dubbed = tags.count { it.turkish == "Dublaj" }
-        val subtitled = tags.count { it.turkish == "Altyazılı" || it.turkish.isBlank() && it.audio.isNotBlank() }
-        val atmos = tags.count { it.audio == "Atmos" }
-        val surround = tags.count { it.channels in listOf("5.1", "7.1") }
-        val knownSizes = tags.map { it.sizeBytes }.filter { it > 0L }
-        val totalSize = knownSizes.sum()
-        val details = listOf(
-            "$providers sağlayıcı",
-            "$fourK 4K",
-            "$fullHd Full HD",
-            "$hdr HDR",
-            "$dubbed Türkçe dublaj",
-            "$subtitled altyazı/özgün ses",
-            "$atmos Atmos",
-            "$surround surround ses"
-        ).joinToString("  ·  ")
-        val scoreLine = if (ranked.isNotEmpty()) {
-            "En iyi eşleşme skoru: $topScore  ·  Bu seviyeye yakın: $topCount kaynak"
-        } else ""
-        val sizeLine = if (knownSizes.isNotEmpty()) {
-            "Boyutu bilinen ${knownSizes.size} kaynağın toplamı: " +
-                String.format(Locale.forLanguageTag("tr-TR"), "%.1f GB", totalSize / (1024.0 * 1024.0 * 1024.0))
-        } else ""
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(15), dp(18), dp(15))
-            background = panelBackground()
-        }
-        card.addView(TextView(this).apply {
-            text = "Kaynak özeti"
-            textSize = 19f
-            setTextColor(Color.WHITE)
-            typeface = ui.font(700)
-        })
-        card.addView(TextView(this).apply {
-            text = details
+        val parts = listOf(
+            tags.count { it.resolution >= 2160 } to "4K",
+            tags.count { it.resolution in 1080..2159 } to "Full HD",
+            tags.count { it.hdr.isNotBlank() } to "HDR",
+            tags.count { it.turkish == "Dublaj" } to "Türkçe dublaj",
+            tags.count { it.audio == "Atmos" } to "Atmos"
+        ).filter { it.first > 0 }.joinToString("  ·  ") { "${it.first} ${it.second}" }
+        if (parts.isEmpty()) return
+        content.addView(TextView(this).apply {
+            text = parts
             textSize = 14f
-            setTextColor(Color.argb(200, 255, 255, 255))
-            setLineSpacing(0f, 1.15f)
-            setPadding(0, dp(8), 0, 0)
-        })
-        if (scoreLine.isNotBlank()) card.addView(TextView(this).apply {
-            text = scoreLine
-            textSize = 13f
-            setTextColor(Color.argb(140, 255, 255, 255))
-            setPadding(0, dp(6), 0, 0)
-        })
-        if (sizeLine.isNotBlank()) card.addView(TextView(this).apply {
-            text = sizeLine
-            textSize = 13f
-            setTextColor(Color.argb(140, 255, 255, 255))
-            setPadding(0, dp(6), 0, 0)
-        })
-        content.addView(card, fullWidthParams(bottom = 14))
+            setTextColor(Color.argb(170, 255, 255, 255))
+            typeface = ui.font(600)
+        }, fullWidthParams(bottom = 14))
     }
 
     private fun renderStreams() {

@@ -177,10 +177,10 @@ class CinemaNightActivity : Activity() {
         if (p.key in listem) parts.add("Listende bekliyordu")
         p.genres.firstOrNull { it in liked }?.let { parts.add("sevdiğin ${it.lowercase(tr)} türünden") }
         if (parts.size < 2 && p.key in top) parts.add("bu haftanın öne çıkanlarından")
-        if (parts.size < 2 && p.imdb >= 7.5) parts.add(String.format(tr, "IMDb'de %.1f puan almış", p.imdb))
         val where = p.provider.ifEmpty { p.where.firstOrNull().orEmpty() }
         if (parts.size < 2 && where.isNotEmpty()) parts.add("${TrailerActivity.locative(where)} izlenebilir")
-        if (parts.isEmpty()) parts.add(if (p.imdb > 0) String.format(tr, "IMDb'de %.1f puan almış, bu akşam için iyi bir seçim", p.imdb) else "Bu akşam için iyi bir seçim")
+        // The score is on the line above: not said twice.
+        if (parts.isEmpty()) parts.add(if (p.imdb >= 7.5) "Çok sevilmiş, bu akşam için iyi bir seçim" else "Bu akşam için iyi bir seçim")
         val text = if (parts.size == 1) parts[0] else parts.dropLast(1).joinToString(", ") + " ve " + parts.last()
         return text.replaceFirstChar { it.titlecase(tr) } + "."
     }

@@ -1383,7 +1383,7 @@ class MainActivity : Activity() {
             out.add(Notice("msg:${m.id}", R.drawable.ic_info, m.title.ifEmpty { "Duyuru" }, m.text) { showMessage(m) })
         }
         MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() }?.let { plan ->
-            out.add(Notice("night:${plan.at}", R.drawable.ic_moon, "Film gecesi: ${MovieNight.day(plan.at)}",
+            out.add(Notice("night:${plan.at}", R.drawable.ic_moon, "Akşam planı: ${MovieNight.day(plan.at)}",
                 plan.film.title + " · " + MovieNight.left(plan.at) + " kaldı") { openDetail(plan.film, null, null) })
         }
         if (!prefs.homeNudgeOff && HomeGuide.needed(this)) {
@@ -1565,7 +1565,7 @@ class MainActivity : Activity() {
             prefs.reminders.filter { daysUntil(it.release) == 0 }.map { it.title }
         if (out.isNotEmpty()) lines.add(R.drawable.ic_film to "Bugün vizyonda: " + out.distinct().take(3).joinToString(", "))
         MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() && MovieNight.day(it.at).startsWith("Bu akşam") }?.let {
-            lines.add(R.drawable.ic_moon to "Film gecesi ${MovieNight.time(it.at)}: ${it.film.title}")
+            lines.add(R.drawable.ic_moon to "Akşam planı ${MovieNight.time(it.at)}: ${it.film.title}")
         }
         val plat = appNews.values.firstOrNull()
         if (plat != null) lines.add(R.drawable.ic_tv to "${TrailerActivity.locative(plat.first)} ${plat.second.size} yeni yapım")
@@ -2047,7 +2047,7 @@ class MainActivity : Activity() {
         val now = System.currentTimeMillis()
         val ahead = plan != null && plan.at > now
         nightLine.visibility = if (ahead) View.VISIBLE else View.GONE
-        if (ahead) nightLine.text = "Film gecesine ${MovieNight.left(plan!!.at)}  ·  ${plan.film.title}"
+        if (ahead) nightLine.text = "Akşam planına ${MovieNight.left(plan!!.at)}  ·  ${plan.film.title}"
         if (plan != null && !ahead && prefs.movieNightShown != plan.at && now < plan.at + 2 * 3600_000L) {
             if (idle) exitIdle()
             closeMenu(false)
@@ -2063,7 +2063,7 @@ class MainActivity : Activity() {
         remindPill.tag = null
         MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() }?.let { plan ->
             remindPill.tag = "night"
-            remindPill.text = "Film gecesi ${MovieNight.time(plan.at)}: ${plan.film.title}"
+            remindPill.text = "Akşam planı ${MovieNight.time(plan.at)}: ${plan.film.title}"
             remindPill.visibility = View.VISIBLE
             remindPill.setOnClickListener { openDetail(plan.film, null, null) }
             return
