@@ -28,9 +28,11 @@ internal class SourceMemory(context: Context) {
         val name = site.trim().lowercase()
         if (name.isEmpty()) return
         val all = stats()
+        // [played, failed, when it last played] (older records have only the first two).
         val row = all.optJSONArray(name) ?: JSONArray().put(0).put(0)
         val i = if (played) 0 else 1
         row.put(i, row.optInt(i) + 1)
+        if (played) row.put(2, System.currentTimeMillis())
         // What a site did lately counts most: past [RECENT] tries the old record is halved, so a
         // site that was fixed comes back up and one that broke goes down within days.
         if (row.optInt(0) + row.optInt(1) > RECENT) {
@@ -42,6 +44,22 @@ internal class SourceMemory(context: Context) {
     }
 
     fun played(site: String) = count(site, true)
+
+    /** When the site last played (0 = never, or before this was kept). */
+    fun lastPlayedAt(site: String): Long = stats().optJSONArray(site.trim().lowercase())?.optLong(2, 0L) ?: 0L
+
+    /** It played within the last [RECENT_OK_MS]: a small edge over sites equally trusted. */
+    fun playedLately(site: String): Boolean =
+        lastPlayedAt(site).let { it > 0 && System.currentTimeMillis() - it < RECENT_OK_MS }
+
+    /**
+     * "Daha önce sorunsuz çalıştı": it really played here a few times and hardly ever failed. Only
+     * what was seen on this TV counts; a site never tried says nothing.
+     */
+    fun proven(site: String): Boolean {
+        val row = stats().optJSONArray(site.trim().lowercase()) ?: return false
+        return row.optInt(0) >= 2 && trust(site) >= 0.8
+    }
 
     // ---------- How fast a site starts ----------
 
@@ -207,6 +225,7 @@ internal class SourceMemory(context: Context) {
         private const val MAX_KEPT = 80
         private const val RECENT = 30
         private const val LAST_MS = 30L * 24 * 60 * 60 * 1000
+        private const val RECENT_OK_MS = 14L * 24 * 60 * 60 * 1000
         private val LOCK = Any()
     }
 }

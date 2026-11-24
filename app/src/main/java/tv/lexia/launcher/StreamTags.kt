@@ -89,6 +89,24 @@ internal class StreamTags(
         return score
     }
 
+    /**
+     * The picture class, for the source started without asking: what this TV cannot show well or a
+     * cinema copy 0, below 720p 1, 720p (or not told) 2, Full HD and up 3. A site's record only orders
+     * sources within one class, so a poor picture never wins just because its site played before.
+     */
+    fun tier(tv: TvAbility.Ability): Int = when {
+        troubleOn(tv).isNotEmpty() || cinemaCopy || threeD -> 0
+        resolution in 1..699 -> 1
+        resolution == 0 || resolution < 1000 -> 2
+        else -> 3
+    }
+
+    /**
+     * Below the lowest picture wanted ([min] lines; 0 = any): a told resolution under it, or a cinema
+     * copy. A source that does not tell its resolution is kept (many good ones do not).
+     */
+    fun belowMin(min: Int): Boolean = min > 0 && (resolution in 1 until min || cinemaCopy)
+
     /** Why this source may play badly on this TV ("" when it should play well). */
     fun troubleOn(tv: TvAbility.Ability): String = when {
         hdr == "Dolby Vision" && !hdrFallback && !tv.dolbyVision -> "Bu TV'de renkleri bozuk görünebilir"

@@ -122,6 +122,7 @@ playSubLang text
 playSubSmart bool
 playSubSize int
 playAutoSource bool
+playMinRes int
 favSource text
 favSourceName text
 heroTrailer bool
@@ -141,3 +142,4 @@ speed text
 stats text
 heroTrailerHd bool
 weekendPlan text
+cinemaSeen text

@@ -2717,7 +2717,8 @@ class MainActivity : Activity() {
             Glass.toast(this, "Film listesi henüz yüklenmedi")
             return
         }
-        Surprise.ask(this, films, prefs.genres)
+        // Sinema Gecesi: one film picked and made ready, instead of questions first.
+        CinemaNightActivity.open(this, films)
     }
 
     /**

@@ -442,8 +442,10 @@ class ExploreActivity : Activity() {
     private fun randomPick() {
         val candidates = (if (filtering()) all.filter { matches(it) } else all.filter { ofKind(it) }).filter { !Remote.isHidden(it) && it.key !in prefs.disliked.keys }
         if (candidates.isEmpty()) { Glass.toast(this, "Mevcut seçimde rastgele öneri bulunamadı"); return }
-        // The film page's "Başka öner" draws again from the same choice, without going back.
-        Surprise.start(this, candidates, "Keşfet seçimlerine göre")
+        // Films: Sinema Gecesi picks one from this choice (Listem's other films stay out); series keep
+        // the film page's "Başka öner".
+        if (kind == "tv") Surprise.start(this, candidates, "Keşfet seçimlerine göre")
+        else CinemaNightActivity.open(this, candidates, withListem = false)
     }
 
     private fun yearsName() = when (years) {

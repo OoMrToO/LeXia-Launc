@@ -56,4 +56,44 @@ class SourceMemoryTest {
         memory.started("Vidmody", 500_000)
         assertEquals(3_000L, memory.startMs("Vidmody"))
     }
+
+    /** A site's record: failures pull it down, later plays bring it back; never tried says nothing. */
+    @Test
+    fun learnsWhichSitesPlay() {
+        val memory = SourceMemory(app)
+        // First seen: neither good nor bad, no label.
+        assertEquals(0.5, memory.trust("Yeni"), 0.0)
+        org.junit.Assert.assertFalse(memory.proven("Yeni"))
+        org.junit.Assert.assertFalse(memory.unreliable("Yeni"))
+        org.junit.Assert.assertFalse(memory.playedLately("Yeni"))
+        // Played before: trusted, "Daha önce sorunsuz çalıştı" after two plays, played lately.
+        memory.played("İyi")
+        org.junit.Assert.assertFalse(memory.proven("İyi"))
+        memory.played("iyi")
+        memory.played("İyi")
+        org.junit.Assert.assertTrue(memory.proven("İyi"))
+        org.junit.Assert.assertTrue(memory.playedLately("İyi"))
+        // Failing again and again: unreliable, never "proven".
+        repeat(4) { memory.failed("Bozuk") }
+        org.junit.Assert.assertTrue(memory.unreliable("Bozuk"))
+        org.junit.Assert.assertFalse(memory.proven("Bozuk"))
+        // Fixed later: its plays bring it back up.
+        repeat(8) { memory.played("Bozuk") }
+        org.junit.Assert.assertFalse(memory.unreliable("Bozuk"))
+        org.junit.Assert.assertTrue(memory.trust("Bozuk") > 0.5)
+    }
+
+    /** Records kept before "when it last played" was added still read, and grow the new field. */
+    @Test
+    fun readsOldRecords() {
+        app.getSharedPreferences("source_memory", android.content.Context.MODE_PRIVATE).edit()
+            .putString("stats", "{\"eski\":[5,1]}").commit()
+        val memory = SourceMemory(app)
+        assertEquals(0.8, memory.trust("Eski"), 0.0)
+        assertEquals(0L, memory.lastPlayedAt("Eski"))
+        org.junit.Assert.assertTrue(memory.proven("Eski"))
+        memory.played("Eski")
+        org.junit.Assert.assertTrue(memory.lastPlayedAt("Eski") > 0)
+        assertEquals(0.8, memory.trust("Eski"), 0.0)
+    }
 }
