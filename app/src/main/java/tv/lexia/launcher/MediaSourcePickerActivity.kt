@@ -933,6 +933,10 @@ class MediaSourcePickerActivity : Activity() {
     }
 
     private val memory by lazy { SourceMemory(this) }
+    /** Sites whose source would not open on this page: the next try by itself is from another site. */
+    private val failedSites = HashSet<String>()
+    /** The source the list marks "Senin için en iyi kaynak" (set while the list is drawn). */
+    private var bestUrl: String? = null
     /** A film was watched to the end in the player just closed: "Beğendin mi?" is asked. */
     @Volatile private var justFinished = false
 
@@ -949,10 +953,18 @@ class MediaSourcePickerActivity : Activity() {
         return (if (favoriteName.isNotBlank()) favorite else pool)
             .withIndex()
             .sortedWith(
-                compareByDescending<IndexedValue<MediaStream>> { likeness(it.value, wanted) }
-                    // Sites that played before come before ones that would not open.
+                // What this TV cannot show well (or a cinema copy) never comes first.
+                compareByDescending<IndexedValue<MediaStream>> { it.value.tags.tier(tv) > 0 }
+                    // A site that just would not open here goes behind the others (another link of it
+                    // usually fails the same way); it is still tried when nothing else is left.
+                    .thenBy { sourceName(it.value).trim().lowercase() in failedSites }
+                    .thenByDescending { likeness(it.value, wanted) }
+                    // The picture class first: a site's record never lifts a poor picture over a good one.
+                    .thenByDescending { it.value.tags.tier(tv) }
+                    // Within it, sites that played before come before ones that would not open,
                     .thenByDescending { memory.trust(sourceName(it.value)) }
-                    // Among them, the sites that usually start within a few seconds.
+                    // then the ones that played lately, then the ones that start within a few seconds.
+                    .thenByDescending { memory.playedLately(sourceName(it.value)) }
                     .thenByDescending { memory.fast(sourceName(it.value)) }
                     .thenByDescending { score(it.value) }
                     .thenBy { it.index }
@@ -1039,7 +1051,6 @@ class MediaSourcePickerActivity : Activity() {
     private fun playInNuvio(stream: MediaStream) {
         val store = MediaPlaybackStore(this)
         val watchKey = film.key
-        val playedKey = mediaKey
         val markWatched = !film.isSeries
         fun finished(key: String) {
             store.clear(key)
@@ -1057,8 +1068,6 @@ class MediaSourcePickerActivity : Activity() {
                 if (store.save(key, positionMs, durationMs)) finished(key) else store.saveLast(watchKey, key)
             }
             override fun finished(key: String) = finished(key)
-            override fun subtitleDelayMs(): Long = store.subtitleDelayMs(playedKey)
-            override fun saveSubtitleDelay(delayMs: Long) = store.saveSubtitleDelay(playedKey, delayMs)
         }
         publishCredits()
         // The audio and subtitle languages chosen in LeXia's settings, for Nuvio's player too.
@@ -1130,7 +1139,10 @@ class MediaSourcePickerActivity : Activity() {
             val site = sourceName(stream)
             val store = MediaPlaybackStore(this)
             if (resultCode == PlayerActivity.RESULT_FAILED) {
-                if (why.sourceFault) memory.failed(site)
+                if (why.sourceFault) {
+                    memory.failed(site)
+                    failedSites.add(site.trim().lowercase())
+                }
                 val key = mediaKey
                 worker.submit { memory.drop(key, stream.url) }
             } else if (store.progress(mediaKey) != null || store.isFinished(mediaKey)) {
@@ -1175,7 +1187,8 @@ class MediaSourcePickerActivity : Activity() {
                 if (next != null) {
                     autoRetries++
                     nextTry = next
-                    status.text = "${why.text}  ·  Sonraki kaynak açılıyor: ${sourceName(next)}"
+                    status.text = "${why.text}  ·  Sonraki kaynak açılıyor: ${sourceName(next)}" +
+                        if (memory.proven(sourceName(next))) " (daha önce sorunsuz çalıştı)" else ""
                     handler.postDelayed(tryNext, RETRY_PAUSE_MS)
                 }
             }
@@ -1310,6 +1323,10 @@ class MediaSourcePickerActivity : Activity() {
         fun unreliable(s: MediaStream) = shaky.getOrPut(sourceName(s)) { memory.unreliable(sourceName(s)) }
         val quick = HashMap<String, Boolean>()
         fun fast(s: MediaStream) = quick.getOrPut(sourceName(s)) { memory.fast(sourceName(s)) }
+        val sure = HashMap<String, Boolean>()
+        fun proven(s: MediaStream) = sure.getOrPut(sourceName(s)) { memory.proven(sourceName(s)) }
+        // The one LeXia would start by itself: "Senin için en iyi kaynak" when its site has played here.
+        bestUrl = best()?.takeIf { proven(it) }?.url
         // Picture class first (4K, Full HD, HD, the rest), so a fast site never pushes a sharper one down.
         fun tier(s: MediaStream) = s.tags.resolution.let { r -> when { r >= 2160 -> 3; r >= 1080 -> 2; r >= 720 -> 1; else -> 0 } }
         val groups: Map<String, List<MediaStream>> = if (groupByProvider) {
@@ -1332,7 +1349,8 @@ class MediaSourcePickerActivity : Activity() {
         groups.forEach { (provider, list) ->
             val ordered = (
                 if (sortByQuality) list.sortedWith(
-                    compareByDescending<MediaStream> { tier(it) }.thenByDescending { fast(it) }.thenByDescending { score(it) }
+                    compareByDescending<MediaStream> { it.tags.troubleOn(tv).isEmpty() }.thenByDescending { tier(it) }
+                        .thenByDescending { proven(it) }.thenByDescending { fast(it) }.thenByDescending { score(it) }
                 ) else list.sortedBy { it.name.lowercase(tr) }
             )
                 .sortedBy { unreliable(it) }
@@ -1567,6 +1585,11 @@ class MediaSourcePickerActivity : Activity() {
                 broken -> failed[stream.url] ?: "Oynatılamadı"
                 stream.tags.troubleOn(tv).isNotEmpty() -> "${stream.tags.troubleOn(tv)}  ·  ${sourceLine(stream)}"
                 memory.unreliable(sourceName(stream)) -> "Sık açılmıyor  ·  ${sourceLine(stream)}"
+                // Only what this TV saw: a site that played here, and how fast it usually starts.
+                stream.url == bestUrl -> "★ Senin için en iyi kaynak  ·  ${sourceLine(stream)}"
+                memory.proven(sourceName(stream)) && memory.fast(sourceName(stream)) ->
+                    "✓ Daha önce sorunsuz çalıştı  ·  hızlı açılıyor  ·  ${sourceLine(stream)}"
+                memory.proven(sourceName(stream)) -> "✓ Daha önce sorunsuz çalıştı  ·  ${sourceLine(stream)}"
                 memory.fast(sourceName(stream)) -> "⚡ Hızlı açılıyor  ·  ${sourceLine(stream)}"
                 else -> sourceLine(stream)
             }

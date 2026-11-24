@@ -15,7 +15,9 @@ internal class PlayFailure(val text: String, val sourceFault: Boolean, val tryAn
         fun of(raw: String?): PlayFailure {
             val s = raw.orEmpty()
             val low = s.lowercase()
-            if (s == com.nuvio.tv.LeXiaPlayerActivity.REASON_TIMEOUT) return PlayFailure("Kaynak zamanında açılmadı", true)
+            // "Devam et" gives the remembered link only 12 s: an old link that expired, or a slow
+            // start, says little about the site, so it does not count against it.
+            if (s == com.nuvio.tv.LeXiaPlayerActivity.REASON_TIMEOUT) return PlayFailure("Kaynak zamanında açılmadı", false)
             val http = HTTP.find(s)?.groupValues?.get(1)?.toIntOrNull()
             return when {
                 http == 401 || http == 403 || http == 410 -> PlayFailure("Kaynağın bağlantı süresi dolmuş", true)

@@ -106,35 +106,9 @@ class LeXiaPlayerActivity : ComponentActivity() {
                 if (curtain) Opening(viewModel)
                 Credits(viewModel)
                 StartClock(viewModel)
-                SubtitleDelayMemory(viewModel, keep)
                 if (quickFailMs > 0) QuickFail(viewModel, quickFailMs)
                 }
             }
-        }
-    }
-
-    /**
-     * The subtitle delay set for this film or episode is remembered: once a subtitle is on, last
-     * time's delay comes back (a little later, after Nuvio's own track setup); each change is kept.
-     */
-    @Composable
-    private fun SubtitleDelayMemory(viewModel: PlayerViewModel, store: com.nuvio.tv.data.repository.LeXiaProgress?) {
-        if (store == null) return
-        val state by viewModel.uiState.collectAsState()
-        val saved = remember { try { store.subtitleDelayMs().toInt() } catch (_: Exception) { 0 } }
-        var restored by remember { mutableStateOf(false) }
-        val subtitleOn = state.selectedAddonSubtitle != null || state.selectedSubtitleTrackIndex >= 0
-        LaunchedEffect(subtitleOn) {
-            if (!subtitleOn || restored) return@LaunchedEffect
-            kotlinx.coroutines.delay(1_500)
-            val now = viewModel.uiState.value.subtitleDelayMs
-            if (saved != 0 && now == 0) {
-                viewModel.onEvent(com.nuvio.tv.ui.screens.player.PlayerEvent.OnAdjustSubtitleDelay(saved, showOverlay = false))
-            }
-            restored = true
-        }
-        LaunchedEffect(state.subtitleDelayMs, restored) {
-            if (restored) try { store.saveSubtitleDelay(state.subtitleDelayMs.toLong()) } catch (_: Exception) { }
         }
     }
 
