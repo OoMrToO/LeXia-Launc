@@ -134,7 +134,7 @@ class PlatformMonthActivity : Activity() {
         card.clipChildren = false
         card.clipToPadding = false
         card.setPadding(ui.u(44), ui.u(40), ui.u(44), ui.u(40))
-        card.background = ui.round(Color.argb(140, 28, 28, 34), D.PANEL, 1, Color.argb(40, 255, 255, 255))
+        card.background = ui.glass(Color.argb(140, 28, 28, 34), D.PANEL, 2)
         val badge = ui.whereBadge()
         ui.setWhere(badge, name)
         card.addView(badge, ui.ll(ui.wrap, ui.wrap))

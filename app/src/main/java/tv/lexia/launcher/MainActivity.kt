@@ -1655,7 +1655,7 @@ class MainActivity : Activity() {
 
         val card = ui.vbox()
         card.setPadding(ui.u(48), ui.u(40), ui.u(56), ui.u(40))
-        card.background = ui.round(Color.argb(ui.panelAlpha(), 0x18, 0x18, 0x1E), D.PANEL, 1, Color.argb(50, 255, 255, 255))
+        card.background = ui.glass(Color.argb(ui.panelAlpha(), 0x18, 0x18, 0x1E), D.PANEL, 2)
         card.elevation = ui.uf(40)
         val name = prefs.name.trim()
         card.addView(ui.text(if (name.isEmpty()) "Günaydın" else "Günaydın, $name", 46, C.TEXT, 700))
@@ -3680,7 +3680,7 @@ class MainActivity : Activity() {
         layer.isClickable = true
 
         val card = ui.vbox()
-        card.background = ui.round(Color.argb(ui.panelAlpha() - 23, 0x1E, 0x1E, 0x22), 36, 1)
+        card.background = ui.glass(Color.argb(ui.panelAlpha() - 23, 0x1E, 0x1E, 0x22), 36, 2)
         card.setPadding(ui.u(28), ui.u(32), ui.u(28), ui.u(24))
         card.elevation = ui.uf(40)
         card.clipChildren = false
@@ -3715,6 +3715,7 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         panel.background = bg
+        panel.foreground = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r))
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))

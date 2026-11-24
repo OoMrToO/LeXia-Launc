@@ -72,7 +72,7 @@ object WhatsNew {
         root.setBackgroundColor(Color.argb(170, 0, 0, 0))
 
         val card = ui.vbox()
-        card.background = ui.round(Color.parseColor("#F21C1C21"), D.PANEL, 1)
+        card.background = ui.glass(Color.parseColor("#F21C1C21"), D.PANEL, 2)
         card.setPadding(ui.u(64), ui.u(54), ui.u(64), ui.u(48))
         val tag = ui.label(label, C.TEXT3)
         card.addView(tag)
