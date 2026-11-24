@@ -209,7 +209,7 @@ class DuelActivity : Activity() {
         row.clipChildren = false
         row.clipToPadding = false
         if (p.trailer.isNotEmpty()) {
-            val tb = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
+            val tb = ui.pill("▶   Fragmanı izle", 64, 23, primary = true)
             tb.setOnClickListener { TrailerActivity.open(this, p) }
             row.addView(tb)
         }

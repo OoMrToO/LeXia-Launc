@@ -104,7 +104,7 @@ class PlatformMonthActivity : Activity() {
         val total = ranked.flatMap { it.second }.distinctBy { it.key }.size + free.size + unknown
         if (ranked.isEmpty()) {
             body.addView(ui.text(if (free.isNotEmpty()) "Bu ay aboneliğe gerek yok." else "Henüz söyleyecek bir şey yok.", 68, C.TEXT, 800), ui.ll(ui.wrap, ui.wrap, top = 14))
-            val why = if (total == 0) "Listem boş. Beğendiğin filmleri “Listeme Ekle” ile ekle; hangi platformun sana yeteceğini burada söylerim."
+            val why = if (total == 0) "Listem boş. Beğendiğin filmleri “Listeme ekle” ile ekle; hangi platformun sana yeteceğini burada söylerim."
             else if (free.isNotEmpty()) "Listendeki ${free.size} film ücretsiz izlenebiliyor: " + free.joinToString(", ") { it.title } + "."
             else "Listendeki filmlerin hangi platformda olduğu henüz bilinmiyor (sinemada ya da henüz bir platformda değil)."
             val l = ui.text(why, 28, C.TEXT2, 400)

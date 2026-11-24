@@ -133,8 +133,23 @@ class PersonActivity : Activity() {
         val place = o.optString("place_of_birth").substringBefore(",").trim()
         if (born.isNotBlank()) parts.add(if (place.isNotBlank()) "$born, $place" else "$born doğumlu")
         val died = o.optString("deathday").take(4)
-        if (died.isNotBlank() && died != "null") parts.add("$died'de öldü")
+        if (died.isNotBlank() && died != "null") parts.add("$died${yearIn(died)} öldü")
         return parts.joinToString("  ·  ")
+    }
+
+    /**
+     * The "-de/-da/-te/-ta" a year takes, by how it is read: 2016 (altı) 'da, 2020 (yirmi) 'de,
+     * 1974 (dört) 'te, 1940 (kırk) 'ta, 1900 (dokuz yüz) 'de, 2000 (iki bin) 'de.
+     */
+    private fun yearIn(year: String): String {
+        val n = year.toIntOrNull() ?: return "'de"
+        val ones = listOf("", "'de", "'de", "'te", "'te", "'te", "'da", "'de", "'de", "'da")
+        val tens = listOf("", "'da", "'de", "'da", "'ta", "'de", "'ta", "'te", "'de", "'da")
+        return when {
+            n % 10 != 0 -> ones[n % 10]
+            n / 10 % 10 != 0 -> tens[n / 10 % 10]
+            else -> "'de"
+        }
     }
 
     /** What they made (as an actor, or as a director), each title once, best known first, 42 at most. */

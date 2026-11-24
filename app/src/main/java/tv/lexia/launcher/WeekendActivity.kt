@@ -680,7 +680,7 @@ class WeekendActivity : Activity() {
 
     private fun updateListBtn() {
         if (!::listBtn.isInitialized) return
-        listBtn.text = if (inList()) "✓   Listemde" else "+   Listeme Ekle"
+        listBtn.text = if (inList()) "✓   Listemde" else "+   Listeme ekle"
     }
 
     private fun toggleList() {

@@ -343,7 +343,7 @@ class DetailActivity : Activity() {
         }
         updatePlayBtn()
         if (!film.isSeries && cinemaState.isEmpty()) loadCinemaState()
-        val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)
+        val trailer = ui.pill("▶   Fragmanı izle", 64, 23, primary = false)
         trailer.setOnClickListener {
             if (film.trailer.isEmpty()) {
                 Glass.toast(this, "Fragman bulunamadı")
@@ -950,7 +950,7 @@ class DetailActivity : Activity() {
             MovieNight.choose(this, film) { updateNightBtn() }
             return
         }
-        Dialogs.list(this, "Film gecesi", listOf("Saati değiştir" to MovieNight.day(plan.at), "İptal et" to ""),
+        Dialogs.list(this, "Akşam planı", listOf("Saati değiştir" to MovieNight.day(plan.at), "İptal et" to ""),
             subtitle = film.title, icon = R.drawable.ic_moon) { i ->
             if (i == 0) MovieNight.choose(this, film) { updateNightBtn() }
             else {
@@ -1078,7 +1078,7 @@ class DetailActivity : Activity() {
             // A series: the list follows it for new-episode notices.
             if (inList()) "✓   Takipte" else "+   Takibe Al"
         } else {
-            if (inList()) "✓   Listemde" else "+   Listeme Ekle"
+            if (inList()) "✓   Listemde" else "+   Listeme ekle"
         }
     }
 

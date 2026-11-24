@@ -128,7 +128,7 @@ internal class ExploreStage(private val activity: Activity, private val ui: Ui, 
         play.setOnClickListener { current?.let { onPlay?.invoke(it) } }
         val clip = ui.iconPill("Fragman", R.drawable.ic_film)
         clip.setOnClickListener { current?.let { onTrailer?.invoke(it) } }
-        val more = ui.iconPill("Ayrıntılar", R.drawable.ic_info)
+        val more = ui.iconPill("Detaylar", R.drawable.ic_info)
         more.setOnClickListener { current?.let { onDetails?.invoke(it) } }
         for (b in listOf(play, clip, more)) {
             val style = b.onFocusChangeListener
