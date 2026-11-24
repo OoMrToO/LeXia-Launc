@@ -62,24 +62,15 @@ internal object Housekeeping {
                 val addons = MediaAddonRepository(app)
                 val nuvio = NuvioJsRepository(app)
                 if (addons.installedAddons().isEmpty() && nuvio.installedRepositories().isEmpty()) return@Thread
-                val memory = SourceMemory(app)
                 val store = MediaPlaybackStore(app)
                 val films = prefs.watchlist
                     .filter { !it.isSeries && Surprise.watchable(it) && !store.isFinished(it.key) }
                     .take(PREFETCH_FILMS)
-                runBlocking { LeXiaNuvio.setStremioAddons(app, addons.installedAddons().filter { it.enabled }.map { it.baseUrl }) }
                 for (film in films) {
                     if (stop || LeXiaCinema.playing) break
-                    val imdb = film.imdbId.ifBlank { addons.imdbId("movie", film.id) }
-                    val key = imdb.ifBlank { "tmdb:${film.id}" }
-                    if (memory.kept(key).isNotEmpty()) continue
-                    if (imdb.isNotBlank()) LeXiaNuvio.tmdbService.preCacheMapping(imdb, film.id, "movie")
-                    val found = NuvioSearch.streams(app, "movie", key, null, null, prefs.favSource) { }
-                    if (found.isNotEmpty()) {
-                        memory.keep(key, found)
-                        if (!store.everFound(film.key)) store.markReady(film.key)
-                        store.markAvailable(film.key)
-                    }
+                    val first = !store.everFound(film.key)
+                    val found = findSources(app, film)
+                    if (found.isNotEmpty() && first) store.markReady(film.key)
                 }
             } catch (e: Exception) {
                 Log.w("LeXiaHousekeeping", "Sources not looked up: ${e.message}")
@@ -87,6 +78,37 @@ internal object Housekeeping {
                 prefetching.set(false)
             }
         }.start()
+    }
+
+    /**
+     * [film]'s sources (a film, not a series): the ones kept from the last few hours, else Nuvio's
+     * search now (the favourite source first). Found ones are kept for "Oynat", which then starts at
+     * once, and the poster is marked "izlenebilir". Empty when nothing is found or no source add-on is
+     * set up. Slow: never on the main thread.
+     */
+    fun findSources(ctx: Context, film: Pick): List<MediaStream> {
+        val app = ctx.applicationContext
+        val prefs = Prefs(app)
+        val addons = MediaAddonRepository(app)
+        if (addons.installedAddons().isEmpty() && NuvioJsRepository(app).installedRepositories().isEmpty()) return emptyList()
+        val memory = SourceMemory(app)
+        val imdb = film.imdbId.ifBlank { addons.imdbId("movie", film.id) }
+        val key = imdb.ifBlank { "tmdb:${film.id}" }
+        memory.kept(key).takeIf { it.isNotEmpty() }?.let { return it }
+        runBlocking { LeXiaNuvio.setStremioAddons(app, addons.installedAddons().filter { it.enabled }.map { it.baseUrl }) }
+        if (imdb.isNotBlank()) LeXiaNuvio.tmdbService.preCacheMapping(imdb, film.id, "movie")
+        val found = NuvioSearch.streams(app, "movie", key, null, null, prefs.favSource) { }
+        if (found.isNotEmpty()) {
+            memory.keep(key, found)
+            MediaPlaybackStore(app).markAvailable(film.key)
+        }
+        return found
+    }
+
+    /** Whether any source add-on or Nuvio repository is set up (without one, nothing can be found). */
+    fun hasSources(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        return MediaAddonRepository(app).installedAddons().isNotEmpty() || NuvioJsRepository(app).installedRepositories().isNotEmpty()
     }
 
     /** The viewer is back: no new film is started (the one under way finishes on its own). */

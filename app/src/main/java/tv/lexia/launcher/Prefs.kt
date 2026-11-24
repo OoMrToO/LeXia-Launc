@@ -251,6 +251,8 @@ class Prefs(ctx: Context) {
     var appShape: String get() = p.getString("appShape", "card") ?: "card"; set(v) = putStr("appShape", v)
     /** Films behind the home screen: "picks" today's films, "cinema" in cinemas now, "platform" new on streaming, "mix". */
     /** Default "mix": today's films, cinemas and new on streaming in turn, so everyone sees what LeXia has. */
+    /** Sinema Gecesi: films shown or passed over lately, and until when they stay away (JSON key → time). */
+    var cinemaSeen: String get() = p.getString("cinemaSeen", "") ?: ""; set(v) = putStr("cinemaSeen", v)
     var heroSource: String get() = p.getString("heroSource", "mix") ?: "mix"; set(v) = putStr("heroSource", v)
     /**
      * What the home screen's big area shows, any of "picks", "cinema", "platform" (kept in

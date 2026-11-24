@@ -141,3 +141,4 @@ speed text
 stats text
 heroTrailerHd bool
 weekendPlan text
+cinemaSeen text
