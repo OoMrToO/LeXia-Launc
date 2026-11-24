@@ -1765,11 +1765,13 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
-        scroll.clipChildren = false
+        // Rows that scroll up are cut at the list's top, so they never draw over the calendar rows
+        // and the title (TV photo, 24 Kasım); the side room keeps the focused row's lift whole.
+        scroll.clipChildren = true
         val box = ui.vbox()
         box.clipChildren = false
         box.clipToPadding = false
-        box.setPadding(0, ui.u(6), 0, ui.u(6))
+        box.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
         scroll.addView(box)
         if (list.isEmpty()) {
             val e = ui.emptyState(R.drawable.ic_bell, "Her şey sakin",
