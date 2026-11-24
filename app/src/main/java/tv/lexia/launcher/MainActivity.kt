@@ -221,7 +221,7 @@ class MainActivity : Activity() {
     private var platformList: List<Pick> = emptyList()
     /** Bell in the top bar and its unread dot. */
     private lateinit var bell: FrameLayout
-    private lateinit var bellDot: View
+    private lateinit var bellDot: TextView
     private var savedIndex = 0
     private lateinit var ambientLine: TextView
     /** Screensaver: "Film gecesine 2 sa 10 dk · Dune". */
@@ -738,11 +738,16 @@ class MainActivity : Activity() {
         bell = ui.iconButton(R.drawable.ic_bell, 60)
         (bell.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(14)
         bell.setOnClickListener { openNotices() }
-        bellDot = View(this)
-        bellDot.background = ui.round(Color.parseColor("#FF4D8D"), 6, 2, Color.argb(220, 12, 12, 16))
+        // How many new notices: a small pink count on the bell.
+        bellDot = ui.text("", 13, Color.WHITE, 800)
+        bellDot.gravity = Gravity.CENTER
+        bellDot.includeFontPadding = false
+        bellDot.minWidth = ui.u(24)
+        bellDot.setPadding(ui.u(6), 0, ui.u(6), 0)
+        bellDot.background = ui.round(Color.parseColor("#FF4D8D"), 12, 2, Color.argb(220, 12, 12, 16))
         bellDot.visibility = View.GONE
-        val dlp = ui.fl(ui.u(15), ui.u(15), Gravity.TOP or Gravity.END)
-        dlp.setMargins(0, ui.u(10), ui.u(10), 0)
+        val dlp = ui.fl(ui.wrap, ui.u(24), Gravity.TOP or Gravity.END)
+        dlp.setMargins(0, ui.u(4), ui.u(4), 0)
         bell.addView(bellDot, dlp)
         tools.addView(bell)
 
@@ -1371,7 +1376,14 @@ class MainActivity : Activity() {
     // ---------- Bell: notices ----------
 
     /** [days]: something you follow that is coming (a film's release, a series' episode), days left; it goes on top. */
-    private class Notice(val id: String, val icon: Int, val title: String, val sub: String, val days: Int? = null, val open: () -> Unit)
+    /**
+     * [pick]: the film or series it is about (its poster in the row, its picture on a countdown card);
+     * [films]: a platform's new titles, opened in place under the row; [tag]: a countdown card's kicker.
+     */
+    private class Notice(
+        val id: String, val icon: Int, val title: String, val sub: String, val days: Int? = null,
+        val pick: Pick? = null, val films: List<Pick> = emptyList(), val tag: String = "", val open: () -> Unit
+    )
 
     /** Kinds the bell can turn off from a notice's menu, with the names Ayarlar › Bildirimler uses. */
     private val noticeKinds = mapOf(
@@ -1423,7 +1435,7 @@ class MainActivity : Activity() {
         }
         MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() }?.let { plan ->
             out.add(Notice("night:${plan.at}", R.drawable.ic_moon, "Akşam planı: ${MovieNight.day(plan.at)}",
-                plan.film.title + " · " + MovieNight.left(plan.at) + " kaldı") { openDetail(plan.film, null, null) })
+                plan.film.title + " · " + MovieNight.left(plan.at) + " kaldı", pick = plan.film) { openDetail(plan.film, null, null) })
         }
         if (!prefs.homeNudgeOff && HomeGuide.needed(this)) {
             out.add(Notice("home", R.drawable.ic_tv, "Ana Sayfa tuşu LeXia'yı açmıyor",
@@ -1440,7 +1452,7 @@ class MainActivity : Activity() {
             val which = if (n.season > 0 && n.episode > 0) "${n.season}. sezon ${n.episode}. bölüm" else Episodes.what(n)
             val w = Episodes.what(n).lowercase(tr)
             out.add(Notice("ep:${p.key}:${n.date}:${stage(d)}", R.drawable.ic_tv,
-                daysAhead(d, w) + p.title, which, days = d) { openDetail(p, null, null) })
+                daysAhead(d, w) + p.title, which, days = d, pick = p, tag = Episodes.what(n).uppercase(tr)) { openDetail(p, null, null) })
         }
         // A series you watch in LeXia has a new episode out (this week) that you have not finished:
         // OK opens it straight on its sources.
@@ -1455,7 +1467,7 @@ class MainActivity : Activity() {
             val episode = "$id:${r.season}:${r.episode}"
             if (playback.isFinished(episode)) continue
             out.add(Notice("new:${p.key}:${r.season}:${r.episode}", R.drawable.ic_tv, "Yeni bölüm çıktı: ${p.title}",
-                "${r.season}. sezon ${r.episode}. bölüm  ·  İzlemek için OK'e bas") {
+                "${r.season}. sezon ${r.episode}. bölüm  ·  İzlemek için OK'e bas", pick = p) {
                 MediaSourcePickerActivity.open(this, p, resumeEpisode = episode)
             })
         }
@@ -1464,7 +1476,7 @@ class MainActivity : Activity() {
             if (d !in -3..7) continue
             val t = if (d < 0) "Vizyonda: " else daysAhead(d, "vizyonda")
             out.add(Notice("rel:${p.key}:${p.release}" + (if (d >= 0) ":${stage(d)}" else ""), R.drawable.ic_film, t + p.title,
-                "Hatırlatmıştın.", days = d.takeIf { it >= 0 }) { openDetail(p, null, null) })
+                "Hatırlatmıştın.", days = d.takeIf { it >= 0 }, pick = p, tag = "SİNEMADA") { openDetail(p, null, null) })
         }
         // A Listem film not out yet: the week before, it comes to the top with its countdown.
         val remindedKeys = prefs.reminders.map { it.key }.toSet()
@@ -1473,18 +1485,18 @@ class MainActivity : Activity() {
             val d = daysUntil(p.release) ?: continue
             if (d !in 0..7) continue
             out.add(Notice("rel:${p.key}:${p.release}:${stage(d)}", R.drawable.ic_film, daysAhead(d, "vizyonda") + p.title,
-                "Listende bekliyordu.", days = d) { openDetail(p, null, null) })
+                "Listende bekliyordu.", days = d, pick = p, tag = "SİNEMADA") { openDetail(p, null, null) })
         }
         // New on the platforms you chose (or whose app is on this TV): one notice per platform a day.
         for ((name, films) in streamingFirst().groupBy { it.provider }) {
             if (!myPlatform(name) || name in prefs.noticePlatOff) continue
             out.add(Notice("plat:$name:${prefs.pickDate}", R.drawable.ic_tv, "$name: ${films.size} yeni yapım",
-                films.take(3).joinToString(", ") { it.title }) { showPlatformNews(name, films) })
+                films.take(3).joinToString(", ") { it.title }, films = films) { showPlatformNews(name, films) })
         }
         // A film you saved (Listem, reminders) that came to a platform since: "Artık Netflix'te".
         for ((p, name, day) in nowStreaming()) {
             out.add(Notice("now:${p.key}:$name", R.drawable.ic_tv, "Artık ${TrailerActivity.locative(name)}: ${p.title}",
-                (if (day == todayStr()) "Bugün geldi" else "Bu hafta geldi") + ". Listende bekliyordu.") { openNowStreaming(p, name) })
+                (if (day == todayStr()) "Bugün geldi" else "Bu hafta geldi") + ". Listende bekliyordu.", pick = p) { openNowStreaming(p, name) })
         }
         // A Listem film whose sources were found for the first time while the TV rested: three days.
         for (p in prefs.watchlist) {
@@ -1492,7 +1504,7 @@ class MainActivity : Activity() {
             val at = playback.readyAt(p.key)
             if (at <= 0L || System.currentTimeMillis() - at > 3 * 86400_000L || playback.isFinished(p.key)) continue
             out.add(Notice("ready:${p.key}", R.drawable.ic_film, "Artık izlenebilir: ${p.title}",
-                "Kaynağı bulundu. Listende bekliyordu.") { openDetail(p, null, null) })
+                "Kaynağı bulundu. Listende bekliyordu.", pick = p) { openDetail(p, null, null) })
         }
         listNudge()?.let { out.add(it) }
         val reminded = prefs.reminders.map { it.key }.toSet()
@@ -1501,7 +1513,7 @@ class MainActivity : Activity() {
             if (d !in 0..3) continue
             val t = when (d) { 0 -> "Bugün vizyonda: "; 1 -> "Yarın vizyonda: "; else -> "$d gün sonra vizyonda: " }
             out.add(Notice("soon:${p.key}:${p.release}", R.drawable.ic_film, t + p.title,
-                p.genres.take(2).joinToString(", ")) { openDetail(p, null, null) })
+                p.genres.take(2).joinToString(", "), pick = p) { openDetail(p, null, null) })
         }
         // Kinds turned off in Ayarlar › Bildirimler; films you did not ask about when only yours are
         // wanted; what was put away in the bell; and what was read three days ago (a countdown, an
@@ -1583,7 +1595,7 @@ class MainActivity : Activity() {
         c.firstDayOfWeek = Calendar.MONDAY
         val week = "${c.get(Calendar.YEAR)}-${c.get(Calendar.WEEK_OF_YEAR)}"
         return Notice("listold:$week", R.drawable.ic_list, "Listende $weeks haftadır bekliyor: ${p.title}",
-            "Hafta sonu için iyi bir seçim olabilir.") { openDetail(p, null, null) }
+            "Hafta sonu için iyi bir seçim olabilir.", pick = p) { openDetail(p, null, null) }
     }
 
     // ---------- Günaydın ----------
@@ -1754,8 +1766,9 @@ class MainActivity : Activity() {
     private fun updateBell() {
         if (!::bellDot.isInitialized) return
         val read = prefs.noticesRead
-        val unread = notices().any { it.id !in read }
-        bellDot.visibility = if (unread) View.VISIBLE else View.GONE
+        val count = notices().count { it.id !in read }
+        bellDot.text = if (count > 9) "9+" else count.toString()
+        bellDot.visibility = if (count > 0) View.VISIBLE else View.GONE
         if (::newDot.isInitialized) newDot.visibility = bellDot.visibility
     }
 
@@ -1768,14 +1781,34 @@ class MainActivity : Activity() {
         layer.setBackgroundColor(Color.argb(ui.dimAlpha(), 0, 0, 0))
         layer.isClickable = true
         val panel = ui.vbox()
-        val bg = GradientDrawable()
-        bg.setColor(Color.argb(ui.panelAlpha(), 0x1B, 0x1B, 0x20))
+        val base = Color.argb(ui.panelAlpha(), 0x1B, 0x1B, 0x20)
+        val bg = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(base, base))
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         panel.background = bg
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))
+        // The panel takes on the light of the film in focus: a soft wash from the top, back to
+        // plain on a shortcut.
+        var tintNow = base
+        var tintAnim: ValueAnimator? = null
+        fun tint(img: ImageView?) {
+            if (Fx.lite) return
+            val bmp = (img?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            val a = bmp?.let { Fx.accent(it) } ?: 0
+            val target = if (a == 0) base else Fx.blend(base, Color.argb(Color.alpha(base), Color.red(a), Color.green(a), Color.blue(a)), 0.3f)
+            if (target == tintNow) return
+            tintAnim?.cancel()
+            tintAnim = ValueAnimator.ofObject(ArgbEvaluator(), tintNow, target).apply {
+                duration = 700
+                addUpdateListener { v ->
+                    tintNow = v.animatedValue as Int
+                    bg.colors = intArrayOf(tintNow, base)
+                }
+                start()
+            }
+        }
         val head = ui.hbox()
         head.gravity = Gravity.CENTER_VERTICAL
         head.clipChildren = false
@@ -1805,14 +1838,14 @@ class MainActivity : Activity() {
                 true
             }
         }
-        val cal = noticeRow(R.drawable.ic_calendar, "Takvim", "Önümüzdeki iki hafta: vizyonlar ve yeni bölümler", false)
+        val cal = noticeRow(R.drawable.ic_calendar, "Takvim", "Önümüzdeki iki hafta: vizyonlar ve yeni bölümler", false, focused = { tint(null) })
         cal.setOnClickListener {
             closeMenu(false)
             idleOff()
             startActivity(Intent(this, CalendarActivity::class.java))
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
-        val weekend = noticeRow(R.drawable.ic_film, "Hafta sonu rehberi", "Bu hafta sinemada, platformlarda ve dizilerde neler var", false)
+        val weekend = noticeRow(R.drawable.ic_film, "Hafta sonu rehberi", "Bu hafta sinemada, platformlarda ve dizilerde neler var", false, focused = { tint(null) })
         weekend.setOnClickListener {
             closeMenu(false)
             idleOff()
@@ -1836,7 +1869,7 @@ class MainActivity : Activity() {
         val best = PlatformMonthActivity.tally(this).first.firstOrNull()
         if (best != null && "month" !in shortcutsOff) {
             val total = prefs.watchlist.count { it.key !in prefs.watched }
-            val month = noticeRow(R.drawable.ic_tv, "Bu ay hangi platform?", "Listendeki $total filmin ${best.second.size} tanesi ${TrailerActivity.locative(best.first)}", false)
+            val month = noticeRow(R.drawable.ic_tv, "Bu ay hangi platform?", "Listendeki $total filmin ${best.second.size} tanesi ${TrailerActivity.locative(best.first)}", false, focused = { tint(null) })
             month.setOnClickListener {
                 closeMenu(false)
                 idleOff()
@@ -1872,12 +1905,12 @@ class MainActivity : Activity() {
             else -> "DİĞER"
         }
         val groupOrder = listOf("YAKLAŞANLAR", "DİZİLER", "FİLMLER", "PLATFORMLAR", "DİĞER")
-        lateinit var fill: () -> Unit
+        lateinit var fill: (Boolean) -> Unit
         // Put away, then the list is drawn again with the focus where it was.
         fun after(index: Int) {
             list = notices()
-            fill()
-            val rows = (0 until box.childCount).map { box.getChildAt(it) }.filter { it.isFocusable }
+            fill(false)
+            val rows = box.getFocusables(View.FOCUS_FORWARD)
             (rows.getOrNull(index) ?: rows.lastOrNull() ?: shortcuts.firstOrNull())?.requestFocus()
                 ?: closeMenu()
         }
@@ -1898,8 +1931,155 @@ class MainActivity : Activity() {
                 updateBell()
             }
         }
-        fill = {
+        /** A picture that can take the focus: white frame, lifted, the panel takes its light. */
+        fun focusFrame(v: FrameLayout, img: ImageView, radius: Int, lift: Float) {
+            v.isFocusable = true
+            v.isClickable = true
+            v.setOnFocusChangeListener { _, f ->
+                v.foreground = if (f) ui.round(Color.TRANSPARENT, radius, 3, Color.WHITE) else null
+                ui.lift(v, f, lift, 14)
+                if (f) tint(img)
+            }
+        }
+        // A platform's new titles open in place under its row: its app first when it is on the TV.
+        var expanded: Pair<View, View>? = null
+        fun expand(row: View, n: Notice) {
+            val was = expanded
+            was?.let { box.removeView(it.second) }
+            expanded = null
+            if (was?.first === row) {
+                row.requestFocus()
+                return
+            }
+            val name = n.id.removePrefix("plat:").substringBeforeLast(':')
+            val hs = HorizontalScrollView(this)
+            hs.isHorizontalScrollBarEnabled = false
+            hs.overScrollMode = View.OVER_SCROLL_NEVER
+            hs.clipChildren = false
+            hs.clipToPadding = false
+            val strip = ui.hbox()
+            strip.clipChildren = false
+            strip.clipToPadding = false
+            strip.setPadding(ui.u(14), ui.u(12), ui.u(14), ui.u(12))
+            hs.addView(strip)
+            val w = ui.u(118)
+            val h = ui.u(177)
+            platformApps[name]?.let { app ->
+                val col = ui.vbox()
+                val tile = FrameLayout(this)
+                tile.background = ui.round(Color.argb(40, 255, 255, 255), 14)
+                tile.clipToOutline = true
+                val ic = ImageView(this)
+                ic.scaleType = ImageView.ScaleType.FIT_CENTER
+                ic.setImageDrawable(try { app.info.loadIcon(packageManager) } catch (_: Exception) { null })
+                tile.addView(ic, ui.fl(ui.u(64), ui.u(64), Gravity.CENTER))
+                focusFrame(tile, ic, 14, 1.06f)
+                tile.setOnClickListener {
+                    closeMenu(false)
+                    launch(app)
+                }
+                col.addView(tile, ui.ll(w, h))
+                val t = ui.text(TrailerActivity.accusative(name) + " aç", 16, C.TEXT2, 600)
+                t.maxLines = 1
+                t.ellipsize = TextUtils.TruncateAt.END
+                col.addView(t, ui.ll(w, ui.wrap, top = 8))
+                strip.addView(col, ui.ll(ui.wrap, ui.wrap, right = 16))
+            }
+            for (f in n.films) {
+                val col = ui.vbox()
+                val tile = FrameLayout(this)
+                tile.background = ui.round(C.CARD, 14)
+                tile.clipToOutline = true
+                val img = ImageView(this)
+                img.scaleType = ImageView.ScaleType.CENTER_CROP
+                tile.addView(img, ui.fl(ui.match, ui.match))
+                Img.load(this, "w342", f.poster.ifEmpty { f.backdrop }, w, img)
+                focusFrame(tile, img, 14, 1.06f)
+                tile.setOnClickListener {
+                    closeMenu(false)
+                    openDetail(f, null, null)
+                }
+                col.addView(tile, ui.ll(w, h))
+                val t = ui.text(f.title, 16, C.TEXT2, 600)
+                t.maxLines = 1
+                t.ellipsize = TextUtils.TruncateAt.END
+                col.addView(t, ui.ll(w, ui.wrap, top = 8))
+                strip.addView(col, ui.ll(ui.wrap, ui.wrap, right = 16))
+            }
+            box.addView(hs, box.indexOfChild(row) + 1, ui.ll(ui.match, ui.wrap, bottom = 8))
+            expanded = row to hs
+            if (!Fx.lite) {
+                hs.alpha = 0f
+                hs.translationY = -ui.uf(12)
+                hs.animate().alpha(1f).translationY(0f).setDuration(D.MED).setInterpolator(DecelerateInterpolator(2f)).start()
+            }
+            strip.getChildAt(0)?.let { (it as? ViewGroup)?.getChildAt(0)?.requestFocus() }
+        }
+        /**
+         * What you follow, coming soon: its picture, its name (logo when there is one) and a large
+         * countdown; pink on its last two days.
+         */
+        fun countdownCard(n: Notice, unread: Boolean, w: Int): FrameLayout {
+            val p = n.pick
+            val card = FrameLayout(this)
+            card.background = ui.round(C.CARD, 20)
+            card.clipToOutline = true
+            val pic = ImageView(this)
+            pic.scaleType = ImageView.ScaleType.CENTER_CROP
+            card.addView(pic, ui.fl(ui.match, ui.match))
+            if (p != null) Img.load(this, "w780", p.backdrop.ifEmpty { p.poster }, w, pic)
+            val shade = View(this)
+            shade.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP,
+                Color.argb(235, 0, 0, 0), Color.argb(110, 0, 0, 0), Color.TRANSPARENT)
+            card.addView(shade, ui.fl(ui.match, ui.match))
+            val d = n.days ?: 0
+            val cd = ui.vbox()
+            cd.gravity = Gravity.CENTER_HORIZONTAL
+            cd.setPadding(ui.u(18), ui.u(10), ui.u(18), ui.u(12))
+            cd.background = ui.round(if (d <= 1) Color.parseColor("#FF4D8D") else Color.argb(150, 0, 0, 0), 16)
+            cd.addView(ui.text(when (d) { 0 -> "BUGÜN"; 1 -> "YARIN"; else -> "$d" }, if (d > 1) 44 else 24, C.TEXT, 800))
+            if (d > 1) {
+                val lab = ui.text("GÜN", 14, C.TEXT, 700)
+                lab.letterSpacing = 0.18f
+                cd.addView(lab, ui.ll(ui.wrap, ui.wrap, top = -4))
+            }
+            val cdl = ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.END)
+            cdl.setMargins(0, ui.u(16), ui.u(16), 0)
+            card.addView(cd, cdl)
+            val info = ui.vbox()
+            val kicker = ui.text(listOf(n.tag, n.sub).filter { it.isNotBlank() }.joinToString("  ·  "), 15,
+                if (unread) Color.parseColor("#FF7AA8") else C.TEXT2, 700)
+            kicker.letterSpacing = 0.05f
+            kicker.maxLines = 1
+            kicker.ellipsize = TextUtils.TruncateAt.END
+            info.addView(kicker)
+            val logo = ImageView(this)
+            logo.adjustViewBounds = true
+            logo.maxHeight = ui.u(68)
+            logo.maxWidth = ui.u(300)
+            logo.scaleType = ImageView.ScaleType.FIT_START
+            logo.visibility = View.GONE
+            info.addView(logo, ui.ll(ui.wrap, ui.wrap, top = 10))
+            val name = ui.text(p?.title ?: n.title, 28, C.TEXT, 800)
+            name.maxLines = 1
+            name.ellipsize = TextUtils.TruncateAt.END
+            name.setShadowLayer(ui.uf(12), 0f, ui.uf(2), Color.argb(150, 0, 0, 0))
+            info.addView(name, ui.ll(ui.match, ui.wrap, top = 6))
+            if (p != null && p.logo.isNotEmpty()) Img.load(this, "w500", p.logo, ui.u(300), logo, opaque = false) { ok ->
+                if (ok) {
+                    logo.visibility = View.VISIBLE
+                    name.visibility = View.GONE
+                }
+            }
+            val il = ui.fl(ui.match, ui.wrap, Gravity.BOTTOM)
+            il.setMargins(ui.u(22), 0, ui.u(22), ui.u(20))
+            card.addView(info, il)
+            focusFrame(card, pic, 20, 1.03f)
+            return card
+        }
+        fill = { animate ->
             box.removeAllViews()
+            expanded = null
             if (list.isEmpty()) {
                 val e = ui.emptyState(R.drawable.ic_bell, "Her şey sakin",
                     "Takip ettiğin dizilerin yeni bölümleri, hatırlattığın filmler ve platformlarına gelenler burada görünür.", size = 0)
@@ -1914,12 +2094,52 @@ class MainActivity : Activity() {
                 heading.letterSpacing = 0.12f
                 heading.setPadding(ui.u(18), ui.u(18), ui.u(18), ui.u(8))
                 box.addView(heading, ui.ll(ui.match, ui.wrap))
+                if (group == "YAKLAŞANLAR") {
+                    // One card fills the width; more of them slide sideways.
+                    val one = items.size == 1
+                    val w = if (one) ui.u(530) else ui.u(440)
+                    val strip = ui.hbox()
+                    strip.clipChildren = false
+                    strip.clipToPadding = false
+                    strip.setPadding(ui.u(6), ui.u(8), ui.u(6), ui.u(12))
+                    for (n in items) {
+                        val card = countdownCard(n, n.id !in read, w)
+                        card.setOnClickListener {
+                            closeMenu(false)
+                            n.open()
+                        }
+                        val at = index++
+                        card.setOnLongClickListener {
+                            noticeMenu(n, at)
+                            true
+                        }
+                        strip.addView(card, ui.ll(w, ui.u(250), right = if (one) 0 else 16))
+                        if (first == null) first = card
+                    }
+                    if (one) box.addView(strip, ui.ll(ui.match, ui.wrap))
+                    else {
+                        val hs = HorizontalScrollView(this)
+                        hs.isHorizontalScrollBarEnabled = false
+                        hs.overScrollMode = View.OVER_SCROLL_NEVER
+                        hs.clipChildren = false
+                        hs.clipToPadding = false
+                        hs.addView(strip)
+                        box.addView(hs, ui.ll(ui.match, ui.wrap))
+                    }
+                    continue
+                }
                 for (n in items) {
                     val badge = n.days?.let { d -> when (d) { 0 -> "Bugün"; 1 -> "Yarın"; else -> "$d gün" } }
-                    val row = noticeRow(n.icon, n.title, n.sub, n.id !in read, badge)
+                    val plat = if (n.id.startsWith("plat:")) n.id.removePrefix("plat:").substringBeforeLast(':') else ""
+                    lateinit var row: View
+                    row = noticeRow(n.icon, n.title, n.sub, n.id !in read, badge, n.pick, plat,
+                        n.films.firstOrNull()?.poster.orEmpty(), focused = { tint(it) })
                     row.setOnClickListener {
-                        closeMenu(false)
-                        n.open()
+                        if (n.films.isNotEmpty()) expand(row, n)
+                        else {
+                            closeMenu(false)
+                            n.open()
+                        }
                     }
                     val at = index++
                     row.setOnLongClickListener {
@@ -1930,14 +2150,30 @@ class MainActivity : Activity() {
                     if (first == null) first = row
                 }
             }
+            // The rows come in one after another, softly from below.
+            if (animate && !Fx.lite) {
+                for (k in 0 until box.childCount) {
+                    val v = box.getChildAt(k)
+                    v.alpha = 0f
+                    v.translationY = ui.uf(22)
+                    val delay = 140L + minOf(k, 12) * 45L
+                    ObjectAnimator.ofFloat(v, View.ALPHA, 0f, 1f).apply { startDelay = delay; duration = 420; start() }
+                    ObjectAnimator.ofFloat(v, View.TRANSLATION_Y, ui.uf(22), 0f).apply {
+                        startDelay = delay
+                        duration = 520
+                        interpolator = DecelerateInterpolator(2.2f)
+                        start()
+                    }
+                }
+            }
         }
-        fill()
+        fill(true)
         clear.setOnClickListener {
             hideNotices(list.map { it.id })
             list = notices()
-            fill()
+            fill(false)
             updateBell()
-            (shortcuts.firstOrNull() ?: (0 until box.childCount).map { box.getChildAt(it) }.firstOrNull { it.isFocusable })
+            (shortcuts.firstOrNull() ?: box.getFocusables(View.FOCUS_FORWARD).firstOrNull())
                 ?.requestFocus() ?: closeMenu()
         }
         // Rows that scroll up are cut at the list's top, so they never draw over the calendar rows
@@ -1962,16 +2198,71 @@ class MainActivity : Activity() {
         if (::newDot.isInitialized) newDot.visibility = View.GONE
     }
 
-    /** A notice: icon, title and a small line under it; a dot when it's new. */
-    private fun noticeRow(icon: Int, title: String, sub: String, unread: Boolean, badge: String? = null): View {
+    /** Platform apps on this TV, by platform name, found for the bell (null: not installed). */
+    private val platformApps = HashMap<String, AppEntry?>()
+
+    /**
+     * A notice: its film's poster (a platform's app icon; a plain icon for the rest), title and a
+     * small line under it; a countdown badge; a dot when it's new. [focused] gets the picture.
+     */
+    private fun noticeRow(
+        icon: Int, title: String, sub: String, unread: Boolean, badge: String? = null,
+        pick: Pick? = null, platform: String = "", fallbackPoster: String = "",
+        focused: (ImageView?) -> Unit = {}
+    ): View {
         val row = ui.hbox()
         row.isFocusable = true
         row.isClickable = true
-        row.setPadding(ui.u(22), ui.u(16), ui.u(22), ui.u(16))
-        val i = ImageView(this)
-        i.setImageResource(icon)
-        i.setColorFilter(C.TEXT, PorterDuff.Mode.SRC_IN)
-        row.addView(i, ui.ll(ui.u(34), ui.u(34), right = 20))
+        row.setPadding(ui.u(18), ui.u(12), ui.u(22), ui.u(12))
+        row.gravity = Gravity.CENTER_VERTICAL
+        var i: ImageView? = null
+        var thumb: ImageView? = null
+        if (pick != null && (pick.poster.isNotEmpty() || pick.backdrop.isNotEmpty())) {
+            val v = ImageView(this)
+            v.scaleType = ImageView.ScaleType.CENTER_CROP
+            v.background = ui.round(C.CARD, 10)
+            v.clipToOutline = true
+            row.addView(v, ui.ll(ui.u(54), ui.u(80), right = 20))
+            Img.load(this, "w185", pick.poster.ifEmpty { pick.backdrop }, ui.u(54), v)
+            thumb = v
+        } else if (platform.isNotEmpty()) {
+            val v = ImageView(this)
+            v.background = ui.round(Color.argb(40, 255, 255, 255), 12)
+            v.clipToOutline = true
+            v.scaleType = ImageView.ScaleType.FIT_CENTER
+            v.setPadding(ui.u(8), ui.u(8), ui.u(8), ui.u(8))
+            row.addView(v, ui.ll(ui.u(54), ui.u(54), right = 20, top = 13, bottom = 13))
+            thumb = v
+            // The platform's own icon when its app is here; else its first new title's poster.
+            Thread {
+                val app = synchronized(platformApps) {
+                    if (platformApps.containsKey(platform)) platformApps[platform]
+                    else Apps.forPlatform(this, platform).also { platformApps[platform] = it }
+                }
+                val d = try { app?.info?.loadIcon(packageManager) } catch (_: Exception) { null }
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    if (d != null) v.setImageDrawable(d)
+                    else if (fallbackPoster.isNotEmpty()) {
+                        v.setPadding(0, 0, 0, 0)
+                        v.scaleType = ImageView.ScaleType.CENTER_CROP
+                        (v.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                            lp.height = ui.u(80)
+                            lp.topMargin = 0
+                            lp.bottomMargin = 0
+                            v.layoutParams = lp
+                        }
+                        Img.load(this, "w185", fallbackPoster, ui.u(54), v)
+                    }
+                }
+            }.start()
+        } else {
+            val v = ImageView(this)
+            v.setImageResource(icon)
+            v.setColorFilter(C.TEXT, PorterDuff.Mode.SRC_IN)
+            row.addView(v, ui.ll(ui.u(34), ui.u(34), left = 4, right = 24))
+            i = v
+        }
         val col = ui.vbox()
         val t = ui.text(title, 23, C.TEXT, 600)
         t.maxLines = 2
@@ -1999,7 +2290,8 @@ class MainActivity : Activity() {
             row.background = if (f) ui.round(Color.WHITE, D.PLATE) else null
             t.setTextColor(if (f) C.INK else C.TEXT)
             s.setTextColor(if (f) Color.argb(153, 11, 11, 13) else C.TEXT3)
-            i.setColorFilter(if (f) C.INK else C.TEXT, PorterDuff.Mode.SRC_IN)
+            i?.setColorFilter(if (f) C.INK else C.TEXT, PorterDuff.Mode.SRC_IN)
+            if (f) focused(thumb)
             if (pill != null && !soon) {
                 pill.background = ui.round(if (f) Color.argb(26, 11, 11, 13) else Color.argb(46, 255, 255, 255), 14)
                 pill.setTextColor(if (f) C.INK else C.TEXT)
