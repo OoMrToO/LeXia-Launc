@@ -140,6 +140,17 @@ class Ui(private val ctx: Context) {
         return p
     }
 
+    /**
+     * A box that cuts a scrolling list at its own edges. A ScrollView's visible part is cut by the
+     * view holding it; where that one lets its children draw outside (for lifted cards), rows that
+     * scroll up would draw over the page's top. Put this where the ScrollView would go.
+     */
+    fun clipBox(scroll: android.view.View): android.widget.FrameLayout {
+        val box = android.widget.FrameLayout(scroll.context)
+        box.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
+        return box
+    }
+
     fun fl(w: Int, h: Int, gravity: Int = Gravity.NO_GRAVITY): FrameLayout.LayoutParams =
         FrameLayout.LayoutParams(w, h, gravity)
 

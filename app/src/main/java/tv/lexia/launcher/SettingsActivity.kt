@@ -154,7 +154,7 @@ class SettingsActivity : Activity() {
         listBox.addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         list.elevation = ui.uf(9)
         scroll.addView(listBox)
-        root.addView(scroll, ui.ll(0, ui.match, weight = 0.58f))
+        root.addView(ui.clipBox(scroll), ui.ll(0, ui.match, weight = 0.58f))
 
         // Frosted glass: the blurred home screen behind the settings.
         Fx.backdrop?.let {

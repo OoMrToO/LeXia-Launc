@@ -213,7 +213,7 @@ object Dialogs {
         scroll.clipToPadding = false
         scroll.addView(box)
         val h = minOf(rows.size * 82 + 12, 660)
-        card.addView(scroll, ui.ll(ui.match, ui.u(h), left = -14, right = -14, top = 20))
+        card.addView(ui.clipBox(scroll), ui.ll(ui.match, ui.u(h), left = -14, right = -14, top = 20))
         show(d, card, focus)
     }
 

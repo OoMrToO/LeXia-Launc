@@ -24,6 +24,9 @@ interface LeXiaProgress {
     fun durationMs(key: String): Long
     fun save(key: String, positionMs: Long, durationMs: Long)
     fun finished(key: String)
+    /** The subtitle delay set for this film or episode last time (ms; 0 = none). */
+    fun subtitleDelayMs(): Long = 0L
+    fun saveSubtitleDelay(delayMs: Long) {}
 }
 
 /** Nuvio's watch history, kept in LeXia's record ([progress]); with none, it stays empty. */

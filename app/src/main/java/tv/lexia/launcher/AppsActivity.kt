@@ -79,7 +79,7 @@ class AppsActivity : Activity() {
         scroll.clipChildren = false
         scroll.clipToPadding = false
         scroll.addView(grid, FrameLayout.LayoutParams(m, w))
-        page.addView(scroll, ui.ll(m, 0, left = -24, right = -24, weight = 1f))
+        page.addView(ui.clipBox(scroll), ui.ll(m, 0, left = -24, right = -24, weight = 1f))
 
         frame.addView(page, ui.fl(m, m))
         setContentView(frame)

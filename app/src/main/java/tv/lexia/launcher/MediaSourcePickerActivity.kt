@@ -305,7 +305,7 @@ class MediaSourcePickerActivity : Activity() {
             clipToPadding = false
         }
         scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(ui.clipBox(scroll), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(withBackdrop(root))
         // The remote starts on a button; a focused container would swallow every D-pad press.
         manage.requestFocus()
@@ -1018,6 +1018,7 @@ class MediaSourcePickerActivity : Activity() {
     private fun playInNuvio(stream: MediaStream) {
         val store = MediaPlaybackStore(this)
         val watchKey = film.key
+        val playedKey = mediaKey
         val markWatched = !film.isSeries
         fun finished(key: String) {
             store.clear(key)
@@ -1035,10 +1036,12 @@ class MediaSourcePickerActivity : Activity() {
                 if (store.save(key, positionMs, durationMs)) finished(key) else store.saveLast(watchKey, key)
             }
             override fun finished(key: String) = finished(key)
+            override fun subtitleDelayMs(): Long = store.subtitleDelayMs(playedKey)
+            override fun saveSubtitleDelay(delayMs: Long) = store.saveSubtitleDelay(playedKey, delayMs)
         }
         publishCredits()
         // The audio and subtitle languages chosen in LeXia's settings, for Nuvio's player too.
-        try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang) } catch (_: Exception) { }
+        try { com.nuvio.tv.LeXiaNuvio.syncLanguages(this, prefs.playAudioLang, prefs.playSubLang, prefs.playSubSmart) } catch (_: Exception) { }
         val episode = if (film.isSeries) episodes.getOrNull(episodeIndex) else null
         val season = episode?.season ?: typedSeason.takeIf { film.isSeries && it > 0 }
         val number = episode?.episode ?: typedEpisode.takeIf { film.isSeries && it > 0 }

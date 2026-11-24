@@ -391,10 +391,15 @@ object LeXiaNuvio {
         }.take(5)
     }
 
-    fun syncLanguages(context: Context, audio: String, subtitle: String) {
+    /**
+     * LeXia's language choices for Nuvio's player. [smart]: "Ses aynı dildeyse altyazı açılmasın"
+     * = Nuvio's forced-subtitles rule (when the sound is in the subtitle language, only forced ones).
+     */
+    fun syncLanguages(context: Context, audio: String, subtitle: String, smart: Boolean = true) {
         val store = playerSettingsStore(context)
         val now = playerSettings(context)
         kotlinx.coroutines.runBlocking {
+            if (now.subtitleStyle.useForcedSubtitles != smart) store.setUseForcedSubtitles(smart)
             val a = audio.ifBlank { com.nuvio.tv.data.local.AudioLanguageOption.DEVICE }
             if (now.preferredAudioLanguage != a) store.setPreferredAudioLanguage(a)
             if (subtitle.isNotBlank() && subtitle != "off" && now.subtitleStyle.preferredLanguage != subtitle) {
