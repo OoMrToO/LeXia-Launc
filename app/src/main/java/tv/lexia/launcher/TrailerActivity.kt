@@ -1795,11 +1795,27 @@ class TrailerActivity : Activity() {
         savePlace()
         // The sound fades, then the player is let go before the page leaves, so the home screen
         // comes back smoothly instead of waiting on a black screen while the video shuts down.
-        if (nativeMode) fadeVolume(0f, 250) else web?.evaluateJavascript("fadeTo(0,250)", null)
+        // Geri closes it as a cinema would: the curtains meet over the picture while the sound fades,
+        // and only then the page goes (a sudden black screen looked like a fault, TV 24 Kasım).
+        val slow = !Fx.lite
+        if (nativeMode) fadeVolume(0f, if (slow) 380 else 250) else web?.evaluateJavascript("fadeTo(0,${if (slow) 380 else 250})", null)
+        if (slow) {
+            info.animate().cancel()
+            info.animate().alpha(0f).setDuration(200).start()
+            pauseBox.animate().cancel()
+            pauseBox.animate().alpha(0f).setDuration(200).start()
+            for ((v, dir) in listOf(curtainTop to -1f, curtainLow to 1f)) {
+                v.animate().cancel()
+                v.visibility = View.VISIBLE
+                if (curtainOpen || v.translationY != 0f) v.translationY = dir * v.height
+                v.animate().translationY(0f).setStartDelay(0).setDuration(380)
+                    .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator()).start()
+            }
+        }
         handler.postDelayed({
             releasePlayers()
             finish()
-        }, if (Fx.lite) 120L else 260L)
+        }, if (slow) 420L else 120L)
     }
 
     @Deprecated("Deprecated in Java")
