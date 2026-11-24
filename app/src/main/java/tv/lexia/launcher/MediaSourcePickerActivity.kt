@@ -117,6 +117,8 @@ class MediaSourcePickerActivity : Activity() {
     private var typedEpisode = 0
 
     private var streams: List<MediaStream> = emptyList()
+    /** Sources left out for a picture below the lowest wanted (their addresses, counted once). */
+    private val lowHidden = HashSet<String>()
     /** Subtitles from subtitle add-ons (OpenSubtitles and the like); they go with whichever source is played. */
     private var addonSubtitles: List<MediaSubtitle> = emptyList()
     private var playbackTitle = ""
@@ -808,6 +810,7 @@ class MediaSourcePickerActivity : Activity() {
         cancelSearch()
         val mine = ++generation
         streams = emptyList()
+        lowHidden.clear()
         addonSubtitles = emptyList()
         failed.clear()
         lastFailure = ""
@@ -871,7 +874,11 @@ class MediaSourcePickerActivity : Activity() {
 
     private fun addStreams(part: List<MediaStream>) {
         val known = streams.mapTo(HashSet()) { "${it.addonName.lowercase()}|${it.url}" }
-        val fresh = part.filter { known.add("${it.addonName.lowercase()}|${it.url}") }
+        val new = part.filter { known.add("${it.addonName.lowercase()}|${it.url}") }
+        // Below the lowest picture wanted (Ayarlar › Oynatma ve Takip): left out, only counted.
+        val min = prefs.playMinRes
+        val fresh = new.filter { !it.tags.belowMin(min) }
+        lowHidden.addAll(new.filter { it.tags.belowMin(min) }.map { it.url })
         if (fresh.isEmpty()) return
         val first = streams.isEmpty()
         // The home screen marks this title as playable.
@@ -894,7 +901,11 @@ class MediaSourcePickerActivity : Activity() {
         running.clear()
         if (streams.isEmpty()) {
             auto = Auto.NO
-            showMessage(
+            if (lowHidden.isNotEmpty()) showMessage(
+                "Yalnızca düşük kaliteli kaynak bulundu",
+                "${lowHidden.size} kaynak ${prefs.playMinRes}p'nin altındaydı, gösterilmedi. " +
+                    "İstersen Ayarlar › Oynatma ve Takip › En düşük kalite'den değiştirebilirsin."
+            ) else showMessage(
                 if (film.isSeries) "Bu bölüm için kaynak bulunamadı" else "Oynatılabilir kaynak bulunamadı",
                 whyNothing()
             )
@@ -1339,7 +1350,8 @@ class MediaSourcePickerActivity : Activity() {
         updateStatus()
         val inList = content.findFocus() != null
         clearContent(showSourceControls = true)
-        addSectionTitle("KAYNAKLAR  ·  ${streams.size}")
+        addSectionTitle("KAYNAKLAR  ·  ${streams.size}" +
+            if (lowHidden.isNotEmpty()) "  ·  ${lowHidden.size} düşük kaliteli gizlendi" else "")
         addSourceSummary()
 
         val tr = Locale.forLanguageTag("tr-TR")

@@ -243,6 +243,8 @@ class Prefs(ctx: Context) {
     var nuvioPlayer: Boolean get() = bool("nuvioPlayer", true); set(v) = putBool("nuvioPlayer", v)
     var nuvioEngine: Boolean get() = bool("nuvioEngine", true); set(v) = putBool("nuvioEngine", v)
     var playAutoSource: Boolean get() = bool("playAutoSource", true); set(v) = putBool("playAutoSource", v)
+    /** The lowest picture shown in the source list (1080, 720, or 0 for every one); not told stays. */
+    var playMinRes: Int get() = int("playMinRes", 1080); set(v) = putInt("playMinRes", v)
     /** Subtitle size in the player: 0 small, 1 normal, 2 large, 3 very large. */
     var playSubSize: Int get() = int("playSubSize", 1); set(v) = putInt("playSubSize", v)
     /** Counts starts, so each start shows a different film first. */

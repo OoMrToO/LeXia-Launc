@@ -101,6 +101,12 @@ internal class StreamTags(
         else -> 3
     }
 
+    /**
+     * Below the lowest picture wanted ([min] lines; 0 = any): a told resolution under it, or a cinema
+     * copy. A source that does not tell its resolution is kept (many good ones do not).
+     */
+    fun belowMin(min: Int): Boolean = min > 0 && (resolution in 1 until min || cinemaCopy)
+
     /** Why this source may play badly on this TV ("" when it should play well). */
     fun troubleOn(tv: TvAbility.Ability): String = when {
         hdr == "Dolby Vision" && !hdrFallback && !tv.dolbyVision -> "Bu TV'de renkleri bozuk görünebilir"

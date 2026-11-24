@@ -385,11 +385,14 @@ class CinemaNightActivity : Activity() {
                     if (!isFinishing && ticket == searchFor) status("Kaynaklar hazırlanıyor…", Color.argb(170, 255, 255, 255), pulse = true)
                 }
                 val found = try { Housekeeping.findSources(applicationContext, p) } catch (_: Exception) { emptyList() }
-                val playable = found.count { it.tags.troubleOn(tv).isEmpty() && !it.tags.cinemaCopy }
+                val min = prefs.playMinRes
+                val playable = found.count { it.tags.troubleOn(tv).isEmpty() && !it.tags.cinemaCopy && !it.tags.belowMin(min) }
                 runOnUiThread {
                     if (isFinishing || isDestroyed || ticket != searchFor) return@runOnUiThread
                     when {
                         playable > 0 -> status("Gösterime hazır  ·  $playable kaynak", Color.parseColor("#34C759"), pulse = false)
+                        found.any { it.tags.belowMin(min) } && found.all { it.tags.belowMin(min) || it.tags.troubleOn(tv).isNotEmpty() } ->
+                            status("Yalnızca düşük kaliteli kaynak bulundu", Color.parseColor("#FFB020"), pulse = false)
                         found.isNotEmpty() -> status("Bulunan kaynaklar bu TV'de sorun çıkarabilir", Color.parseColor("#FFB020"), pulse = false)
                         else -> status("Şu an kaynak bulunamadı  ·  İzle'ye basınca yeniden aranır", Color.argb(140, 255, 255, 255), pulse = false)
                     }

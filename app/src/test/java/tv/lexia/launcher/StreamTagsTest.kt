@@ -32,4 +32,17 @@ class StreamTagsTest {
         assertEquals("", StreamTags.of("Film 2160p DV HEVC").troubleOn(dvTv))
         assertEquals("", StreamTags.of("Film 1080p AV1").troubleOn(dvTv))
     }
+
+    /** "En düşük kalite": 1080p by default; a source that does not tell its resolution stays. */
+    @Test
+    fun lowPicturesAreLeftOut() {
+        assertTrue(StreamTags.of("Film 720p").belowMin(1080))
+        assertTrue(StreamTags.of("Film 480p").belowMin(1080))
+        assertTrue(StreamTags.of("Film 1080p HDCAM").belowMin(1080))
+        assertEquals(false, StreamTags.of("Film 1080p WEB-DL").belowMin(1080))
+        assertEquals(false, StreamTags.of("Film 2160p").belowMin(1080))
+        assertEquals(false, StreamTags.of("Film").belowMin(1080))
+        assertEquals(false, StreamTags.of("Film 720p").belowMin(720))
+        assertEquals(false, StreamTags.of("Film 480p").belowMin(0))
+    }
 }
