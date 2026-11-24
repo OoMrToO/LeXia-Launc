@@ -107,7 +107,7 @@ class SearchActivity : Activity() {
         // The search box: a magnifier, the words, a white edge while the remote is on it.
         val field = ui.hbox()
         field.gravity = Gravity.CENTER_VERTICAL
-        val idle = ui.round(Color.argb(34, 255, 255, 255), 44, 1, Color.argb(46, 255, 255, 255))
+        val idle = ui.glass(Color.argb(34, 255, 255, 255), 44, 2, 0.9f)
         val on = ui.round(Color.argb(52, 255, 255, 255), 44, 2, Color.WHITE)
         field.background = idle
         field.setPadding(ui.u(34), 0, ui.u(34), 0)

@@ -310,7 +310,7 @@ class DetailActivity : Activity() {
             fun styleStory(focused: Boolean) {
                 // Dark glass; selected, the white plate with dark text, as everywhere.
                 story.background = if (focused) ui.round(Color.WHITE, 18)
-                else ui.round(Color.argb(30, 255, 255, 255), 18, 1, Color.argb(30, 255, 255, 255))
+                else ui.glass(Color.argb(30, 255, 255, 255), 18, 2, 0.7f)
                 story.setTextColor(if (focused) C.INK else C.TEXT)
                 story.scaleX = if (focused) 1.015f else 1f
                 story.scaleY = if (focused) 1.015f else 1f
@@ -1261,7 +1261,7 @@ class DetailActivity : Activity() {
         val cinema = cinemaState.isNotEmpty() && MediaPlaybackStore(this).last(film.key).isBlank()
         if (!cinema) {
             playBtn.background = if (focused) ui.round(Color.WHITE, 32)
-            else ui.round(Color.argb(64, 255, 255, 255), 32, 2, Color.argb(150, 255, 255, 255))
+            else ui.glass(Color.argb(64, 255, 255, 255), 32, 2, 1.25f)
             playBtn.setTextColor(if (focused) C.INK else C.TEXT)
             return
         }

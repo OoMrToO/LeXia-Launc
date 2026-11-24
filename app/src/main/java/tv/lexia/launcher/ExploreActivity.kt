@@ -971,7 +971,7 @@ class ExploreActivity : Activity() {
         val box = FrameLayout(this)
         box.isFocusable = true
         box.isClickable = true
-        box.background = ui.round(Color.argb(28, 255, 255, 255), D.CARD, 2, Color.argb(60, 255, 255, 255))
+        box.background = ui.glass(Color.argb(28, 255, 255, 255), D.CARD, 2, 0.8f)
         val inner = ui.vbox()
         inner.gravity = Gravity.CENTER
         val plus = ui.text("+", 64, C.TEXT, 300)
@@ -983,7 +983,7 @@ class ExploreActivity : Activity() {
         box.addView(inner, ui.fl(ui.match, ui.match, Gravity.CENTER))
         box.setOnFocusChangeListener { _, f ->
             ui.lift(box, f, 1.08f, 30)
-            box.background = if (f) ui.round(Color.WHITE, D.CARD) else ui.round(Color.argb(28, 255, 255, 255), D.CARD, 2, Color.argb(60, 255, 255, 255))
+            box.background = if (f) ui.round(Color.WHITE, D.CARD) else ui.glass(Color.argb(28, 255, 255, 255), D.CARD, 2, 0.8f)
             plus.setTextColor(if (f) C.INK else C.TEXT)
             t.setTextColor(if (f) C.INK else C.TEXT)
         }

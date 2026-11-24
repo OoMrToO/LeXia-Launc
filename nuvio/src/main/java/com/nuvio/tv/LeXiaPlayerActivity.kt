@@ -87,7 +87,8 @@ class LeXiaPlayerActivity : ComponentActivity() {
         })[PlayerViewModel::class.java]
         val curtain = LeXiaCinema.enabled && savedInstanceState == null
         setContent {
-            NuvioTheme {
+            // The player's windows in LeXia's colours (LeXiaTheme), Nuvio's code unchanged.
+            LeXiaTheme.Wrap {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 PlayerScreen(
                     viewModel = viewModel,
