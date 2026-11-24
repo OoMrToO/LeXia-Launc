@@ -50,7 +50,7 @@ internal class HeroCinema(
     /** A soft dark rise from the bottom, so the words read on any picture. */
     private val shade = View(activity)
     private val logoView = ImageView(activity)
-    private val title = ui.text("", 46, C.TEXT, 800)
+    private val title = ui.text("", 34, C.TEXT, 700)
     /** The trailer's Turkish lines, only while it has the whole screen: in the bottom band, as in a cinema. */
     private val subtitles = androidx.media3.ui.SubtitleView(activity)
     private var captionsOn = false
@@ -80,8 +80,9 @@ internal class HeroCinema(
         caption.orientation = LinearLayout.VERTICAL
         caption.visibility = View.GONE
         logoView.adjustViewBounds = true
-        logoView.maxHeight = ui.u(120)
-        logoView.maxWidth = ui.u(480)
+        // A small, quiet logo (the film's name only when it has none), low in the corner.
+        logoView.maxHeight = ui.u(84)
+        logoView.maxWidth = ui.u(360)
         logoView.scaleType = ImageView.ScaleType.FIT_START
         caption.addView(logoView, ui.ll(ui.wrap, ui.wrap))
         title.maxLines = 1
@@ -89,11 +90,11 @@ internal class HeroCinema(
         caption.addView(title, ui.ll(ui.u(900), ui.wrap))
         val hint = ui.text("OK: Detaylar", 19, C.TEXT2, 600)
         hint.letterSpacing = 0.06f
-        caption.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 14))
+        caption.addView(hint, ui.ll(ui.wrap, ui.wrap, top = 10))
         title.setShadowLayer(ui.uf(14), 0f, ui.uf(2), Color.argb(150, 0, 0, 0))
         hint.setShadowLayer(ui.uf(10), 0f, ui.uf(1), Color.argb(150, 0, 0, 0))
         val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
-        lp.setMargins(ui.u(110), 0, 0, bandH + ui.u(44))
+        lp.setMargins(ui.u(110), 0, 0, bandH + ui.u(20))
         frame.addView(caption, lp)
         TrailerCaptions.style(subtitles, ui)
         subtitles.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.uf(34))
@@ -129,13 +130,21 @@ internal class HeroCinema(
         on = true
         val p = film()
         val l = logo()
+        title.text = p?.title.orEmpty()
         if (l != null) {
             logoView.setImageDrawable(l)
             logoView.visibility = View.VISIBLE
             title.visibility = View.GONE
+        } else if (p != null && p.logo.isNotEmpty()) {
+            // The page has not shown its logo: it is fetched now; the name only if that fails.
+            logoView.visibility = View.GONE
+            title.visibility = View.GONE
+            Img.load(activity, "w500", p.logo, ui.u(360), logoView, opaque = false) { ok ->
+                if (ok) logoView.visibility = View.VISIBLE
+                else title.visibility = if (title.text.isNullOrBlank()) View.GONE else View.VISIBLE
+            }
         } else {
             logoView.visibility = View.GONE
-            title.text = p?.title.orEmpty()
             title.visibility = if (title.text.isNullOrBlank()) View.GONE else View.VISIBLE
         }
         val ease = DecelerateInterpolator(2f)
@@ -180,7 +189,7 @@ internal class HeroCinema(
         }
         // The name sits above the band, or just above the picture's own subtitle line.
         (caption.layoutParams as? FrameLayout.LayoutParams)?.let {
-            it.bottomMargin = if (clear) ui.u(150) else bandH + ui.u(44)
+            it.bottomMargin = if (clear) ui.u(64) else bandH + ui.u(20)
             caption.layoutParams = it
         }
         shade.animate().cancel()
