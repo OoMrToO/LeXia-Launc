@@ -586,7 +586,6 @@ internal fun LeXiaPlayerControls(
                 .fillMaxWidth()
                 .height(140.dp)
                 .align(Alignment.TopCenter)
-                .graphicsLayer { alpha = if (topHasFocus) 1f else 0.45f }
                 .background(Brush.verticalGradient(
                     0f to Color.Black.copy(alpha = 0.72f),
                     0.5f to Color.Black.copy(alpha = 0.35f),
@@ -617,13 +616,11 @@ internal fun LeXiaPlayerControls(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                uiState.title.uppercase(),
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.9.sp, color = Color.White.copy(alpha = 0.92f)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp).alpha(topShown)
-            )
+            // Top left, with the controls: the film's logo (its name when it has none).
+            Box(Modifier.weight(1f, fill = false).widthIn(max = 420.dp)) {
+                val series = uiState.currentSeason != null && uiState.currentEpisode != null
+                LogoOrTitle(uiState.logo, if (series) uiState.contentName ?: uiState.title else uiState.title, 52, Alignment.TopStart)
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -672,12 +669,7 @@ internal fun LeXiaPlayerControls(
                 ) {
                     Column(Modifier.weight(1f, fill = false)) {
                         val series = uiState.currentSeason != null && uiState.currentEpisode != null
-                        Text(
-                            if (series) uiState.contentName ?: uiState.title else uiState.title,
-                            style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.2.sp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        // The name is the logo at the top left now; here only which episode, or year · source.
                         val meta = buildString {
                             if (series) {
                                 append("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
@@ -690,10 +682,9 @@ internal fun LeXiaPlayerControls(
                         if (meta.isNotBlank()) {
                             Text(
                                 meta,
-                                style = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = Dim, letterSpacing = 0.2.sp),
+                                style = TextStyle(fontSize = if (series) 14.sp else 11.5.sp, fontWeight = FontWeight.Normal, color = if (series) Color.White.copy(alpha = 0.9f) else Dim, letterSpacing = 0.2.sp),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 4.dp)
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
