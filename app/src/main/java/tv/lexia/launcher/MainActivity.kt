@@ -77,6 +77,8 @@ class MainActivity : Activity() {
     private lateinit var content: FrameLayout
     private lateinit var root: LinearLayout
     private lateinit var stage: FrameLayout
+    /** The focused poster's soft colours under the rows (HomePeek), over the shades, under the content. */
+    private lateinit var ambience: FrameLayout
     /** The trailer taking the whole screen while the remote rests (HeroCinema). */
     private lateinit var heroStage: HeroCinema
     private lateinit var backA: ImageView
@@ -446,6 +448,8 @@ class MainActivity : Activity() {
         val tint = View(this)
         tint.background = tintDrawable
         frame.addView(tint, ui.fl(m, m))
+        ambience = FrameLayout(this)
+        frame.addView(ambience, ui.fl(m, m))
 
         content = FrameLayout(this)
         frame.addView(content, ui.fl(m, m))
@@ -529,7 +533,7 @@ class MainActivity : Activity() {
         root.addView(recentShelf, ui.ll(m, ui.u(POSTER_H)))
         root.addView(shelfBlock(), ui.ll(m, ui.u(SHELF_H)))
 
-        peek = HomePeek(this, ui, stage, content)
+        peek = HomePeek(this, ui, stage, ambience, content)
 
         edgeTab = edgeHandle()
         content.addView(edgeTab, ui.fl(ui.u(44), ui.u(150), Gravity.START or Gravity.CENTER_VERTICAL))
@@ -4547,6 +4551,7 @@ class MainActivity : Activity() {
         for (c in rolling) c.use24 = prefs.clock24
         hero.visibility = if (prefs.showPicks) View.VISIBLE else View.GONE
         stage.visibility = if (prefs.showPicks && prefs.background == "film") View.VISIBLE else View.GONE
+        ambience.visibility = stage.visibility
         refreshDock()
         arrangeRows()
         refreshShelf()
