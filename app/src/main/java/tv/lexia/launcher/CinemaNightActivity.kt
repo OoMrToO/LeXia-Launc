@@ -5,8 +5,11 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -20,7 +23,9 @@ import kotlin.random.Random
 
 /**
  * Sinema Gecesi (the home screen's die, and Keşfet's): LeXia picks one film for tonight and gets it
- * ready. The film's picture fills the screen, its poster stands on the right, one sentence says why;
+ * ready. The film's picture fills the screen, its poster stands on the right, one short line tells
+ * what it is about (its slogan, or the first sentence of its story); after a few seconds its trailer
+ * plays behind and, with the remote resting, takes the whole screen as on the home screen (HeroCinema);
  * behind, its sources are looked up the way Listem's are, and "Gösterime hazır" shows only when one
  * this TV can play was really found. "Bu filmi izle" opens the source page, which starts at once from
  * what was found. Not watched, not turned down, Listem first, better scored more often; a film passed
@@ -45,6 +50,8 @@ class CinemaNightActivity : Activity() {
         private const val PASSED_MS = 14L * 24 * 60 * 60 * 1000
         /** The choice is made among this many of the best fitting films, so it is not always the same one. */
         private const val SHORTLIST = 12
+        /** How long a film is on screen before its trailer starts (as on the home screen). */
+        private const val TRAILER_DELAY_MS = 5_000L
 
         /**
          * Who can be offered: Listem's films first in line, then [given]; films only, out already,
@@ -93,7 +100,15 @@ class CinemaNightActivity : Activity() {
     private lateinit var prefs: Prefs
     private lateinit var store: MediaPlaybackStore
     private lateinit var frame: FrameLayout
+    private lateinit var stage: FrameLayout
     private lateinit var picture: ImageView
+    private lateinit var shadeLeft: View
+    private lateinit var shadeLow: View
+    private lateinit var trailer: HeroTrailer
+    private lateinit var cinema: HeroCinema
+    private val handler = Handler(Looper.getMainLooper())
+    private val trailerSoon = Runnable { startTrailer() }
+    private var swallowUp = false
     private lateinit var poster: ImageView
     private lateinit var content: View
     private lateinit var logo: ImageView
@@ -139,8 +154,21 @@ class CinemaNightActivity : Activity() {
         showNext(first = true)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::trailer.isInitialized && !trailer.active) queueTrailer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopTrailer()
+    }
+
     override fun onDestroy() {
         searchFor++
+        handler.removeCallbacksAndMessages(null)
+        if (::cinema.isInitialized) cinema.release()
+        if (::trailer.isInitialized) trailer.release()
         worker.shutdownNow()
         super.onDestroy()
     }
@@ -170,6 +198,20 @@ class CinemaNightActivity : Activity() {
 
     private fun choose(): Pick? = choose(pool, shownNow, away().keys, listem, liked,
         { it.where.isNotEmpty() || it.provider.isNotEmpty() || store.isAvailable(it.key) })
+
+    /**
+     * One short line that makes you want it: the film's slogan, else the first sentence of its
+     * story (a second one joins a very short first); with neither, why it was chosen.
+     */
+    private fun hook(p: Pick): String {
+        p.tagline.trim().takeIf { it.isNotEmpty() }?.let { return it }
+        val story = p.overview.trim().replace(Regex("\\s+"), " ")
+        if (story.isEmpty()) return why(p)
+        val sentences = Regex("(?<=[.!?…])\\s+(?=[\\p{Lu}\"“'‘])").split(story).filter { it.isNotBlank() }
+        var line = sentences.firstOrNull().orEmpty()
+        if (line.length < 60 && sentences.size > 1 && line.length + sentences[1].length < 170) line += " " + sentences[1]
+        return line
+    }
 
     /** One plain sentence on why this film, from what is true about it. */
     private fun why(p: Pick): String {
@@ -204,18 +246,23 @@ class CinemaNightActivity : Activity() {
     private fun build() {
         val m = ui.match
         val w = ui.wrap
+        // The picture and, over it, its trailer: they move closer together when the trailer takes the screen.
+        stage = FrameLayout(this)
         picture = ImageView(this)
         picture.scaleType = ImageView.ScaleType.CENTER_CROP
-        frame.addView(picture, ui.fl(m, m))
+        stage.addView(picture, ui.fl(m, m))
+        frame.addView(stage, ui.fl(m, m))
         // Shade for the words: dark on the left and at the bottom, the picture free on the right.
         val left = View(this)
         left.background = ui.gradient(GradientDrawable.Orientation.LEFT_RIGHT,
             Color.argb(240, 0, 0, 0), Color.argb(170, 0, 0, 0), Color.argb(40, 0, 0, 0))
         frame.addView(left, ui.fl(m, m))
+        shadeLeft = left
         val low = View(this)
         low.background = ui.gradient(GradientDrawable.Orientation.BOTTOM_TOP,
             Color.BLACK, Color.argb(200, 0, 0, 0), Color.TRANSPARENT)
         frame.addView(low, ui.fl(m, ui.u(520), Gravity.BOTTOM))
+        shadeLow = low
 
         val row = ui.hbox()
         row.gravity = Gravity.CENTER_VERTICAL
@@ -291,10 +338,95 @@ class CinemaNightActivity : Activity() {
         poster.elevation = ui.uf(30)
         row.addView(poster, ui.ll(ui.u(440), ui.u(660)))
         frame.addView(row, ui.fl(m, m))
+
+        trailer = HeroTrailer(this, stage).also { t ->
+            t.height = if (prefs.heroTrailerHd && !Fx.lite) 1080 else 720
+            t.onStutter = {
+                prefs.heroTrailerHd = false
+                t.height = 720
+            }
+            t.onShowing = { on ->
+                if (::cinema.isInitialized) cinema.trailerShowing(on)
+                trailerLight(on)
+            }
+        }
+        // HeroCinema's four shades: this page has only the side and the bottom ones.
+        val none1 = View(this)
+        val none2 = View(this)
+        cinema = HeroCinema(
+            this, ui, frame, row, stage, listOf(none1, shadeLeft, shadeLow, none2),
+            film = { film },
+            logo = { logo.drawable?.takeIf { logo.visibility == View.VISIBLE } },
+            // A trailer not known to be dubbed or original may carry Turkish subtitles in its picture.
+            wordsInPicture = {
+                val key = trailer.where()?.first
+                val label = film?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+                !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
+            }
+        )
+    }
+
+    // ---------- The trailer ----------
+
+    /** While the trailer plays the shades lighten, so it shows in its own colours. */
+    private fun trailerLight(on: Boolean) {
+        val time = if (on) 1400L else 600L
+        shadeLeft.animate().alpha(if (on) 0.7f else 1f).setDuration(time).start()
+        shadeLow.animate().alpha(if (on) 0.8f else 1f).setDuration(time).start()
+    }
+
+    private fun queueTrailer() {
+        handler.removeCallbacks(trailerSoon)
+        if (prefs.heroTrailer && !Fx.lite) handler.postDelayed(trailerSoon, TRAILER_DELAY_MS)
+    }
+
+    private fun startTrailer() {
+        val p = film ?: return
+        if (!prefs.heroTrailer || Fx.lite || !hasWindowFocus() || isFinishing) return
+        if (p.homeTrailer.isBlank()) return
+        trailer.sound = prefs.heroTrailerSound
+        trailer.start(p.homeTrailer)
+    }
+
+    private fun stopTrailer() {
+        handler.removeCallbacks(trailerSoon)
+        if (::cinema.isInitialized) cinema.wake()
+        if (::trailer.isInitialized) trailer.stop()
+    }
+
+    /**
+     * The trailer had the whole screen: the first key brings the page back. OK opens the film's
+     * page (as the screen says), Back only wakes; the arrows go on and move as usual.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP && swallowUp) {
+            swallowUp = false
+            return true
+        }
+        if (::cinema.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
+            val wasOn = cinema.on
+            cinema.wake()
+            if (wasOn) when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    film?.let { DetailActivity.open(this, it) }
+                    swallowUp = true
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    swallowUp = true
+                    return true
+                }
+            }
+        }
+        if (::cinema.isInitialized && event.action == KeyEvent.ACTION_UP && ::trailer.isInitialized) {
+            cinema.rest(trailer.active)
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     /** No film left to offer: said plainly, with the way back. */
     private fun showEmpty() {
+        stopTrailer()
         frame.removeAllViews()
         val box = ui.vbox()
         box.gravity = Gravity.CENTER_HORIZONTAL
@@ -320,6 +452,8 @@ class CinemaNightActivity : Activity() {
         shownNow.add(p.key)
         keepAway(p.key, SHOWN_MS)
         film = p
+        stopTrailer()
+        queueTrailer()
         val fade = if (Fx.lite || first) 0L else D.FAST
         content.animate().cancel()
         content.animate().alpha(if (first) 1f else 0f).setDuration(fade).withEndAction {
@@ -336,7 +470,7 @@ class CinemaNightActivity : Activity() {
         logo.visibility = View.GONE
         logo.setImageDrawable(null)
         meta.text = facts(p)
-        reason.text = why(p)
+        reason.text = hook(p)
         val width = resources.displayMetrics.widthPixels
         picture.setImageDrawable(null)
         Img.load(this, if (width > 1280) "original" else "w1280", p.backdrop.ifEmpty { p.poster }, width, picture)
