@@ -109,6 +109,7 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
     private lateinit var weatherBox: LinearLayout
     private lateinit var weatherIcon: ImageView
+    private lateinit var weatherNote: TextView
     private lateinit var tempView: TextView
     private lateinit var netImg: ImageView
     private lateinit var gear: View
@@ -627,8 +628,9 @@ class MainActivity : Activity() {
     }
 
     private fun rollingClock(size: Int, weight: Int): RollingClock {
-        val c = RollingClock(this, ui, size, weight, C.TEXT)
+        val c = RollingClock(this, ui, size, weight, C.TEXT, light = true)
         c.use24 = prefs.clock24
+        c.warmAtNight = true
         rolling.add(c)
         return c
     }
@@ -663,6 +665,8 @@ class MainActivity : Activity() {
         greeting.ellipsize = TextUtils.TruncateAt.END
         dateText = ui.text("", 17, C.TEXT3, 600)
         dateText.letterSpacing = 0.18f
+        dateText.maxLines = 1
+        dateText.ellipsize = TextUtils.TruncateAt.END
         col.addView(greeting, ui.ll(ui.match, ui.wrap))
         col.addView(dateText, ui.ll(ui.wrap, ui.wrap, top = 6))
         // The greeting takes all the free space on the left, so it is never cut short.
@@ -732,12 +736,16 @@ class MainActivity : Activity() {
         weatherBox.addView(weatherIcon, ui.ll(ui.u(34), ui.u(34)))
         tempView = ui.text("", 30, C.TEXT, 500)
         weatherBox.addView(tempView, ui.ll(ui.wrap, ui.wrap, left = 10))
+        // "1 saat içinde yağmur": only when the weather is about to change.
+        weatherNote = ui.text("", 18, C.TEXT2, 600)
+        weatherNote.visibility = View.GONE
+        weatherBox.addView(weatherNote, ui.ll(ui.wrap, ui.wrap, left = 14))
         val sep = View(this)
         sep.setBackgroundColor(C.STROKE)
         weatherBox.addView(sep, ui.ll(maxOf(1, ui.u(2)), ui.u(30), left = 26, right = 26))
         cluster.addView(weatherBox)
 
-        barClock = rollingClock(34, 500)
+        barClock = rollingClock(38, 400)
         cluster.addView(barClock)
         // A new notice: a small pink dot beside the clock; the bell itself opens with the buttons.
         newDot = View(this)
@@ -4131,7 +4139,10 @@ class MainActivity : Activity() {
         ambientWeather.visibility = if (w) View.VISIBLE else View.GONE
         if (w) {
             ambientTemp.text = tempView.text
-            if (Fx.weatherIcon != 0) ambientWeatherIcon.setImageResource(Fx.weatherIcon)
+            if (Fx.weatherIcon != 0) {
+                ambientWeatherIcon.setImageResource(Fx.weatherIcon)
+                liveIcon(ambientWeatherIcon, Fx.weatherIcon)
+            }
         }
         // A big clock needs room so the weather moves left of it.
         (ambientWeather.layoutParams as LinearLayout.LayoutParams).rightMargin = ui.u(if (big) 110 else 40)
@@ -5002,6 +5013,64 @@ class MainActivity : Activity() {
 
     // ---------- Weather, network, greeting ----------
 
+    /** "yağmur", "kar", "fırtına" for weather that falls; null for the rest. */
+    private fun kindOf(code: Int): String? = when (code) {
+        in 51..67, in 80..82 -> "yağmur"
+        in 71..77, 85, 86 -> "kar"
+        in 95..99 -> "fırtına"
+        else -> null
+    }
+
+    /** The weather in a word, for the line under the greeting: "Yağmurlu", "Açık"… */
+    private fun weatherWord(code: Int): String = when (code) {
+        0 -> "Açık"
+        1, 2 -> "Parçalı bulutlu"
+        3 -> "Bulutlu"
+        45, 48 -> "Sisli"
+        in 51..67 -> "Yağmurlu"
+        in 80..82 -> "Sağanak"
+        in 71..77, 85, 86 -> "Karlı"
+        in 95..99 -> "Fırtınalı"
+        else -> "Bulutlu"
+    }
+
+    /**
+     * The weather icon lives, as in Apple's Weather: the sun turns slowly, the moon glows softly,
+     * a cloud drifts, rain and snow bob. Still on weak TVs.
+     */
+    private fun liveIcon(v: ImageView, icon: Int) {
+        (v.getTag(R.id.lexia_anim) as? android.animation.Animator)?.cancel()
+        v.rotation = 0f
+        v.translationX = 0f
+        v.translationY = 0f
+        v.alpha = 1f
+        if (Fx.lite) return
+        val a: android.animation.Animator = when (icon) {
+            R.drawable.ic_sun -> ObjectAnimator.ofFloat(v, View.ROTATION, 0f, 360f).apply {
+                duration = 40_000
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = android.view.animation.LinearInterpolator()
+            }
+            R.drawable.ic_moon -> ObjectAnimator.ofFloat(v, View.ALPHA, 1f, 0.7f).apply {
+                duration = 3_000
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+            R.drawable.ic_cloud, R.drawable.ic_fog -> ObjectAnimator.ofFloat(v, View.TRANSLATION_X, -ui.uf(3), ui.uf(3)).apply {
+                duration = 4_000
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+            else -> ObjectAnimator.ofFloat(v, View.TRANSLATION_Y, -ui.uf(2), ui.uf(2)).apply {
+                duration = 1_200
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+        }
+        v.setTag(R.id.lexia_anim, a)
+        a.start()
+    }
+
     private fun weatherIconFor(code: Int, day: Boolean): Int = when (code) {
         0, 1 -> if (day) R.drawable.ic_sun else R.drawable.ic_moon
         45, 48 -> R.drawable.ic_fog
@@ -5029,10 +5098,19 @@ class MainActivity : Activity() {
             if (lat == null || lon == null) return@Thread
             val body = Net.get(
                 "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
-                    "&current=temperature_2m,weather_code,is_day&timezone=auto"
+                    "&current=temperature_2m,weather_code,is_day&hourly=weather_code&forecast_hours=3&timezone=auto"
             ) ?: return@Thread
             try {
                 val cur = JSONObject(body).getJSONObject("current")
+                // What the next two hours bring, when it is not what falls now.
+                val soon = try {
+                    val hours = JSONObject(body).getJSONObject("hourly").getJSONArray("weather_code")
+                    val now = cur.getInt("weather_code")
+                    (1 until minOf(3, hours.length())).firstNotNullOfOrNull { i ->
+                        val k = kindOf(hours.getInt(i))
+                        if (k != null && k != kindOf(now)) i to k else null
+                    }
+                } catch (_: Exception) { null }
                 val temp = cur.getDouble("temperature_2m").roundToInt()
                 val icon = weatherIconFor(cur.getInt("weather_code"), cur.optInt("is_day", 1) == 1)
                 val code = cur.getInt("weather_code")
@@ -5044,12 +5122,16 @@ class MainActivity : Activity() {
                     }
                     tempView.text = "$temp°"
                     weatherIcon.setImageResource(icon)
+                    liveIcon(weatherIcon, icon)
+                    weatherNote.text = soon?.let { (h, k) -> "${if (h <= 1) "1 saat" else "$h saat"} içinde $k" }.orEmpty()
+                    weatherNote.visibility = if (soon != null) View.VISIBLE else View.GONE
                     Fx.weatherTemp = "$temp°"
                     Fx.weatherIcon = icon
                     weatherCode = code
                     weatherTempC = temp
                     useMood()
                     if (prefs.weather) weatherBox.visibility = View.VISIBLE
+                    updateGreeting()
                 }
             } catch (e: Exception) {
             }
@@ -5101,7 +5183,24 @@ class MainActivity : Activity() {
         }
         greeting.text = if (prefs.name.isEmpty()) hello else "$hello, ${prefs.name}"
         greeting.visibility = if (prefs.greet) View.VISIBLE else View.GONE
-        dateText.text = SimpleDateFormat("d MMMM EEEE", tr).format(c.time).uppercase(tr)
+        dateText.text = smartLine(c).uppercase(tr)
+    }
+
+    /**
+     * The line under the greeting says what matters most today: tonight's plan, a followed
+     * series' new episode, or else the date and the weather in a word.
+     */
+    private fun smartLine(c: Calendar): String {
+        MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() }?.let { plan ->
+            return "${MovieNight.day(plan.at)}  ·  ${plan.film.title}"
+        }
+        prefs.watchlist.firstOrNull { p -> Episodes.of(p)?.let { Episodes.daysUntil(it.date) == 0 } == true }?.let { p ->
+            val n = Episodes.of(p)
+            return "Bugün ${n?.let { Episodes.what(it).lowercase(tr) } ?: "yeni bölüm"}  ·  ${p.title}"
+        }
+        val day = SimpleDateFormat("d MMMM EEEE", tr).format(c.time)
+        val w = if (prefs.weather && tempView.text.isNotEmpty() && weatherCode >= 0) "  ·  ${weatherWord(weatherCode)}, ${tempView.text}" else ""
+        return day + w
     }
 
     // ---------- Updates ----------

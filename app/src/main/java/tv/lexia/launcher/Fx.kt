@@ -537,7 +537,7 @@ object Fx {
  * Clock whose digits slide up when they change, like on Apple TV.
  * Follows the 12/24 hour setting through [use24].
  */
-class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, color: Int) : LinearLayout(ctx) {
+class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, private val color: Int, light: Boolean = false) : LinearLayout(ctx) {
     private val digits = ArrayList<TextSwitcher>()
     private val suffix: TextView
     private val handler = Handler(Looper.getMainLooper())
@@ -546,6 +546,23 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
             field = v
             update(false)
         }
+
+    /** At night (22:00 to 06:00) the digits turn a warm white, kinder to the eyes in a dark room. */
+    var warmAtNight = false
+        set(v) {
+            field = v
+            tint()
+        }
+    private var tinted = 0
+
+    private fun tint() {
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val c = if (warmAtNight && (h >= 22 || h < 6)) Color.parseColor("#FFE3BC") else color
+        if (c == tinted) return
+        tinted = c
+        for (s in digits) for (i in 0 until s.childCount) (s.getChildAt(i) as? TextView)?.setTextColor(c)
+        suffix.setTextColor(c)
+    }
     private val tick = object : Runnable {
         override fun run() {
             update(true)
@@ -561,6 +578,11 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
             val s = TextSwitcher(ctx)
             s.setFactory {
                 val t = ui.text("", size, color, weight)
+                // tvOS: thin, wide digits.
+                if (light) {
+                    t.typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+                    t.letterSpacing = 0.02f
+                }
                 t.gravity = Gravity.CENTER
                 // Equal-width digits so the time doesn't jiggle when it changes.
                 t.fontFeatureSettings = "tnum"
@@ -605,6 +627,7 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
         }
         suffix.text = s
         suffix.visibility = if (s.isEmpty()) View.GONE else View.VISIBLE
+        tint()
     }
 
     override fun onAttachedToWindow() {
