@@ -1415,11 +1415,13 @@ class TrailerActivity : Activity() {
         if (p != null) {
             // Streaming/source discovery stays inside LeXia; no external platform is shown.
             if (!upcoming(p) && !inCinemas(p) && p.id > 0) {
-                val watch = ui.pill("▶   Filmi izle", 68, 24, primary = true)
+                // The end card's main action: tinted, white only when selected (as on the controls).
+                val watch = ui.pill("▶   Filmi izle", 68, 24)
+                styleAccentAction(watch)
                 watch.setOnClickListener { toFilm(p) }
                 row.addView(watch)
             } else {
-                row.addView(listButton(p, primary = true))
+                row.addView(listButton(p, primary = false).also { styleAccentAction(it) })
             }
             if (!upcoming(p) && p.release.isNotEmpty()) {
                 val save = ui.pill(if (prefs.watchlist.any { it.key == p.key }) "✓   Listemde" else "+   Listeme ekle", 64, 23)
@@ -1867,13 +1869,15 @@ class TrailerActivity : Activity() {
     /** The main end-card action follows the film colour and becomes a clear white focus plate. */
     private fun styleAccentAction(button: TextView) {
         fun style(focused: Boolean) {
+            // Unfocused it is only tinted with the film's colour (a solid plate looked like the
+            // selection, TV photo 24 Kasım); the white plate is the selection alone.
             button.background = ui.round(
-                if (focused) Color.WHITE else barColor,
+                if (focused) Color.WHITE else accentWash(60),
                 D.PANEL,
-                if (focused) 0 else 1,
-                if (focused) Color.WHITE else accentWash(210)
+                if (focused) 0 else 2,
+                if (focused) Color.WHITE else accentWash(190)
             )
-            button.setTextColor(if (focused) C.INK else accentInk())
+            button.setTextColor(if (focused) C.INK else Color.WHITE)
         }
         style(button.isFocused)
         button.setOnFocusChangeListener { view, focused ->
