@@ -193,13 +193,15 @@ class ExploreActivity : Activity() {
         scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.overScrollMode = View.OVER_SCROLL_NEVER
-        // Rows that scroll up go under the showcase, not over its words; a little room on top keeps
-        // the first row's lifted poster whole.
-        scroll.clipChildren = true
+        // A little room on top keeps the first row's lifted poster whole.
         scroll.clipToPadding = false
         scroll.setPadding(0, ui.u(24), 0, 0)
         scroll.addView(grid, FrameLayout.LayoutParams(m, w))
-        page.addView(scroll, ui.ll(m, 0, left = -20, right = -20, weight = 1f))
+        // Rows that scroll up are cut at the list's top edge, so they never draw over the showcase
+        // and the top bar: the page lets its children draw outside (lifted posters), this box does not.
+        val clip = FrameLayout(this)
+        clip.addView(scroll, ui.fl(m, m))
+        page.addView(clip, ui.ll(m, 0, left = -20, right = -20, weight = 1f))
         frame.addView(page, ui.fl(m, m))
         setContentView(frame)
         Sound.attach(this)
