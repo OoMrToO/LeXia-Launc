@@ -1053,9 +1053,24 @@ class SettingsActivity : Activity() {
     /** Platforms in today's film list: which ones the home screen, the screensaver and the bell follow. */
     private val FIXED_PLATFORMS = listOf("Netflix", "Disney+", "Prime Video", "Max", "Apple TV+", "TV+", "TOD", "MUBI", "Tabii", "Exxen", "Gain", "puhutv", "BluTV")
 
-    private fun noticesPage() = Page("Bildirimler", R.drawable.ic_bell, keys = listOf("noticeOff")) {
+    private fun noticesPage() = Page("Bildirimler", R.drawable.ic_bell, keys = listOf("noticeOff", "noticeOnlyMine", "noticeHidden", "noticePlatOff", "noticeShortcutsOff")) {
         val items = ArrayList<Item>()
         items.add(Note("Zildeki bildirimlerden istemediğini kapat. Kapalı türler zilde ve kırmızı noktada görünmez."))
+        items.add(toggle("Yalnızca takip ettiklerim",
+            "Listem, hatırlattığın filmler, izlediğin diziler ve platformların. Senin seçmediğin vizyon filmleri zile düşmez.",
+            { prefs.noticeOnlyMine }, { prefs.noticeOnlyMine = it }))
+        items.add(Row("Gizlediklerini geri getir",
+            "Zilde gizlediğin ve temizlediğin bildirimler, kapattığın platformlar ve üstteki kısayollar geri gelir.",
+            value = {
+                val n = prefs.noticePlatOff.size + prefs.noticeShortcutsOff.size + (if (prefs.noticeHidden.length > 2) 1 else 0)
+                if (n == 0) "Gizli yok" else "Geri getir"
+            },
+            action = {
+                prefs.noticeHidden = ""
+                prefs.noticePlatOff = emptySet()
+                prefs.noticeShortcutsOff = emptySet()
+                Glass.toast(this, "Gizlenen bildirimler geri geldi")
+            }))
         val kinds = listOf(
             Triple("new", "Yeni bölüm çıktı", "İzlediğin dizilerin bu hafta çıkan bölümleri."),
             Triple("ep", "Yaklaşan bölümler", "Listem'deki dizilerin yeni bölüm günleri."),

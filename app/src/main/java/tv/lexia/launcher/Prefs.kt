@@ -497,6 +497,25 @@ class Prefs(ctx: Context) {
         get() = HashSet(p.getStringSet("noticesRead", emptySet()) ?: emptySet())
         set(v) = p.edit().putStringSet("noticesRead", HashSet(v)).apply()
 
+    /** Notices put away in the bell ("Bunu gizle", "Temizle"), as JSON {id: when}; kept a month. */
+    var noticeHidden: String get() = str("noticeHidden"); set(v) = putStr("noticeHidden", v)
+
+    /** When each notice was first seen in the bell, as JSON {id: when}: read ones go after three days. */
+    var noticeSeenAt: String get() = str("noticeSeenAt"); set(v) = putStr("noticeSeenAt", v)
+
+    /** Platforms whose "yeni yapım" notices are turned off from the bell (e.g. "MUBI"). */
+    var noticePlatOff: Set<String>
+        get() = HashSet(p.getStringSet("noticePlatOff", emptySet()) ?: emptySet())
+        set(v) = p.edit().putStringSet("noticePlatOff", HashSet(v)).apply()
+
+    /** The bell's top shortcuts put away ("calendar", "weekend", "month"). */
+    var noticeShortcutsOff: Set<String>
+        get() = HashSet(p.getStringSet("noticeShortcutsOff", emptySet()) ?: emptySet())
+        set(v) = p.edit().putStringSet("noticeShortcutsOff", HashSet(v)).apply()
+
+    /** Only what you follow: films coming to cinemas that you did not ask about stay out of the bell. */
+    var noticeOnlyMine: Boolean get() = bool("noticeOnlyMine", true); set(v) = putBool("noticeOnlyMine", v)
+
     /** Puts the given settings back to their defaults. */
     fun resetKeys(keys: List<String>) {
         val e = p.edit()

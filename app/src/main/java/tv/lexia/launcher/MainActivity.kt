@@ -1370,7 +1370,46 @@ class MainActivity : Activity() {
 
     // ---------- Bell: notices ----------
 
-    private class Notice(val id: String, val icon: Int, val title: String, val sub: String, val open: () -> Unit)
+    /** [days]: something you follow that is coming (a film's release, a series' episode), days left; it goes on top. */
+    private class Notice(val id: String, val icon: Int, val title: String, val sub: String, val days: Int? = null, val open: () -> Unit)
+
+    /** Kinds the bell can turn off from a notice's menu, with the names Ayarlar › Bildirimler uses. */
+    private val noticeKinds = mapOf(
+        "new" to "Yeni bölüm çıktı", "ep" to "Yaklaşan bölümler", "rel" to "Hatırlattığın filmler",
+        "soon" to "Yakında vizyonda", "plat" to "Platformlara gelenler", "now" to "Artık platformda",
+        "ready" to "Artık izlenebilir", "night" to "Akşam planı", "listold" to "Listende bekleyenler"
+    )
+
+    /** A countdown's id changes at a week and at each of the last three days, so it comes back new then. */
+    private fun stage(d: Int) = if (d <= 3) "$d" else "w"
+
+    private fun daysAhead(d: Int, what: String) = when (d) {
+        0 -> "Bugün $what: "
+        1 -> "Yarın $what: "
+        else -> "$d gün sonra $what: "
+    }
+
+    /** {id: when} kept in settings; entries older than a month drop out. */
+    private fun noticeTimes(json: String): MutableMap<String, Long> {
+        val out = HashMap<String, Long>()
+        val from = System.currentTimeMillis() - 30 * 86400_000L
+        try {
+            val o = org.json.JSONObject(json.ifBlank { "{}" })
+            for (k in o.keys()) o.optLong(k).takeIf { it > from }?.let { out[k] = it }
+        } catch (_: Exception) {
+        }
+        return out
+    }
+
+    private fun timesJson(m: Map<String, Long>) =
+        org.json.JSONObject().apply { m.entries.sortedByDescending { it.value }.take(400).forEach { put(it.key, it.value) } }.toString()
+
+    private fun hideNotices(ids: Collection<String>) {
+        val m = noticeTimes(prefs.noticeHidden)
+        val now = System.currentTimeMillis()
+        for (id in ids) m[id] = now
+        prefs.noticeHidden = timesJson(m)
+    }
 
     /**
      * What's worth knowing now: new episodes of Listem series (today, tomorrow) and of series you
@@ -1397,11 +1436,11 @@ class MainActivity : Activity() {
         for (p in prefs.watchlist) {
             val n = Episodes.of(p) ?: continue
             val d = Episodes.daysUntil(n.date) ?: continue
-            if (d > 1) continue
+            if (d > 7) continue
             val which = if (n.season > 0 && n.episode > 0) "${n.season}. sezon ${n.episode}. bölüm" else Episodes.what(n)
             val w = Episodes.what(n).lowercase(tr)
-            out.add(Notice("ep:${p.key}:${n.date}", R.drawable.ic_tv,
-                (if (d == 0) "Bugün $w: " else "Yarın $w: ") + p.title, which) { openDetail(p, null, null) })
+            out.add(Notice("ep:${p.key}:${n.date}:${stage(d)}", R.drawable.ic_tv,
+                daysAhead(d, w) + p.title, which, days = d) { openDetail(p, null, null) })
         }
         // A series you watch in LeXia has a new episode out (this week) that you have not finished:
         // OK opens it straight on its sources.
@@ -1422,18 +1461,23 @@ class MainActivity : Activity() {
         }
         for (p in prefs.reminders) {
             val d = daysUntil(p.release) ?: continue
-            if (d !in -3..3) continue
-            val t = when {
-                d == 0 -> "Bugün vizyonda: "
-                d < 0 -> "Vizyonda: "
-                d == 1 -> "Yarın vizyonda: "
-                else -> "$d gün sonra vizyonda: "
-            }
-            out.add(Notice("rel:${p.key}:${p.release}", R.drawable.ic_film, t + p.title, "Hatırlatmıştın.") { openDetail(p, null, null) })
+            if (d !in -3..7) continue
+            val t = if (d < 0) "Vizyonda: " else daysAhead(d, "vizyonda")
+            out.add(Notice("rel:${p.key}:${p.release}" + (if (d >= 0) ":${stage(d)}" else ""), R.drawable.ic_film, t + p.title,
+                "Hatırlatmıştın.", days = d.takeIf { it >= 0 }) { openDetail(p, null, null) })
+        }
+        // A Listem film not out yet: the week before, it comes to the top with its countdown.
+        val remindedKeys = prefs.reminders.map { it.key }.toSet()
+        for (p in prefs.watchlist) {
+            if (p.isSeries || p.key in remindedKeys) continue
+            val d = daysUntil(p.release) ?: continue
+            if (d !in 0..7) continue
+            out.add(Notice("rel:${p.key}:${p.release}:${stage(d)}", R.drawable.ic_film, daysAhead(d, "vizyonda") + p.title,
+                "Listende bekliyordu.", days = d) { openDetail(p, null, null) })
         }
         // New on the platforms you chose (or whose app is on this TV): one notice per platform a day.
         for ((name, films) in streamingFirst().groupBy { it.provider }) {
-            if (!myPlatform(name)) continue
+            if (!myPlatform(name) || name in prefs.noticePlatOff) continue
             out.add(Notice("plat:$name:${prefs.pickDate}", R.drawable.ic_tv, "$name: ${films.size} yeni yapım",
                 films.take(3).joinToString(", ") { it.title }) { showPlatformNews(name, films) })
         }
@@ -1459,9 +1503,19 @@ class MainActivity : Activity() {
             out.add(Notice("soon:${p.key}:${p.release}", R.drawable.ic_film, t + p.title,
                 p.genres.take(2).joinToString(", ")) { openDetail(p, null, null) })
         }
-        // Kinds turned off in Ayarlar › Bildirimler.
+        // Kinds turned off in Ayarlar › Bildirimler; films you did not ask about when only yours are
+        // wanted; what was put away in the bell; and what was read three days ago (a countdown, an
+        // update or a plan stays while it is true).
         val off = prefs.noticeOff
-        return if (off.isEmpty()) out else out.filter { it.id.substringBefore(':') !in off }
+        val onlyMine = prefs.noticeOnlyMine
+        val hidden = noticeTimes(prefs.noticeHidden)
+        val seen = noticeTimes(prefs.noticeSeenAt)
+        val stale = System.currentTimeMillis() - 3 * 86400_000L
+        return out.filter {
+            val kind = it.id.substringBefore(':')
+            kind !in off && !(onlyMine && kind == "soon") && it.id !in hidden &&
+                (it.days != null || kind in setOf("msg", "home", "upd", "night") || (seen[it.id] ?: Long.MAX_VALUE) > stale)
+        }
     }
 
     private fun todayStr() = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
@@ -1707,8 +1761,9 @@ class MainActivity : Activity() {
 
     private fun openNotices() {
         if (menu != null) return
-        val list = notices()
+        var list = notices()
         val read = prefs.noticesRead
+        val shortcutsOff = prefs.noticeShortcutsOff
         val layer = FrameLayout(this)
         layer.setBackgroundColor(Color.argb(ui.dimAlpha(), 0, 0, 0))
         layer.isClickable = true
@@ -1721,9 +1776,35 @@ class MainActivity : Activity() {
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))
-        panel.addView(ui.text("Bildirimler", 44, C.TEXT, 700), ui.ll(ui.wrap, ui.wrap, left = 26, bottom = 30))
+        val head = ui.hbox()
+        head.gravity = Gravity.CENTER_VERTICAL
+        head.clipChildren = false
+        head.clipToPadding = false
+        head.addView(ui.text("Bildirimler", 44, C.TEXT, 700), ui.ll(0, ui.wrap, weight = 1f))
+        val clear = ui.pill("Temizle", 56, 21)
+        clear.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+        head.addView(clear, ui.ll(ui.wrap, ui.u(56), right = 12))
+        panel.addView(head, ui.ll(ui.match, ui.wrap, left = 26))
+        val tip = ui.text("Gizlemek için OK'e basılı tut", 17, C.TEXT3, 500)
+        panel.addView(tip, ui.ll(ui.wrap, ui.wrap, left = 26, top = 6, bottom = 26))
 
         var first: View? = null
+        var divider: View? = null
+        val shortcuts = ArrayList<View>()
+        // A shortcut put away from its menu: gone from the bell until Ayarlar › Bildirimler brings it back.
+        fun shortcutMenu(row: View, id: String, name: String) {
+            row.setOnLongClickListener {
+                Dialogs.list(this, name, listOf("Bunu gizle" to ""), subtitle = "Ayarlar › Bildirimler'den geri getirebilirsin.") {
+                    prefs.noticeShortcutsOff = prefs.noticeShortcutsOff + id
+                    val at = shortcuts.indexOf(row)
+                    shortcuts.remove(row)
+                    (row.parent as? ViewGroup)?.removeView(row)
+                    if (shortcuts.isEmpty()) divider?.let { d -> (d.parent as? ViewGroup)?.removeView(d) }
+                    (shortcuts.getOrNull(at) ?: shortcuts.lastOrNull())?.requestFocus()
+                }
+                true
+            }
+        }
         val cal = noticeRow(R.drawable.ic_calendar, "Takvim", "Önümüzdeki iki hafta: vizyonlar ve yeni bölümler", false)
         cal.setOnClickListener {
             closeMenu(false)
@@ -1737,22 +1818,23 @@ class MainActivity : Activity() {
             idleOff()
             WeekendActivity.open(this)
         }
-        if (!Remote.isOff("calendar")) {
+        shortcutMenu(cal, "calendar", "Takvim")
+        shortcutMenu(weekend, "weekend", "Hafta sonu rehberi")
+        if (!Remote.isOff("calendar") && "calendar" !in shortcutsOff) {
             panel.addView(cal, ui.ll(ui.match, ui.wrap, bottom = 4))
             first = cal
-            val div = View(this)
-            div.setBackgroundColor(C.STROKE)
-            panel.addView(div, ui.ll(ui.match, maxOf(1, ui.u(1)), left = 26, right = 26, top = 12, bottom = 12))
+            shortcuts.add(cal)
         }
-        if (!Remote.isOff("weekend")) {
+        if (!Remote.isOff("weekend") && "weekend" !in shortcutsOff) {
             // Right under the calendar (above its divider when there is one).
             val at = if (first === cal) panel.indexOfChild(cal) + 1 else panel.childCount
             panel.addView(weekend, at, ui.ll(ui.match, ui.wrap, bottom = 4))
             if (first == null) first = weekend
+            shortcuts.add(weekend)
         }
         // Which one subscription covers most of Listem this month.
         val best = PlatformMonthActivity.tally(this).first.firstOrNull()
-        if (best != null) {
+        if (best != null && "month" !in shortcutsOff) {
             val total = prefs.watchlist.count { it.key !in prefs.watched }
             val month = noticeRow(R.drawable.ic_tv, "Bu ay hangi platform?", "Listendeki $total filmin ${best.second.size} tanesi ${TrailerActivity.locative(best.first)}", false)
             month.setOnClickListener {
@@ -1760,10 +1842,17 @@ class MainActivity : Activity() {
                 idleOff()
                 PlatformMonthActivity.open(this)
             }
-            val divider = panel.getChildAt(panel.childCount - 1)
-            val at = if (first != null && divider !is ViewGroup) panel.childCount - 1 else panel.childCount
-            panel.addView(month, at, ui.ll(ui.match, ui.wrap, bottom = 4))
+            panel.addView(month, ui.ll(ui.match, ui.wrap, bottom = 4))
             if (first == null) first = month
+            shortcuts.add(month)
+            shortcutMenu(month, "month", "Bu ay hangi platform?")
+        }
+        // The line under the shortcuts, when there are any.
+        if (shortcuts.isNotEmpty()) {
+            val div = View(this)
+            div.setBackgroundColor(C.STROKE)
+            panel.addView(div, ui.ll(ui.match, maxOf(1, ui.u(1)), left = 26, right = 26, top = 12, bottom = 12))
+            divider = div
         }
 
         val scroll = ScrollView(this)
@@ -1774,35 +1863,82 @@ class MainActivity : Activity() {
         box.clipToPadding = false
         box.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
         scroll.addView(box)
-        if (list.isEmpty()) {
-            val e = ui.emptyState(R.drawable.ic_bell, "Her şey sakin",
-                "Listem'deki dizilerin yeni bölümleri, hatırlattığın filmler ve platformlara gelenler burada görünür.", size = 0)
-            box.addView(e, ui.ll(ui.match, ui.wrap, top = 40))
-        }
-        // Keep the bell readable: related notices appear together under TV-friendly headings.
-        fun groupOf(n: Notice): String = when (n.id.substringBefore(':')) {
+        // Coming soon from what you follow first, nearest on top; then related notices together
+        // under TV-friendly headings.
+        fun groupOf(n: Notice): String = if (n.days != null) "YAKLAŞANLAR" else when (n.id.substringBefore(':')) {
             "ep", "new" -> "DİZİLER"
             "rel", "soon", "night" -> "FİLMLER"
             "plat", "now" -> "PLATFORMLAR"
             else -> "DİĞER"
         }
-        val groupOrder = listOf("DİZİLER", "FİLMLER", "PLATFORMLAR", "DİĞER")
-        for (group in groupOrder) {
-            val items = list.filter { groupOf(it) == group }
-            if (items.isEmpty()) continue
-            val heading = ui.text(group, 16, C.TEXT2, 700)
-            heading.letterSpacing = 0.12f
-            heading.setPadding(ui.u(18), ui.u(18), ui.u(18), ui.u(8))
-            box.addView(heading, ui.ll(ui.match, ui.wrap))
-            for (n in items) {
-                val row = noticeRow(n.icon, n.title, n.sub, n.id !in read)
-                row.setOnClickListener {
-                    closeMenu(false)
-                    n.open()
-                }
-                box.addView(row, ui.ll(ui.match, ui.wrap, bottom = 4))
-                if (first == null) first = row
+        val groupOrder = listOf("YAKLAŞANLAR", "DİZİLER", "FİLMLER", "PLATFORMLAR", "DİĞER")
+        lateinit var fill: () -> Unit
+        // Put away, then the list is drawn again with the focus where it was.
+        fun after(index: Int) {
+            list = notices()
+            fill()
+            val rows = (0 until box.childCount).map { box.getChildAt(it) }.filter { it.isFocusable }
+            (rows.getOrNull(index) ?: rows.lastOrNull() ?: shortcuts.firstOrNull())?.requestFocus()
+                ?: closeMenu()
+        }
+        fun noticeMenu(n: Notice, index: Int) {
+            val kind = n.id.substringBefore(':')
+            val acts = ArrayList<Pair<String, () -> Unit>>()
+            acts.add("Bunu gizle" to { hideNotices(listOf(n.id)) })
+            if (kind == "plat") {
+                val name = n.id.removePrefix("plat:").substringBeforeLast(':')
+                acts.add("$name bildirimlerini kapat" to { prefs.noticePlatOff = prefs.noticePlatOff + name })
             }
+            noticeKinds[kind]?.let { k ->
+                acts.add("Tümünü kapat: $k" to { prefs.noticeOff = prefs.noticeOff + kind })
+            }
+            Dialogs.list(this, n.title, acts.map { it.first to "" }, subtitle = "Ayarlar › Bildirimler'den geri açabilirsin.") { i ->
+                acts[i].second()
+                after(index)
+                updateBell()
+            }
+        }
+        fill = {
+            box.removeAllViews()
+            if (list.isEmpty()) {
+                val e = ui.emptyState(R.drawable.ic_bell, "Her şey sakin",
+                    "Takip ettiğin dizilerin yeni bölümleri, hatırlattığın filmler ve platformlarına gelenler burada görünür.", size = 0)
+                box.addView(e, ui.ll(ui.match, ui.wrap, top = 40))
+            }
+            clear.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+            var index = 0
+            for (group in groupOrder) {
+                val items = list.filter { groupOf(it) == group }.let { g -> if (group == "YAKLAŞANLAR") g.sortedBy { it.days } else g }
+                if (items.isEmpty()) continue
+                val heading = ui.text(group, 16, C.TEXT2, 700)
+                heading.letterSpacing = 0.12f
+                heading.setPadding(ui.u(18), ui.u(18), ui.u(18), ui.u(8))
+                box.addView(heading, ui.ll(ui.match, ui.wrap))
+                for (n in items) {
+                    val badge = n.days?.let { d -> when (d) { 0 -> "Bugün"; 1 -> "Yarın"; else -> "$d gün" } }
+                    val row = noticeRow(n.icon, n.title, n.sub, n.id !in read, badge)
+                    row.setOnClickListener {
+                        closeMenu(false)
+                        n.open()
+                    }
+                    val at = index++
+                    row.setOnLongClickListener {
+                        noticeMenu(n, at)
+                        true
+                    }
+                    box.addView(row, ui.ll(ui.match, ui.wrap, bottom = 4))
+                    if (first == null) first = row
+                }
+            }
+        }
+        fill()
+        clear.setOnClickListener {
+            hideNotices(list.map { it.id })
+            list = notices()
+            fill()
+            updateBell()
+            (shortcuts.firstOrNull() ?: (0 until box.childCount).map { box.getChildAt(it) }.firstOrNull { it.isFocusable })
+                ?.requestFocus() ?: closeMenu()
         }
         // Rows that scroll up are cut at the list's top, so they never draw over the calendar rows
         // and the title (TV photo, 24 Kasım): the panel lets its children draw outside, this box does
@@ -1815,14 +1951,19 @@ class MainActivity : Activity() {
         showOverlay(layer, first, bell)
         panel.translationX = ui.uf(640)
         panel.animate().translationX(0f).setDuration(D.MED).setInterpolator(DecelerateInterpolator(2.2f)).start()
-        // Seen now: the dot goes; old ids drop out so the list stays small.
+        // Seen now: the dot goes; old ids drop out so the list stays small. When each was first
+        // seen is kept, so it leaves the bell three days later.
         prefs.noticesRead = list.map { it.id }.toSet()
+        val seenAt = noticeTimes(prefs.noticeSeenAt)
+        val now = System.currentTimeMillis()
+        for (n in list) if (n.id !in seenAt) seenAt[n.id] = now
+        prefs.noticeSeenAt = timesJson(seenAt)
         bellDot.visibility = View.GONE
         if (::newDot.isInitialized) newDot.visibility = View.GONE
     }
 
     /** A notice: icon, title and a small line under it; a dot when it's new. */
-    private fun noticeRow(icon: Int, title: String, sub: String, unread: Boolean): View {
+    private fun noticeRow(icon: Int, title: String, sub: String, unread: Boolean, badge: String? = null): View {
         val row = ui.hbox()
         row.isFocusable = true
         row.isClickable = true
@@ -1841,6 +1982,15 @@ class MainActivity : Activity() {
         col.addView(t)
         if (sub.isNotEmpty()) col.addView(s, ui.ll(ui.wrap, ui.wrap, top = 4))
         row.addView(col, ui.ll(0, ui.wrap, weight = 1f))
+        // A countdown for what is coming: pink on its last two days.
+        val soon = badge == "Bugün" || badge == "Yarın"
+        val pill = badge?.let { b ->
+            val v = ui.text(b, 17, C.TEXT, 700)
+            v.setPadding(ui.u(14), ui.u(5), ui.u(14), ui.u(5))
+            v.background = ui.round(if (soon) Color.parseColor("#FF4D8D") else Color.argb(46, 255, 255, 255), 14)
+            row.addView(v, ui.ll(ui.wrap, ui.wrap, left = 14))
+            v
+        }
         val dot = View(this)
         dot.background = ui.round(Color.parseColor("#FF4D8D"), 6)
         dot.visibility = if (unread) View.VISIBLE else View.INVISIBLE
@@ -1850,6 +2000,10 @@ class MainActivity : Activity() {
             t.setTextColor(if (f) C.INK else C.TEXT)
             s.setTextColor(if (f) Color.argb(153, 11, 11, 13) else C.TEXT3)
             i.setColorFilter(if (f) C.INK else C.TEXT, PorterDuff.Mode.SRC_IN)
+            if (pill != null && !soon) {
+                pill.background = ui.round(if (f) Color.argb(26, 11, 11, 13) else Color.argb(46, 255, 255, 255), 14)
+                pill.setTextColor(if (f) C.INK else C.TEXT)
+            }
             ui.lift(row, f, 1.03f, 10)
             // Looked at: its new-dot goes out and stays out.
             if (f && dot.visibility == View.VISIBLE) {
