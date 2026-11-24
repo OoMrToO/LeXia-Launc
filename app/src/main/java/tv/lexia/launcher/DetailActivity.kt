@@ -842,7 +842,9 @@ class DetailActivity : Activity() {
             card.addView(mark, ui.fl(ui.wrap, ui.wrap, Gravity.TOP or Gravity.END).apply { setMargins(0, ui.u(10), ui.u(10), 0) })
         }
         val fx = Fx.decorate(ui, card, D.CARD)
-        val title = ui.text((if (e.episode > 0) "${e.episode}. " else "") + e.title, 19, C.TEXT, 600)
+        // "TBA" (a name not given yet): just its number.
+        val noName = e.title.isBlank() || e.title.trim().equals("TBA", true) || e.title.trim().equals("TBD", true)
+        val title = ui.text(if (noName) "${e.episode}. Bölüm" else (if (e.episode > 0) "${e.episode}. " else "") + e.title, 19, C.TEXT, 600)
         title.maxLines = 1
         title.ellipsize = TextUtils.TruncateAt.END
         title.alpha = 0.75f

@@ -1503,12 +1503,6 @@ class SettingsActivity : Activity() {
                 value = { "#${BuildConfig.BUILD_NO}" + if (prefs.tester) "  ·  Test cihazı" else "" },
                 action = { versionTap() }
             ),
-            Row(
-                "Bu sürümde neler var",
-                "Son güncellemeyle gelen yenilikler.",
-                chevron = true,
-                action = { WhatsNew.show(this, ui) }
-            ),
             Row("Film listesi", "Günün filmleri her sabah yenilenir.", value = { dayText(prefs.pickDate) }),
             Row(
                 "Bu TV",
