@@ -54,6 +54,9 @@ class MainActivity : Activity() {
         private const val SHORT_MIN = 105
         /** How long a film is on screen before its trailer starts (without sound). */
         private const val HERO_TRAILER_DELAY_MS = 5_000L
+        /** The side panel of apps: its width and its tiles' (two 16:9 tiles to a row). */
+        private const val SIDE_PANEL_W = 700
+        private const val SIDE_TILE_W = 284
         /** How long the screensaver's trailer marathon lasts before the pictures come back. */
         private const val SAVER_TRAILERS_MS = 30 * 60_000L
         private const val SHELF_H = 330
@@ -2902,14 +2905,24 @@ class MainActivity : Activity() {
         val head = ui.label("UYGULAMALAR")
         panel.addView(head, ui.ll(ui.wrap, ui.wrap, left = 26, bottom = 22))
 
+        // Apple TV style: the apps as picture tiles, two to a row; the selected one rises with its
+        // name under it.
         val box = ui.vbox()
         box.clipChildren = false
         box.clipToPadding = false
-        box.setPadding(0, ui.u(4), 0, ui.u(4))
+        box.setPadding(ui.u(14), ui.u(14), ui.u(14), ui.u(14))
         var first: View? = null
         val pm = packageManager
-        for (app in Apps.shown(this, prefs)) {
-            val item = sideRow(app.label, try { app.info.loadIcon(pm) } catch (e: Exception) { null }, 0)
+        var line: LinearLayout? = null
+        for ((n, app) in Apps.shown(this, prefs).withIndex()) {
+            val item = appTile(app, pm)
+            if (n % 2 == 0) {
+                line = ui.hbox()
+                line.clipChildren = false
+                line.clipToPadding = false
+                box.addView(line, ui.ll(ui.match, ui.wrap, bottom = 10))
+            }
+            line?.addView(item, ui.ll(ui.u(SIDE_TILE_W), ui.wrap, right = if (n % 2 == 0) 24 else 0))
             item.setOnClickListener {
                 closeMenu(false)
                 launch(app)
@@ -2931,7 +2944,6 @@ class MainActivity : Activity() {
                 ), owner ?: hero)
                 true
             }
-            box.addView(item, ui.ll(ui.match, ui.u(78), bottom = 4))
             if (first == null) first = item
         }
         val scroll = ScrollView(this)
@@ -2950,12 +2962,65 @@ class MainActivity : Activity() {
         panel.addView(all, ui.ll(ui.match, ui.u(78)))
         if (first == null) first = all
 
-        layer.addView(panel, ui.fl(ui.u(520), ui.match, Gravity.START))
-        // Right or Back closes it (see dispatchKeyEvent and onBackPressed).
+        layer.addView(panel, ui.fl(ui.u(SIDE_PANEL_W), ui.match, Gravity.START))
+        // Right (from the right column) or Back closes it (see dispatchKeyEvent and onBackPressed).
         showOverlay(layer, first, owner ?: hero)
         sidePanel = layer
-        panel.translationX = -ui.uf(520)
+        panel.translationX = -ui.uf(SIDE_PANEL_W)
         panel.animate().translationX(0f).setDuration(D.MED).setInterpolator(DecelerateInterpolator(2.2f)).start()
+    }
+
+    /**
+     * An app in the side panel, as on Apple TV: its TV picture (or its icon on its own colour) in a
+     * rounded 16:9 tile; selected, the tile rises with a soft light and a white rim, and the name
+     * shows under it.
+     */
+    private fun appTile(app: AppEntry, pm: android.content.pm.PackageManager): LinearLayout {
+        val w = SIDE_TILE_W
+        val h = w * 9 / 16
+        val col = ui.vbox()
+        col.isFocusable = true
+        col.isClickable = true
+        col.isLongClickable = true
+        col.clipChildren = false
+        col.clipToPadding = false
+        col.gravity = Gravity.CENTER_HORIZONTAL
+        val tile = FrameLayout(this)
+        tile.clipToOutline = true
+        val banner = try { app.info.loadBanner(pm) } catch (e: Exception) { null }
+        if (banner != null) {
+            tile.background = ui.round(Color.parseColor("#1C1C22"), 16)
+            val img = ImageView(this)
+            img.setImageDrawable(banner)
+            img.scaleType = ImageView.ScaleType.CENTER_CROP
+            tile.addView(img, ui.fl(ui.match, ui.match))
+        } else {
+            val icon = try { app.info.loadIcon(pm) } catch (e: Exception) { null }
+            Apps.iconCard(ui, tile, app.key, icon, null, 16, h)
+        }
+        // The light that crosses the glass when it is selected.
+        val gloss = View(this)
+        gloss.background = ui.gradient(GradientDrawable.Orientation.TL_BR,
+            Color.argb(70, 255, 255, 255), Color.argb(10, 255, 255, 255), Color.TRANSPARENT, radius = 16)
+        gloss.alpha = 0f
+        tile.addView(gloss, ui.fl(ui.match, ui.match))
+        col.addView(tile, ui.ll(ui.u(w), ui.u(h)))
+        val name = ui.text(app.label, 19, C.TEXT, 600)
+        name.gravity = Gravity.CENTER
+        name.maxLines = 1
+        name.ellipsize = TextUtils.TruncateAt.END
+        name.alpha = 0f
+        col.addView(name, ui.ll(ui.u(w), ui.wrap, top = 12))
+        col.setOnFocusChangeListener { _, f ->
+            tile.foreground = if (f) ui.round(Color.TRANSPARENT, 16, 3, Color.WHITE) else null
+            tile.animate().cancel()
+            tile.animate().scaleX(if (f) 1.08f else 1f).scaleY(if (f) 1.08f else 1f)
+                .translationZ(if (f) ui.uf(24) else 0f).translationY(if (f) -ui.uf(4) else 0f)
+                .setDuration(if (Fx.lite) 0L else D.FAST).setInterpolator(DecelerateInterpolator(2f)).start()
+            gloss.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ui.uf(4) else 0f).setDuration(D.FAST).start()
+        }
+        return col
     }
 
     /** One line of the side panel: the app's icon (or a symbol) and its name. */
@@ -3836,9 +3901,16 @@ class MainActivity : Activity() {
         }
         resetIdle()
         if (event.action == KeyEvent.ACTION_DOWN && movingRow == null && moving == null) {
+            // Right closes the side panel only from its right column (in the grid it moves across).
             if (sidePanel != null && event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                closeMenu()
-                return true
+                val here = currentFocus
+                val panelRoot = sidePanel as? ViewGroup
+                val across = if (here != null && panelRoot != null)
+                    android.view.FocusFinder.getInstance().findNextFocus(panelRoot, here, View.FOCUS_RIGHT) else null
+                if (across == null) {
+                    closeMenu()
+                    return true
+                }
             }
             val f = currentFocus
             if (menu == null && updateWall == null && appsSide() && event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&

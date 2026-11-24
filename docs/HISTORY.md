@@ -370,3 +370,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Fragman: Geri basınca ekran aniden kararmaz; ses kısılırken perdeler kapanır, sonra sayfa kapanır (24 Kasım).
 - Film oynatıcısı: ad yazısı yerine sol üstte filmin logosu (yoksa adı), kontrollerle birlikte; altta yalnızca bölüm ya da yıl · kaynak (24 Kasım).
 - Ekran koruyucu: "Sessiz fragman maratonu" (varsayılan; Ayarlar › Ekran koruyucu ve uyku › Görünüm, ya da Resimler): fragmanlar sessiz 720p sırayla tam ekran, köşede küçük logo, OK film sayfası, 30 dk sonra resimler; hafif modda resimler. Kullanıcı istedi, reddedilenlerden çıkarıldı (24 Kasım).
+- Sol uygulama paneli Apple TV tarzı: iki sütun 16:9 kutucuk (TV resmi, yoksa ikon kendi renginde), seçilen yükselir, parıltı ve beyaz çerçeve, adı altında; panel 700 genişlikte, sağ ok sağ sütundan kapatır (24 Kasım).
