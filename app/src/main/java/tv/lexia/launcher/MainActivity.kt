@@ -896,9 +896,9 @@ class MainActivity : Activity() {
         resumeBtn = ui.pill("", 64, 23, primary = true)
         resumeBtn.visibility = View.GONE
         resumeBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { resume(it) } }
-        trailerBtn = ui.pill("▶   Fragmanı İzle", 64, 23, primary = true)
+        trailerBtn = ui.pill("▶   Fragmanı izle", 64, 23, primary = true)
         trailerBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { trailer(it) } }
-        listBtn = ui.pill("+   Listeme Ekle", 64, 23)
+        listBtn = ui.pill("+   Listeme ekle", 64, 23)
         listBtn.setOnClickListener { toggleList() }
         val infoBtn = ui.pill("Detaylar", 64, 23)
         infoBtn.setOnClickListener { picks.getOrNull(pickIndex)?.let { openDetail(it, null, null) } }
@@ -2844,7 +2844,7 @@ class MainActivity : Activity() {
 
     private fun updateListBtn() {
         val p = picks.getOrNull(pickIndex) ?: return
-        listBtn.text = if (inList(p)) "✓   Listemde" else "+   Listeme Ekle"
+        listBtn.text = if (inList(p)) "✓   Listemde" else "+   Listeme ekle"
     }
 
     private fun refreshShelf() {
@@ -2881,7 +2881,7 @@ class MainActivity : Activity() {
         card.addView(icon, ui.ll(ui.u(120), ui.u(120)))
         val col = ui.vbox()
         col.addView(ui.text("Listen henüz boş", 26, C.TEXT, 700))
-        val sub = ui.text("Beğendiğin filmde “Listeme Ekle”ye bas, burada dursun. OK: bu haftanın Top 10'una git.", 19, C.TEXT3, 400)
+        val sub = ui.text("Beğendiğin filmde “Listeme ekle”ye bas, burada dursun. OK: bu haftanın Top 10'una git.", 19, C.TEXT3, 400)
         sub.setLineSpacing(0f, 1.2f)
         sub.maxWidth = ui.u(560)
         col.addView(sub, ui.ll(ui.wrap, ui.wrap, top = 8))
@@ -3121,7 +3121,7 @@ class MainActivity : Activity() {
                     closeMenu(false)
                     prefs.toggleFavorite(app.key)
                     refreshDock(force = true)
-                    Glass.toast(this, "Çıkarıldı · Tüm uygulamalar'dan geri eklenir", long = true)
+                    Glass.toast(this, "Çıkarıldı  ·  “Tüm uygulamalar”dan geri eklenir", long = true)
                 },
                 "Uygulama bilgisi" to {
                     closeMenu()

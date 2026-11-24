@@ -272,7 +272,7 @@ class CinemaNightActivity : Activity() {
             film?.let { keepAway(it.key, PASSED_MS) }
             showNext(first = false)
         }
-        val details = ui.pill("Ayrıntılar", 72, 25)
+        val details = ui.pill("Detaylar", 72, 25)
         details.setOnClickListener { film?.let { DetailActivity.open(this, it) } }
         val duel = ui.pill("Düello", 72, 25)
         duel.setOnClickListener { DuelActivity.open(this, pool) }
@@ -394,7 +394,7 @@ class CinemaNightActivity : Activity() {
                         found.any { it.tags.belowMin(min) } && found.all { it.tags.belowMin(min) || it.tags.troubleOn(tv).isNotEmpty() } ->
                             status("Yalnızca düşük kaliteli kaynak bulundu", Color.parseColor("#FFB020"), pulse = false)
                         found.isNotEmpty() -> status("Bulunan kaynaklar bu TV'de sorun çıkarabilir", Color.parseColor("#FFB020"), pulse = false)
-                        else -> status("Şu an kaynak bulunamadı  ·  İzle'ye basınca yeniden aranır", Color.argb(140, 255, 255, 255), pulse = false)
+                        else -> status("Şu an kaynak bulunamadı  ·  “Bu filmi izle”ye basınca yeniden aranır", Color.argb(140, 255, 255, 255), pulse = false)
                     }
                 }
             }

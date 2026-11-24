@@ -343,7 +343,7 @@ class DetailActivity : Activity() {
         }
         updatePlayBtn()
         if (!film.isSeries && cinemaState.isEmpty()) loadCinemaState()
-        val trailer = ui.pill("▶   Fragmanı İzle", 64, 23, primary = false)
+        val trailer = ui.pill("▶   Fragmanı izle", 64, 23, primary = false)
         trailer.setOnClickListener {
             if (film.trailer.isEmpty()) {
                 Glass.toast(this, "Fragman bulunamadı")
@@ -1078,7 +1078,7 @@ class DetailActivity : Activity() {
             // A series: the list follows it for new-episode notices.
             if (inList()) "✓   Takipte" else "+   Takibe Al"
         } else {
-            if (inList()) "✓   Listemde" else "+   Listeme Ekle"
+            if (inList()) "✓   Listemde" else "+   Listeme ekle"
         }
     }
 
