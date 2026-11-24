@@ -1077,6 +1077,12 @@ class MediaSourcePickerActivity : Activity() {
             override fun positionMs(key: String): Long = store.resumePositionMs(key)
             override fun durationMs(key: String): Long = store.durationMs(key)
             override fun save(key: String, positionMs: Long, durationMs: Long) {
+                // Another source chosen in the player starts at 0 while it loads, and the player may
+                // save that 0: it must not wipe the place just left (a switch resumes from it, TV
+                // 24 Kasım: "kaynak değiştirince bölüm baştan açılıyor"). A real restart from the
+                // beginning saves its true place a few seconds later anyway.
+                if (positionMs < 5_000L && store.resumePositionMs(key) > 60_000L &&
+                    System.currentTimeMillis() - store.updatedAt(key) < 3 * 60_000L) return
                 if (store.save(key, positionMs, durationMs)) finished(key) else store.saveLast(watchKey, key)
             }
             override fun finished(key: String) = finished(key)
