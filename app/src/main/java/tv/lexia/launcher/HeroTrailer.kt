@@ -46,6 +46,9 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
     /** Called when the trailer ends or fails, so the hero can carry on. */
     var onFinished: (() -> Unit)? = null
 
+    /** The trailer's Turkish subtitle lines as they come (empty between lines); shown only on the full screen. */
+    var onCues: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
+
     /** Called with true when the trailer's first frame shows, false when the picture comes back. */
     var onShowing: ((Boolean) -> Unit)? = null
 
@@ -126,10 +129,25 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
             override fun onPlayerError(error: PlaybackException) {
                 if (mine == token) finish(mine)
             }
+
+            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                if (mine == token) onCues?.invoke(cueGroup.cues)
+            }
         })
         val item = MediaItem.Builder().setUri(source.video)
         if (source.hls) item.setMimeType(MimeTypes.APPLICATION_M3U8)
-        val sources = DefaultMediaSourceFactory(YouTubeChunkedDataSource.Factory(source.userAgent))
+        // Its Turkish subtitles (its own, or YouTube's translation) come along, for the full screen.
+        val hints = HashMap<String, SubtitleHint>()
+        source.turkishSubtitles?.let { address ->
+            val uri = android.net.Uri.parse(address)
+            hints[uri.toString()] = SubtitleHint("tr", SubtitleText.VTT)
+            item.setSubtitleConfigurations(listOf(
+                MediaItem.SubtitleConfiguration.Builder(uri).setMimeType(SubtitleText.VTT).setLanguage("tr")
+                    .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT).build()
+            ))
+            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon().setPreferredTextLanguage("tr").build()
+        }
+        val sources = DefaultMediaSourceFactory(SubtitleFixDataSource.Factory(YouTubeChunkedDataSource.Factory(source.userAgent), hints))
         // Without sound only the picture is loaded; with it, YouTube's separate sound track too.
         val picture = sources.createMediaSource(item.build())
         withSound = sound && (source.audio != null || source.hls)
@@ -169,6 +187,7 @@ internal class HeroTrailer(private val activity: Activity, private val stage: Fr
         } else {
             old?.release()
         }
+        onCues?.invoke(emptyList())
         if (view != null) onShowing?.invoke(false)
         view?.let { v ->
             v.animate().cancel()

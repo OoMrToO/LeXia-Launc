@@ -38,7 +38,9 @@ internal class HeroCinema(
      * The trailer playing may have words written into its picture (a subtitled one): then no
      * bands and no slow zoom, which would cut the lines at the bottom.
      */
-    private val wordsInPicture: () -> Boolean = { false }
+    private val wordsInPicture: () -> Boolean = { false },
+    /** Our own subtitles may show: the trailer is not dubbed and has no Turkish words in its picture. */
+    private val captionsAllowed: () -> Boolean = { false }
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val bandH = ui.u(BAND)
@@ -49,6 +51,9 @@ internal class HeroCinema(
     private val shade = View(activity)
     private val logoView = ImageView(activity)
     private val title = ui.text("", 46, C.TEXT, 800)
+    /** The trailer's Turkish lines, only while it has the whole screen: in the bottom band, as in a cinema. */
+    private val subtitles = androidx.media3.ui.SubtitleView(activity)
+    private var captionsOn = false
 
     /** The trailer has the whole screen. */
     var on = false
@@ -90,6 +95,15 @@ internal class HeroCinema(
         val lp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.START)
         lp.setMargins(ui.u(110), 0, 0, bandH + ui.u(44))
         frame.addView(caption, lp)
+        TrailerCaptions.style(subtitles, ui)
+        subtitles.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.uf(34))
+        subtitles.visibility = View.GONE
+        frame.addView(subtitles, ui.fl(ui.match, ui.match))
+    }
+
+    /** The trailer's subtitle lines as they come. */
+    fun cues(list: List<androidx.media3.common.text.Cue>) {
+        subtitles.setCues(if (on && captionsOn) list else null)
     }
 
     /** The trailer's picture came (true) or went (false). */
@@ -154,6 +168,16 @@ internal class HeroCinema(
             stage.animate().cancel()
             stage.animate().scaleX(ZOOM).scaleY(ZOOM).setDuration(20_000).setInterpolator(DecelerateInterpolator()).start()
         }
+        // Our subtitles: inside the bottom band (as in a cinema), or low over a picture with no bands.
+        captionsOn = captionsAllowed()
+        if (captionsOn) {
+            val h = (subtitles.parent as? View)?.height ?: 0
+            if (h > 0) subtitles.setBottomPaddingFraction((if (clear) ui.uf(56) else ui.uf(24)) / h)
+            subtitles.setCues(null)
+            subtitles.alpha = 0f
+            subtitles.visibility = View.VISIBLE
+            subtitles.animate().alpha(1f).setStartDelay(1400).setDuration(600).start()
+        }
         // The name sits above the band, or just above the picture's own subtitle line.
         (caption.layoutParams as? FrameLayout.LayoutParams)?.let {
             it.bottomMargin = if (clear) ui.u(150) else bandH + ui.u(44)
@@ -203,6 +227,14 @@ internal class HeroCinema(
         shade.animate().alpha(0f).setStartDelay(0).setDuration(300).withEndAction { if (!on) shade.visibility = View.GONE }.start()
         caption.animate().cancel()
         caption.animate().alpha(0f).setStartDelay(0).setDuration(300).withEndAction { if (!on) caption.visibility = View.GONE }.start()
+        captionsOn = false
+        subtitles.animate().cancel()
+        subtitles.animate().alpha(0f).setStartDelay(0).setDuration(250).withEndAction {
+            if (!on) {
+                subtitles.setCues(null)
+                subtitles.visibility = View.GONE
+            }
+        }.start()
     }
 
     fun release() = handler.removeCallbacksAndMessages(null)

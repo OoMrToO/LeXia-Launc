@@ -89,12 +89,15 @@ class TrailerActivity : Activity() {
         @Volatile private var pendingStart = 0
 
         /** A film's trailer to show first: Turkish-dubbed, then the film's main one. */
-        fun bestTrailer(p: Pick): String {
+        /** The film's trailer in Turkish first: dubbed, then with Turkish subtitles in its picture, then its own. */
+        fun bestTrailer(p: Pick): String = turkishTrailer(p) ?: p.trailer
+
+        /** The film's Turkish-dubbed trailer, else its Turkish-subtitled one; null when it has neither. */
+        fun turkishTrailer(p: Pick): String? {
             val tr = java.util.Locale("tr", "TR")
-            return p.trailers.firstOrNull { v ->
-                val l = v.label.lowercase(tr)
-                "dubla" in l && "altyaz" !in l && ID.matches(v.key)
-            }?.key ?: p.trailer
+            fun label(v: Video) = v.label.lowercase(tr)
+            return (p.trailers.firstOrNull { v -> "dubla" in label(v) && "altyaz" !in label(v) && ID.matches(v.key) }
+                ?: p.trailers.firstOrNull { v -> "altyaz" in label(v) && ID.matches(v.key) })?.key
         }
 
         /** A marathon of these films' trailers (each film's dubbed one first). */
@@ -501,10 +504,28 @@ class TrailerActivity : Activity() {
     /** The trailer on screen is Turkish-dubbed: then no subtitles. */
     private fun currentTrailerDubbed(): Boolean = trailerLanguage() == "dub"
 
+    /** Films whose trailer was already changed for a Turkish one (or chosen by hand): once is enough. */
+    private val switchedFor = HashSet<String>()
+
     private fun playNative(source: TrailerSource, startSec: Int) {
         // Now the video itself is known: its badge says what it really is.
         val before = trailerLanguage()
         shownSource = source
+        // An original trailer with no subtitles at all: the film's dubbed or Turkish-subtitled one
+        // plays instead, once, with a short word.
+        val f = film()
+        val lang = trailerLanguage()
+        if (source.turkishSubtitles == null && startSec == 0 && lang != "dub" && lang != "sub" && lang != "tr" &&
+            f != null && switchedFor.add(f.key)) {
+            val alt = turkishTrailer(f)
+            if (alt != null && alt != id) {
+                id = alt
+                shownSource = null
+                Glass.toast(this, "Türkçe fragmana geçildi")
+                startTrailer(0)
+                return
+            }
+        }
         if (trailerLanguage() != before && buttons.findFocus() == null) bindFilm()
         web?.let {
             it.evaluateJavascript("try{if(player)player.stopVideo();}catch(x){}", null)
@@ -519,13 +540,7 @@ class TrailerActivity : Activity() {
             v.isFocusable = false
             v.descendantFocusability = FrameLayout.FOCUS_BLOCK_DESCENDANTS
             v.subtitleView?.apply {
-                setApplyEmbeddedFontSizes(false)
-                setStyle(
-                    CaptionStyleCompat(
-                        Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
-                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, ui.font(600)
-                    )
-                )
+                TrailerCaptions.style(this, ui)
                 setBottomPaddingFraction(subtitleLift)
             }
             // Under the black shield and the controls, where the web view sits too.
@@ -1655,6 +1670,8 @@ class TrailerActivity : Activity() {
             if (v.key == id) return@list
             removeEnd()
             leaveButtons()
+            // Chosen by hand: this film's trailer is not changed for a Turkish one any more.
+            switchedFor.add(p.key)
             id = v.key
             shownSource = null
             playing = false

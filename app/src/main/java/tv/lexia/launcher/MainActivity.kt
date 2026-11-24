@@ -392,6 +392,7 @@ class MainActivity : Activity() {
                 if (::heroStage.isInitialized) heroStage.trailerShowing(on)
                 trailerLight(on)
             }
+            t.onCues = { if (::heroStage.isInitialized) heroStage.cues(it) }
         }
 
         // Dip to black between films, like a cut in the cinema.
@@ -464,7 +465,8 @@ class MainActivity : Activity() {
                 val key = if (::heroTrailer.isInitialized) heroTrailer.where()?.first else null
                 val label = picks.getOrNull(pickIndex)?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
                 !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
-            }
+            },
+            captionsAllowed = { heroCaptionsAllowed(heroTrailer.where()?.first, picks.getOrNull(pickIndex)) }
         )
 
         root = ui.vbox()
@@ -4491,6 +4493,12 @@ class MainActivity : Activity() {
      * While the trailer plays the shades over the picture lighten, so it shows in full colour:
      * only the side and the bottom behind the text stay (lighter), the vignette and the top go.
      */
+    /** Our subtitles on the full-screen trailer: not on a dubbed one, nor one with Turkish words in its picture. */
+    private fun heroCaptionsAllowed(key: String?, p: Pick?): Boolean {
+        val label = p?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+        return "dubla" !in label && "altyaz" !in label && "türkçe" !in label
+    }
+
     private fun trailerLight(on: Boolean) {
         if (scrims.size < 4) return
         val (vignette, left, bottom, top) = scrims

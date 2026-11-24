@@ -349,6 +349,7 @@ class CinemaNightActivity : Activity() {
                 if (::cinema.isInitialized) cinema.trailerShowing(on)
                 trailerLight(on)
             }
+            t.onCues = { if (::cinema.isInitialized) cinema.cues(it) }
         }
         // HeroCinema's four shades: this page has only the side and the bottom ones.
         val none1 = View(this)
@@ -362,6 +363,11 @@ class CinemaNightActivity : Activity() {
                 val key = trailer.where()?.first
                 val label = film?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
                 !("dubla" in label || "orijinal" in label || "original" in label) || "altyaz" in label
+            },
+            captionsAllowed = {
+                val key = trailer.where()?.first
+                val label = film?.trailers?.firstOrNull { it.key == key }?.label?.lowercase(tr).orEmpty()
+                "dubla" !in label && "altyaz" !in label && "türkçe" !in label
             }
         )
     }
