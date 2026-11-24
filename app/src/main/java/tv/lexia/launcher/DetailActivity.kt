@@ -1259,8 +1259,9 @@ class DetailActivity : Activity() {
     private fun stylePlay(focused: Boolean) {
         val cinema = cinemaState.isNotEmpty() && MediaPlaybackStore(this).last(film.key).isBlank()
         if (!cinema) {
-            playBtn.background = ui.round(if (focused) Color.WHITE else Color.parseColor("#E6FFFFFF"), 32)
-            playBtn.setTextColor(C.INK)
+            playBtn.background = if (focused) ui.round(Color.WHITE, 32)
+            else ui.round(Color.argb(64, 255, 255, 255), 32, 2, Color.argb(150, 255, 255, 255))
+            playBtn.setTextColor(if (focused) C.INK else C.TEXT)
             return
         }
         val colors = if (cinemaState == "now") intArrayOf(Color.parseColor("#FF9A3C"), Color.parseColor("#E8364F"))

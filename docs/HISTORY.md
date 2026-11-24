@@ -366,3 +366,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Fragman: "Filmi izle" ve bitiş kartındaki ana düğme seçili değilken yalnızca film rengiyle tonlu; beyaz zemin yalnızca seçili düğmede (TV: hangi düğmede olduğu görünmüyordu) (24 Kasım).
 - Fragman ve film oynatıcısı alt kısmı premium: iki kat (fragmanda ▲ ile hikâye+düğmeler aşağıdan, filmde ▲ ile seçenekler yukarıdan), simgeli cam düğmeler (seçilen beyaz, adını gösterir), ince çubuk, tutamak yalnızca sararken, ipucu satırı yerine "︿" (24 Kasım).
 - Tam ekran fragman (HeroCinema): ad yerine küçük film logosu (sayfada yoksa indirilir), daha aşağıda (24 Kasım).
+- Ana düğmeler (primary pill, film sayfası Oynat): seçili değilken parlak cam + beyaz çerçeve, beyaz zemin yalnızca seçilende (TV: ana ekranda hangi düğmede olduğu görünmüyordu) (24 Kasım).
