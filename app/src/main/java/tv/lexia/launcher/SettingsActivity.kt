@@ -667,6 +667,7 @@ class SettingsActivity : Activity() {
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
+            sub("Renkli tuşlar", "Kumandadaki kırmızı, yeşil, sarı ve mavi tuş ana ekranda ne açsın.", { colorKeysPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
                 value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else if (Sleep.afterPlayback) "Film bitince uyku" else "" }),
 
@@ -1238,6 +1239,21 @@ class SettingsActivity : Activity() {
             )
         }
         items
+    }
+
+    private fun colorKeysPage() = Page(
+        "Renkli tuşlar", R.drawable.ic_tv,
+        keys = listOf("keyRed", "keyGreen", "keyYellow", "keyBlue")
+    ) {
+        val actions = listOf("night", "bell", "history", "explore", "search", "apps", "calendar", "none")
+        val names = listOf("Sinema Gecesi", "Bildirimler", "İzlediklerim", "Keşfet", "Arama", "Uygulamalar", "Takvim", "Hiçbiri")
+        listOf(
+            Note("Ana ekranda kumandanın renkli tuşlarına basınca seçtiğin yer hemen açılır."),
+            choice("Kırmızı tuş", "", actions, names, { prefs.colorKey("red") }, { prefs.setColorKey("red", it) }),
+            choice("Yeşil tuş", "", actions, names, { prefs.colorKey("green") }, { prefs.setColorKey("green", it) }),
+            choice("Sarı tuş", "", actions, names, { prefs.colorKey("yellow") }, { prefs.setColorKey("yellow", it) }),
+            choice("Mavi tuş", "", actions, names, { prefs.colorKey("blue") }, { prefs.setColorKey("blue", it) })
+        )
     }
 
     private fun sleepPage() = Page(

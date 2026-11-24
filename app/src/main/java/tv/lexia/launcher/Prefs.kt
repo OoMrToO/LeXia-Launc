@@ -99,6 +99,24 @@ class Prefs(ctx: Context) {
     /** Seconds between films in the screensaver. */
     var saverSec: Int get() = int("saverSec", 20); set(v) = putInt("saverSec", v)
 
+    /**
+     * The remote's coloured keys on the home screen: "night" (Sinema Gecesi), "bell", "history",
+     * "explore", "search", "apps", "calendar" or "none".
+     */
+    fun colorKey(color: String): String = when (color) {
+        "red" -> str("keyRed").ifEmpty { "night" }
+        "green" -> str("keyGreen").ifEmpty { "bell" }
+        "yellow" -> str("keyYellow").ifEmpty { "history" }
+        else -> str("keyBlue").ifEmpty { "explore" }
+    }
+
+    fun setColorKey(color: String, action: String) = when (color) {
+        "red" -> putStr("keyRed", action)
+        "green" -> putStr("keyGreen", action)
+        "yellow" -> putStr("keyYellow", action)
+        else -> putStr("keyBlue", action)
+    }
+
     /** Screensaver look: "trailers" (silent trailer marathon, half an hour, then pictures) or "stills" (pictures). */
     var saverStyle: String get() = str("saverStyle").ifEmpty { "trailers" }; set(v) = putStr("saverStyle", v)
     /** Nightly sleep time as minutes after midnight; -1 = off. */

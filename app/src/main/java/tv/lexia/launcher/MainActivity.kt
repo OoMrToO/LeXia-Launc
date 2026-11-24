@@ -2840,6 +2840,33 @@ class MainActivity : Activity() {
         return col
     }
 
+    private fun colorAction(code: Int): String? {
+        val color = when (code) {
+            KeyEvent.KEYCODE_PROG_RED -> "red"
+            KeyEvent.KEYCODE_PROG_GREEN -> "green"
+            KeyEvent.KEYCODE_PROG_YELLOW -> "yellow"
+            KeyEvent.KEYCODE_PROG_BLUE -> "blue"
+            else -> return null
+        }
+        return prefs.colorKey(color).takeIf { it != "none" }
+    }
+
+    private fun runColorAction(act: String) {
+        when (act) {
+            "night" -> askWhatToWatch()
+            "bell" -> openNotices()
+            "history" -> openHistory()
+            "explore" -> openExplore()
+            "search" -> openSearch()
+            "apps" -> if (appsSide()) openSideApps(currentFocus) else openAllApps()
+            "calendar" -> {
+                idleOff()
+                startActivity(Intent(this, CalendarActivity::class.java))
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            }
+        }
+    }
+
     private fun openHistory() {
         closeMenu(false)
         idleOff()
@@ -3862,6 +3889,16 @@ class MainActivity : Activity() {
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN) Sleep.onKey()
+        // The remote's coloured keys open what Ayarlar › Renkli tuşlar says.
+        colorAction(event.keyCode)?.let { act ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && updateWall == null) {
+                if (idle) exitIdle()
+                if (::heroStage.isInitialized) heroStage.wake()
+                closeMenu(false)
+                runColorAction(act)
+            }
+            return true
+        }
         // The trailer had the whole screen: the first key brings the home screen back. OK opens
         // the film, Back only wakes; the arrows go on and move as usual.
         if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
@@ -4711,6 +4748,8 @@ class MainActivity : Activity() {
                 logoView.setImageBitmap(logo)
                 logoView.visibility = View.VISIBLE
                 titleView.visibility = View.GONE
+                // A thin light crosses the film's logo as it comes.
+                logoView.postDelayed({ Fx.shine(logoView) }, 500)
             } else {
                 logoView.visibility = View.GONE
                 titleView.visibility = View.VISIBLE

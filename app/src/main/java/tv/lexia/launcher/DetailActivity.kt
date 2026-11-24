@@ -235,6 +235,7 @@ class DetailActivity : Activity() {
                 if (ok) {
                     logo.visibility = View.VISIBLE
                     title.visibility = View.GONE
+                    logo.postDelayed({ Fx.shine(logo) }, 700)
                 }
             }
         }

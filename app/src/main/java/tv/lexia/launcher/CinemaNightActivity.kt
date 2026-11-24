@@ -485,6 +485,7 @@ class CinemaNightActivity : Activity() {
         if (p.logo.isNotEmpty()) Img.load(this, "w500", p.logo, ui.u(760), logo, opaque = false) { ok ->
             if (ok && film?.key == p.key) {
                 logo.visibility = View.VISIBLE
+                logo.postDelayed({ Fx.shine(logo) }, 600)
                 title.visibility = View.GONE
             }
         }
