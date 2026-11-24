@@ -33,6 +33,22 @@ class DetailActivity : Activity() {
         private const val SURPRISE = "surprise"
         private const val WHY = "why"
 
+        /** Keys on pick.json's "Sinemada" and "Yakında" lists; call off the main thread (kept until the file changes). */
+        fun cinemaLists(ctx: android.content.Context): Pair<Set<String>, Set<String>>? {
+            val file = java.io.File(ctx.filesDir, "pick.json")
+            if (cinemaKeysAt != file.lastModified()) cinemaKeys = null
+            return cinemaKeys ?: try {
+                val o = JSONObject(file.readText())
+                fun keys(name: String): Set<String> {
+                    val a = o.optJSONArray(name) ?: return emptySet()
+                    return (0 until a.length()).map { Pick.from(a.getJSONObject(it)).key }.toSet()
+                }
+                (keys("cinema") to keys("soon")).also { cinemaKeys = it; cinemaKeysAt = file.lastModified() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         /** The films of the row the page was opened from, for ◀ ▶ (set by [open]). */
         @Volatile private var siblings: List<Pick> = emptyList()
 
@@ -1211,18 +1227,7 @@ class DetailActivity : Activity() {
     /** Whether the film is on pick.json's "Sinemada" or "Yakında" list (read once, off the main thread). */
     private fun loadCinemaState() {
         Thread {
-            val file = java.io.File(filesDir, "pick.json")
-            if (cinemaKeysAt != file.lastModified()) cinemaKeys = null
-            val lists = cinemaKeys ?: try {
-                val o = JSONObject(file.readText())
-                fun keys(name: String): Set<String> {
-                    val a = o.optJSONArray(name) ?: return emptySet()
-                    return (0 until a.length()).map { Pick.from(a.getJSONObject(it)).key }.toSet()
-                }
-                (keys("cinema") to keys("soon")).also { cinemaKeys = it; cinemaKeysAt = file.lastModified() }
-            } catch (_: Exception) {
-                null
-            } ?: return@Thread
+            val lists = cinemaLists(this) ?: return@Thread
             val state = when (film.key) {
                 in lists.first -> "now"
                 in lists.second -> "soon"

@@ -355,6 +355,13 @@ class TrailerActivity : Activity() {
         prefs = Prefs(this)
         films = pendingFilms
         pendingFilms = emptyList()
+        // Which films are only in cinemas: their "Filmi izle" does not show.
+        Thread {
+            cinemaNow = DetailActivity.cinemaLists(applicationContext)?.first ?: emptySet()
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && ::buttons.isInitialized && buttons.findFocus() == null) bindFilm()
+            }
+        }.start()
         // A film's main trailer asked for: its Turkish-dubbed one first, when it has one.
         films.firstOrNull { it.trailer == id }?.let { id = bestTrailer(it) }
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
@@ -946,8 +953,8 @@ class TrailerActivity : Activity() {
         // Buttons: list (or remind), details, the platform's app.
         buttons.removeAllViews()
         if (p != null) {
-            // The film itself, from the trailer (not before it is out).
-            if (!upcoming(p) && p.id > 0) {
+            // The film itself, from the trailer (not before it is out, nor while it is only in cinemas).
+            if (!upcoming(p) && !inCinemas(p) && p.id > 0) {
                 val watch = ui.pill(if (p.isSeries) "▶   Diziyi izle" else "▶   Filmi izle", 64, 23)
                 styleAccentAction(watch)
                 watch.setOnClickListener { toFilm(p) }
@@ -1271,6 +1278,23 @@ class TrailerActivity : Activity() {
 
     private fun upcoming(p: Pick) = releasePhase(p) == TrailerReleasePhase.UPCOMING
 
+    /** Keys of the films in Turkish cinemas now (pick.json's "Sinemada"), read once off the main thread. */
+    @Volatile private var cinemaNow: Set<String>? = null
+
+    /**
+     * The film is only in cinemas: on the "Sinemada" list, or out in the last two months with no
+     * platform and no digital release yet; and never played here (no source was found for it).
+     */
+    private fun inCinemas(p: Pick): Boolean {
+        if (p.isSeries) return false
+        val store = MediaPlaybackStore(this)
+        if (store.last(p.key).isNotBlank() || store.isAvailable(p.key)) return false
+        if (p.key in (cinemaNow ?: emptySet())) return true
+        val d = p.release.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil) ?: return false
+        val digitalOut = p.digital.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil)?.let { it <= 0 } ?: false
+        return d in -60..0 && p.provider.isEmpty() && p.where.isEmpty() && !digitalOut
+    }
+
     /** "Listeme ekle" (or, before its release, "Çıkınca haber ver"), as a button that switches. */
     private fun listButton(p: Pick, primary: Boolean): TextView {
         val b = ui.pill("", 64, 23, primary = primary)
@@ -1390,7 +1414,7 @@ class TrailerActivity : Activity() {
         row.clipToPadding = false
         if (p != null) {
             // Streaming/source discovery stays inside LeXia; no external platform is shown.
-            if (!upcoming(p) && p.id > 0) {
+            if (!upcoming(p) && !inCinemas(p) && p.id > 0) {
                 val watch = ui.pill("▶   Filmi izle", 68, 24, primary = true)
                 watch.setOnClickListener { toFilm(p) }
                 row.addView(watch)
