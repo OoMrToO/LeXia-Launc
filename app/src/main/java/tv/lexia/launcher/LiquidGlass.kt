@@ -105,11 +105,14 @@ class LiquidGlass(
         canvas.drawPath(path, rimPaint)
     }
 
+    override fun getAlpha() = alphaAll
+
     override fun setAlpha(alpha: Int) {
         alphaAll = alpha
         fillPaint.alpha = Color.alpha(fill) * alpha / 255
         sheenPaint.alpha = alpha
         rimPaint.alpha = alpha
+        shade()
         invalidateSelf()
     }
 

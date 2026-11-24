@@ -343,6 +343,9 @@ class MainActivity : Activity() {
     private lateinit var heroTrailer: HeroTrailer
     private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
+    /** The top bar's capsule of glass behind the buttons, shown while they are open. */
+    private var barGlass: LiquidGlass? = null
+    private var barGlassAnim: ValueAnimator? = null
     /** The side panel's glass, whose light glides as the remote moves over the apps. */
     private var sideGlass: LiquidGlass? = null
     /** The screensaver's trailer marathon: trailers play until this time, then the pictures come back. */
@@ -745,7 +748,7 @@ class MainActivity : Activity() {
 
         // "Ne izlesem?": a die among the buttons.
         val ask = ui.iconButton(R.drawable.ic_dice, 60)
-        (ask.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(30)
+        (ask.layoutParams as LinearLayout.LayoutParams).leftMargin = 0
         ask.setOnClickListener { askWhatToWatch() }
         ask.contentDescription = "Ne izlesem?"
         tools.addView(ask)
@@ -786,10 +789,23 @@ class MainActivity : Activity() {
         g.setOnClickListener { openPanel() }
         tools.addView(g)
         gear = g
-        bar.addView(tools)
+        // The buttons sit in a capsule of Liquid Glass that appears with them (tvOS 26's top bar);
+        // its rim light glides as the remote moves along.
+        val capsule = ui.glass(Color.argb(46, 255, 255, 255), 44, 2)
+        capsule.alpha = 0
+        barGlass = capsule
+        tools.background = capsule
+        tools.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
+        tools.clipChildren = false
+        tools.clipToPadding = false
+        bar.addView(tools, ui.ll(ui.wrap, ui.wrap, left = 26))
         // At rest the buttons are closed: once measured, the clock moves over to the right edge.
         tools.post { setBarOpen(false, animate = false) }
-        bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now -> setBarOpen(now != null && isInBar(now)) }
+        bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now ->
+            val inBar = now != null && isInBar(now)
+            if (inBar && barOpen) barGlass?.sweep(Fx.lastDir)
+            setBarOpen(inBar)
+        }
         return bar
     }
 
@@ -829,6 +845,15 @@ class MainActivity : Activity() {
     private fun setBarOpen(open: Boolean, animate: Boolean = true) {
         if (!::barTools.isInitialized || (open == barOpen && animate)) return
         barOpen = open
+        barGlass?.let { glass ->
+            barGlassAnim?.cancel()
+            if (!animate || Fx.lite) glass.alpha = if (open) 255 else 0
+            else barGlassAnim = ValueAnimator.ofInt(glass.alpha, if (open) 255 else 0).apply {
+                duration = if (open) 320L else 260L
+                addUpdateListener { glass.alpha = it.animatedValue as Int }
+                start()
+            }
+        }
         val w = barTools.width.toFloat()
         val ease = DecelerateInterpolator(2f)
         barCluster.animate().cancel()
