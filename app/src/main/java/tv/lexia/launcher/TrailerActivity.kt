@@ -227,6 +227,10 @@ class TrailerActivity : Activity() {
     private lateinit var hint: TextView
     /** Big play sign in a glass circle while paused. */
     private lateinit var center: TextView
+    /** Paused: the film's logo (or name) alone in the middle, no controls (as on the home screen). */
+    private lateinit var pauseBox: LinearLayout
+    private lateinit var pauseLogo: ImageView
+    private lateinit var pauseTitle: TextView
     /** "+30 sn" while skipping with the arrows held. */
     private lateinit var bubble: TextView
     /** Seek target shown in the player HUD; real frame thumbnails need source-side indexes. */
@@ -320,13 +324,15 @@ class TrailerActivity : Activity() {
      * longer while (TV photo, 24 Kasım: the panel stayed up), and the first key brings them back.
      */
     private val hideInfo = Runnable {
-        if (paused || endCard != null || castPanel != null) return@Runnable
+        if (endCard != null || castPanel != null || (paused && onButtons)) return@Runnable
         if (onButtons) {
             onButtons = false
             currentFocus?.clearFocus()
             setButtonsFocusable(false)
         }
         info.animate().alpha(0f).setDuration(D.MED).start()
+        // Paused: the controls give the middle back to the film's logo.
+        if (paused) showPauseLogo()
     }
     /** While the controls are on screen, the time and bar follow the trailer twice a second. */
     private val tick = object : Runnable {
@@ -385,6 +391,27 @@ class TrailerActivity : Activity() {
         val clp = ui.fl(ui.u(150), ui.u(150), Gravity.CENTER)
         clp.bottomMargin = ui.u(130)
         frame.addView(center, clp)
+
+        pauseBox = ui.vbox()
+        pauseBox.gravity = Gravity.CENTER_HORIZONTAL
+        pauseLogo = ImageView(this)
+        pauseLogo.adjustViewBounds = true
+        pauseLogo.maxWidth = ui.u(900)
+        pauseLogo.maxHeight = ui.u(330)
+        pauseLogo.scaleType = ImageView.ScaleType.FIT_CENTER
+        pauseBox.addView(pauseLogo, ui.ll(ui.wrap, ui.wrap))
+        pauseTitle = ui.text("", 72, C.TEXT, 800)
+        pauseTitle.gravity = Gravity.CENTER
+        pauseTitle.maxWidth = ui.u(1300)
+        pauseTitle.maxLines = 2
+        pauseTitle.setShadowLayer(ui.uf(30), 0f, ui.uf(4), Color.argb(150, 0, 0, 0))
+        pauseBox.addView(pauseTitle, ui.ll(ui.wrap, ui.wrap))
+        val pauseHint = ui.text("OK: devam et   ·   ▲ seçenekler", 20, C.TEXT2, 600)
+        pauseHint.letterSpacing = 0.04f
+        pauseBox.addView(pauseHint, ui.ll(ui.wrap, ui.wrap, top = 34))
+        pauseBox.alpha = 0f
+        pauseBox.visibility = View.GONE
+        frame.addView(pauseBox, ui.fl(ui.wrap, ui.wrap, Gravity.CENTER))
 
         bubble = ui.text("", 30, C.INK, 800)
         bubble.gravity = Gravity.CENTER
@@ -1023,6 +1050,7 @@ class TrailerActivity : Activity() {
             // closed LeXia on the TV during marathons. The next one loads when its turn comes.
         }
         center.animate().alpha(0f).scaleX(1.25f).scaleY(1.25f).setDuration(D.MED).start()
+        hidePauseLogo()
         status.animate().alpha(0f).setDuration(D.MED).start()
         // A moment after it starts: YouTube shows its title over the first frames.
         handler.postDelayed({ if (playing && !paused && endCard == null) shieldTo(0f) }, 600)
@@ -1033,11 +1061,45 @@ class TrailerActivity : Activity() {
     private fun onPaused() {
         paused = true
         guide.hide(quick = true)
-        center.scaleX = 0.8f
-        center.scaleY = 0.8f
-        center.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(D.MED).start()
+        center.animate().cancel()
+        center.alpha = 0f
         shieldTo(0.6f)
-        showInfo()
+        if (onButtons) {
+            showInfo()
+            return
+        }
+        handler.removeCallbacks(hideInfo)
+        info.animate().cancel()
+        info.animate().alpha(0f).setDuration(D.MED).start()
+        showPauseLogo()
+    }
+
+    /** The film's logo in the middle while paused; the controls come back with ▲ or the arrows. */
+    private fun showPauseLogo() {
+        if (!paused || endCard != null) return
+        val logo = infoLogo.drawable?.takeIf { infoLogo.visibility == View.VISIBLE }
+        pauseLogo.setImageDrawable(logo)
+        pauseLogo.visibility = if (logo != null) View.VISIBLE else View.GONE
+        pauseTitle.text = film()?.title ?: currentTitle
+        pauseTitle.visibility = if (logo == null && pauseTitle.text.isNotBlank()) View.VISIBLE else View.GONE
+        if (pauseBox.visibility == View.VISIBLE && pauseBox.alpha >= 1f) return
+        pauseBox.animate().cancel()
+        pauseBox.visibility = View.VISIBLE
+        if (Fx.lite) {
+            pauseBox.alpha = 1f
+            return
+        }
+        pauseBox.alpha = 0f
+        pauseBox.scaleX = 0.96f
+        pauseBox.scaleY = 0.96f
+        pauseBox.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(600)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
+    }
+
+    private fun hidePauseLogo() {
+        if (pauseBox.visibility != View.VISIBLE) return
+        pauseBox.animate().cancel()
+        pauseBox.animate().alpha(0f).setDuration(D.FAST).withEndAction { pauseBox.visibility = View.GONE }.start()
     }
 
     /** Shows the controls; they fade after four seconds while the trailer plays. */
@@ -1045,6 +1107,7 @@ class TrailerActivity : Activity() {
         handler.removeCallbacks(hideInfo)
         info.animate().cancel()
         info.alpha = 1f
+        hidePauseLogo()
         readTime()
         placeSubtitles()
         handler.postDelayed(hideInfo, if (onButtons) 8000L else 4000L)

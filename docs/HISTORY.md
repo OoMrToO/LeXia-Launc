@@ -361,3 +361,4 @@ Son güncelleme: 23 Kasım 2026 (#81: sinema akıcılığı, jenerik sahnesi not
 - Fragman sayfası: düğmelerde kalınca da panel 8 sn sonra iner; ilk tuş geri getirir (24 Kasım).
 - Nuvio adı ekrandan kalktı: ayarlar/kaynak sayfası/eklentiler yazıları, Nuvio kaynak dosyalarındaki adlar lexia_names.xml ile örtüldü (24 Kasım).
 - Fragman altyazısı: sıra dublaj > Türkçe altyazılı > orijinal; altyazısız orijinalde Türkçe fragmana bir kez geçer; tam ekran fragmanda (HeroCinema) Türkçe altyazı alt bantta; altyazı biraz küçük ve yumuşak gölgeli (TrailerCaptions) (24 Kasım).
+- Duraklatınca ortada yalnızca filmin logosu (fragman sayfası hemen, film oynatıcısı 5 sn sonra); açıklama, düğmeler, süreler gizli; ▲/oklar kontrolleri getirir (24 Kasım).

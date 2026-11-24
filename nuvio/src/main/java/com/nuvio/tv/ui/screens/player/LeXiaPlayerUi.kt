@@ -817,8 +817,9 @@ internal fun LeXiaSeekOverlay(viewModel: PlayerViewModel, chapters: List<PlayerC
 }
 
 /**
- * Paused for a while: centered film title, metadata dots, description, glass play button.
- * Big time bottom-left, remaining bottom-right, thin accent mini-bar at the very bottom.
+ * Paused: the film's logo (its name when it has none) alone in the middle of the darkened picture,
+ * as on the home screen; for a series, which episode under it. No story, no controls, no times:
+ * the remote brings the controls back.
  */
 @Composable
 internal fun LeXiaPauseOverlay(
@@ -827,107 +828,60 @@ internal fun LeXiaPauseOverlay(
     viewModel: PlayerViewModel,
     modifier: Modifier = Modifier
 ) {
-    val accent = remember { lexiaAccent() }
-    AnimatedVisibility(visible, enter = fadeIn(tween(450)), exit = fadeOut(tween(220)), modifier = modifier) {
-        val timeline by viewModel.playbackTimeline.collectAsState()
-        val progress = if (timeline.duration > 0) (timeline.currentPosition.toFloat() / timeline.duration).coerceIn(0f, 1f) else 0f
+    AnimatedVisibility(visible, enter = fadeIn(tween(600)), exit = fadeOut(tween(220)), modifier = modifier) {
         Box(Modifier.fillMaxSize()) {
-            // Blurred dark backdrop
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.65f)))
-
-            // Centered content
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)))
             Column(
                 Modifier
                     .align(Alignment.Center)
-                    .widthIn(max = 600.dp)
-                    .padding(horizontal = 36.dp),
+                    .padding(horizontal = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 val series = uiState.currentSeason != null && uiState.currentEpisode != null
                 val filmTitle = if (series) uiState.contentName ?: uiState.title else uiState.title
-
-                // Film title (large, light weight)
-                Text(
-                    filmTitle,
-                    style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.6.sp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-
-                // Metadata row with dots
-                val metaItems = buildList {
-                    uiState.releaseYear?.takeIf { it.isNotBlank() }?.let { add(it) }
-                    if (timeline.duration > 0) add(lexiaSpan(timeline.duration))
-                    if (series) {
-                        add("${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm")
-                        uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { add(it) }
-                    }
-                }
-                if (metaItems.isNotEmpty()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        metaItems.forEachIndexed { i, item ->
-                            if (i > 0) Box(Modifier.size(3.dp).background(Dim2, CircleShape))
-                            Text(item, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, color = Dim))
-                        }
-                    }
-                }
-
-                // Description
-                (LeXiaCinema.description.takeIf { it.isNotBlank() && LeXiaCinema.descriptionOf == (if (series) "${uiState.currentSeason}:${uiState.currentEpisode}" else "") } ?: uiState.description)?.takeIf { it.isNotBlank() }?.let {
+                PauseLogo(uiState.logo, filmTitle)
+                if (series) {
                     Text(
-                        it,
-                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Light, lineHeight = 21.sp, color = Color.White.copy(alpha = 0.45f)),
-                        maxLines = 3,
+                        "${uiState.currentSeason}. Sezon ${uiState.currentEpisode}. Bölüm" +
+                            (uiState.currentEpisodeTitle?.takeIf { it.isNotBlank() }?.let { "  ·  $it" } ?: ""),
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Dim),
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 480.dp)
+                        textAlign = TextAlign.Center
                     )
                 }
-
-                // Glass play button
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .border(1.5.dp, Color.White.copy(alpha = 0.20f), CircleShape)
-                ) {
-                    Icon(Icons.Default.PlayArrow, "Devam et", tint = Color.White, modifier = Modifier.size(28.dp))
-                }
-            }
-
-            // Bottom: big time left, remaining right
-            if (!uiState.isLive && timeline.duration > 0) {
-                val left = (timeline.duration - timeline.currentPosition).coerceAtLeast(0)
-                // Big time bottom-left
                 Text(
-                    formatTime(timeline.currentPosition),
-                    style = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.ExtraLight, color = Color.White.copy(alpha = 0.85f)),
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 24.dp)
+                    "OK: devam et",
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Dim2, letterSpacing = 0.6.sp),
+                    modifier = Modifier.padding(top = 10.dp)
                 )
-                // Remaining + end time bottom-right
-                Column(
-                    Modifier.align(Alignment.BottomEnd).padding(end = 36.dp, bottom = 24.dp),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("${lexiaSpan(left)} kaldı", style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Light, color = Dim))
-                    Text("bitiş ${endTimeText(left, uiState.playbackSpeed)}", style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Light, color = Dim2))
-                }
-            }
-
-            // Thin accent mini-bar at the very bottom
-            if (timeline.duration > 0) {
-                MiniBar(progress, accent, Modifier.align(Alignment.BottomCenter))
             }
         }
+    }
+}
+
+/** The pause screen's logo: large and centred; the name in large light letters when there is no logo. */
+@Composable
+private fun PauseLogo(logo: String?, title: String) {
+    var failed by remember(logo) { mutableStateOf(logo.isNullOrBlank()) }
+    if (!failed) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(logo).memoryCacheKey(logo).crossfade(true).build(),
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.Center,
+            modifier = Modifier.height(150.dp).widthIn(max = 560.dp),
+            onError = { failed = true }
+        )
+    } else {
+        Text(
+            title,
+            style = TextStyle(fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = 0.6.sp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
