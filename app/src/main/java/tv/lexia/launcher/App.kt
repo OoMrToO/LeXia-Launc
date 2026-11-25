@@ -26,6 +26,7 @@ class App : Application() {
         Guard.started(this)
         com.nuvio.tv.LeXiaImages.install(this)
         Net.diskCache = File(cacheDir, "img")
+        StreailerTrailers.init(this)
         // Off the main thread: a crash from last time, and the setup build's "I was opened".
         Thread {
             Remote.sendCrash(this)

@@ -63,6 +63,8 @@ class Pick(
      * (not a subtitled one that only says "Türkçe"), otherwise the main trailer.
      */
     val homeTrailer: String get() {
+        // A Turkish-dubbed trailer the trailer add-on (Streailer) already found; nothing is asked here.
+        StreailerTrailers.cached(this)?.takeIf { it.language == "dub" }?.let { return it.key }
         val tr = java.util.Locale("tr", "TR")
         return trailers.firstOrNull { v ->
             val l = v.label.lowercase(tr)

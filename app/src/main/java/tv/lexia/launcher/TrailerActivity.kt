@@ -88,9 +88,12 @@ class TrailerActivity : Activity() {
         /** The second the next trailer page starts at (a preview carried on); read once. */
         @Volatile private var pendingStart = 0
 
-        /** A film's trailer to show first: Turkish-dubbed, then the film's main one. */
-        /** The film's trailer in Turkish first: dubbed, then with Turkish subtitles in its picture, then its own. */
-        fun bestTrailer(p: Pick): String = turkishTrailer(p) ?: p.trailer
+        /**
+         * The film's trailer to show first, Turkish first: the trailer add-on's (Streailer) dubbed
+         * one, the film list's dubbed one, the add-on's other Turkish one, the list's subtitled
+         * one, then the film's own ([StreailerTrailers.choose]). Only what is already known: instant.
+         */
+        fun bestTrailer(p: Pick): String = StreailerTrailers.choose(p, StreailerTrailers.cached(p))
 
         /** The film's Turkish-dubbed trailer, else its Turkish-subtitled one; null when it has neither. */
         fun turkishTrailer(p: Pick): String? {
@@ -497,16 +500,37 @@ class TrailerActivity : Activity() {
             playInWeb(startSec)
             return
         }
-        val wanted = id
+        var wanted = id
         val mine = ++findGeneration
         pendingStart = startSec
-        handler.postDelayed(nativeTooSlow, 8_000)
+        // The film's trailer chosen by LeXia (not by hand, not carried on from a preview): the
+        // trailer add-on is asked first, for a few seconds at most, unless it already answered.
+        val f = film()
+        val askAddon = startSec == 0 && f != null && f.key !in switchedFor && id == bestTrailer(f) &&
+            !StreailerTrailers.known(f)
+        handler.postDelayed(nativeTooSlow, if (askAddon) 8_000 + StreailerTrailers.WAIT_MS else 8_000)
         finder.execute {
+            if (askAddon && f != null) {
+                val better = StreailerTrailers.choose(f, StreailerTrailers.lookup(f), addonBad)
+                if (better != wanted && ID.matches(better)) {
+                    val was = wanted
+                    wanted = better
+                    runOnUiThread {
+                        if (mine == findGeneration && !done && id == was) {
+                            id = better
+                            shownSource = null
+                            if (buttons.findFocus() == null) bindFilm()
+                        }
+                    }
+                }
+            }
             val source = YouTubeStreams.find(wanted, maxHeight, TrailerDecoders::canDecode, hdr)
             runOnUiThread {
                 if (mine != findGeneration || done || isFinishing || wanted != id) return@runOnUiThread
                 handler.removeCallbacks(nativeTooSlow)
                 if (source == null) {
+                    // The add-on's trailer has no streams here: the film's own one, still in LeXia's player.
+                    if (leaveAddonTrailer(film())) return@runOnUiThread
                     nativeFailed()
                     playInWeb(startSec)
                 } else {
@@ -519,6 +543,8 @@ class TrailerActivity : Activity() {
     /** LeXia's own player could not play this trailer: the embedded one carries on from the same place. */
     private fun giveUpOnNative() {
         val at = ((exo?.currentPosition ?: 0L) / 1000L).toInt()
+        // The add-on's trailer failed before it really played: the film's own trailer instead.
+        if (!nativeStarted && leaveAddonTrailer(film())) return
         YouTubeStreams.forget(id)
         nativeFailed()
         playInWeb(if (nativeStarted) at else pendingStart)
@@ -540,7 +566,9 @@ class TrailerActivity : Activity() {
         val title = source?.title?.lowercase(tr).orEmpty()
         if ("dubla" in title) return "dub"
         if ("altyaz" in title || "subtitle" in title) return "sub"
-        val label = film()?.trailers?.firstOrNull { it.key == id }?.label?.lowercase(tr) ?: return ""
+        val f = film()
+        val label = f?.trailers?.firstOrNull { it.key == id }?.label?.lowercase(tr)
+            ?: return f?.let { StreailerTrailers.cached(it) }?.takeIf { it.key == id }?.language ?: ""
         return when {
             "altyaz" in label || "subtitled" in label -> "sub"
             "dubla" in label -> "dub"
@@ -1434,7 +1462,35 @@ class TrailerActivity : Activity() {
     // ---------- Film actions ----------
 
     /** The film of the trailer on screen, when it is known. */
-    private fun film(): Pick? = films.firstOrNull { it.trailer == id || it.trailers.any { v -> v.key == id } }
+    private fun film(): Pick? = films.firstOrNull {
+        it.trailer == id || it.trailers.any { v -> v.key == id } || StreailerTrailers.cached(it)?.key == id
+    }
+
+    /** The trailer on screen came from the trailer add-on (Streailer), not from the film list. */
+    private fun fromAddon(p: Pick?): Boolean =
+        p != null && p.trailers.none { it.key == id } && p.trailer != id && StreailerTrailers.cached(p)?.key == id
+
+    /** Trailer keys of the add-on that would not play here: the film's own trailer plays instead. */
+    private val addonBad = HashSet<String>()
+
+    /**
+     * The add-on's trailer [p] could not play: forgotten, and the film's own trailer starts in
+     * LeXia's player. False when there is nothing else to try (the usual fallback carries on).
+     */
+    private fun leaveAddonTrailer(p: Pick?): Boolean {
+        if (p == null || !fromAddon(p) || done) return false
+        addonBad.add(id)
+        StreailerTrailers.markBad(p, id)
+        val next = StreailerTrailers.choose(p, null, addonBad)
+        if (next == id || !ID.matches(next)) return false
+        id = next
+        shownSource = null
+        playing = false
+        startTrailer(0)
+        handler.removeCallbacks(giveUp)
+        handler.postDelayed(giveUp, 15000)
+        return true
+    }
 
     private fun releasePhase(p: Pick): TrailerReleasePhase =
         trailerReleasePhase(p.release.takeIf { it.isNotEmpty() }?.let(Episodes::daysUntil))
@@ -1782,6 +1838,8 @@ class TrailerActivity : Activity() {
     /** Could not be played here: the YouTube app, once, then this screen closes. */
     private fun fallBack() {
         if (done) return
+        // Before leaving for the YouTube app: the film's own trailer, when the add-on's would not play.
+        if (leaveAddonTrailer(film())) return
         done = true
         youtube(this, id)
         finish()
