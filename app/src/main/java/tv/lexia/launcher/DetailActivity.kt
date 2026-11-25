@@ -125,6 +125,8 @@ class DetailActivity : Activity() {
             finish()
             return
         }
+        // "Fragmanı İzle" opens at once with the trailer add-on's Turkish trailer, asked now in the background.
+        StreailerTrailers.prefetch(film)
         val m = ui.match
         val w = ui.wrap
         val screenW = resources.displayMetrics.widthPixels

@@ -4654,6 +4654,9 @@ class MainActivity : Activity() {
     private fun queueHeroTrailer() {
         handler.removeCallbacks(trailerDelay)
         if (prefs.heroTrailer && !Fx.lite) handler.postDelayed(trailerDelay, HERO_TRAILER_DELAY_MS)
+        // The film's Turkish trailer from the trailer add-on, asked quietly while the picture shows:
+        // a dubbed one is ready for this trailer or the next, never waited for.
+        picks.getOrNull(pickIndex)?.let { StreailerTrailers.prefetch(it) }
     }
 
     private fun stopHeroTrailer() {
