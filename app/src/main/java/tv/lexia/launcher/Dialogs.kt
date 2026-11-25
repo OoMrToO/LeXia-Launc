@@ -235,7 +235,9 @@ object Dialogs {
         card.isClickable = true
         card.clipChildren = false
         card.clipToPadding = false
-        card.background = ui.round(Color.parseColor("#FA1C1C21"), D.PANEL, 1, Color.argb(30, 255, 255, 255))
+        // Liquid Glass: the light on its rim glides as the remote moves.
+        val glass = ui.glass(Color.parseColor("#F21C1C21"), D.PANEL, 2)
+        card.background = glass
         card.elevation = ui.uf(40)
         card.setPadding(ui.u(50), ui.u(56), ui.u(50), ui.u(46))
         val head = ui.hbox()
@@ -258,7 +260,10 @@ object Dialogs {
         d.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
         // The navigation tick, like everywhere else.
         val sound = Prefs(a).navSound
-        root.viewTreeObserver.addOnGlobalFocusChangeListener { old, new -> if (sound && old != null && new != null) Sound.play() }
+        root.viewTreeObserver.addOnGlobalFocusChangeListener { old, new ->
+            if (sound && old != null && new != null) Sound.play()
+            if (old != null && new != null) glass.sweep(Fx.lastDir)
+        }
         return Triple(d, ui, card)
     }
 

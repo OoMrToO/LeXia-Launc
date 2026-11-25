@@ -338,6 +338,13 @@ object LeXiaNuvio {
                 // Films move as in the cinema: the TV switches to the film's frame rate (24 Hz) and back after.
                 settings.setFrameRateMatchingMode(com.nuvio.tv.data.local.FrameRateMatchingMode.START_STOP)
             }
+            if (done < 5) {
+                // "Sonraki bölüm" when the credits begin, not in the last seconds: Nuvio waits for 99 %
+                // (34 s before the end of a 56-minute episode), and with no credits data that is
+                // after the credits. 97 %: about a minute and a half before the end of an hour.
+                settings.setNextEpisodeThresholdMode(com.nuvio.tv.data.local.NextEpisodeThresholdMode.PERCENTAGE)
+                settings.setNextEpisodeThresholdPercent(97f)
+            }
             if (done >= 1) return@runBlocking
             settings.setPreloadNextEpisodeSources(true)
             settings.setStreamAutoPlayNextEpisodeEnabled(true)
@@ -350,7 +357,7 @@ object LeXiaNuvio {
         marks.edit().putInt("player_defaults", PLAYER_DEFAULTS).apply()
     }
 
-    private const val PLAYER_DEFAULTS = 4
+    private const val PLAYER_DEFAULTS = 5
 
     /**
      * LeXia's own language choices (Ayarlar › Oynatma ve Takip) for Nuvio's player: the audio and

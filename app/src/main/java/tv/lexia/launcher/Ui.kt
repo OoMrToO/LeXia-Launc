@@ -177,14 +177,13 @@ class Ui(private val ctx: Context) {
         t.setPadding(u(height * 0.6f), 0, u(height * 0.6f), 0)
         t.isFocusable = true
         t.isClickable = true
+        // Made once per button and swapped on focus (not built anew at every move of the remote).
+        val on = round(Color.WHITE, height / 2)
+        val off = if (primary) glass(Color.argb(64, 255, 255, 255), height / 2, 2, 1.25f) else glass(C.GLASS, height / 2, 2, 0.8f)
         fun style(f: Boolean) {
             // Only the selected button is white: a "main" one is a brighter glass with a white rim
             // (a near-white plate looked selected, and the remote's place was lost; TV, 24 Kasım).
-            t.background = when {
-                f -> round(Color.WHITE, height / 2)
-                primary -> round(Color.argb(64, 255, 255, 255), height / 2, 2, Color.argb(150, 255, 255, 255))
-                else -> round(C.GLASS, height / 2, 1)
-            }
+            t.background = if (f) on else off
             t.setTextColor(if (f) C.INK else C.TEXT)
         }
         style(false)
@@ -315,6 +314,10 @@ class Ui(private val ctx: Context) {
     }
 
     /** Round glass button with a vector icon. */
+    /** LeXia's Liquid Glass plate: translucent, a sheen at the top, a rim of light (see [LiquidGlass]). */
+    fun glass(fill: Int, radius: Number, rim: Number = 2, strength: Float = 1f): LiquidGlass =
+        LiquidGlass(fill, uf(radius), maxOf(1f, uf(rim)), strength = strength)
+
     fun iconButton(res: Int, size: Int = 64): FrameLayout {
         val box = FrameLayout(ctx)
         box.isFocusable = true
@@ -324,8 +327,10 @@ class Ui(private val ctx: Context) {
         val pad = u(size * 0.24f)
         img.setPadding(pad, pad, pad, pad)
         box.addView(img, fl(match, match))
+        val on = round(Color.WHITE, size / 2)
+        val off = glass(C.GLASS, size / 2, 2, 0.8f)
         fun style(f: Boolean) {
-            box.background = if (f) round(Color.WHITE, size / 2) else round(C.GLASS, size / 2, 2)
+            box.background = if (f) on else off
             img.setColorFilter(if (f) C.INK else C.TEXT, PorterDuff.Mode.SRC_IN)
         }
         style(false)

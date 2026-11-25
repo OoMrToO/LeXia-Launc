@@ -109,6 +109,7 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
     private lateinit var weatherBox: LinearLayout
     private lateinit var weatherIcon: ImageView
+    private lateinit var weatherNote: TextView
     private lateinit var tempView: TextView
     private lateinit var netImg: ImageView
     private lateinit var gear: View
@@ -343,6 +344,11 @@ class MainActivity : Activity() {
     private lateinit var heroTrailer: HeroTrailer
     private val trailerDelay = Runnable { startHeroTrailer() }
     private val idleTimer = Runnable { enterIdle() }
+    /** The top bar's capsule of glass behind the buttons, shown while they are open. */
+    private var barGlass: LiquidGlass? = null
+    private var barGlassAnim: ValueAnimator? = null
+    /** The side panel's glass, whose light glides as the remote moves over the apps. */
+    private var sideGlass: LiquidGlass? = null
     /** The screensaver's trailer marathon: trailers play until this time, then the pictures come back. */
     private var saverTrailersUntil = 0L
     /** The screensaver's trailer on screen has shown (it played, not failed). */
@@ -622,8 +628,9 @@ class MainActivity : Activity() {
     }
 
     private fun rollingClock(size: Int, weight: Int): RollingClock {
-        val c = RollingClock(this, ui, size, weight, C.TEXT)
+        val c = RollingClock(this, ui, size, weight, C.TEXT, light = true)
         c.use24 = prefs.clock24
+        c.warmAtNight = true
         rolling.add(c)
         return c
     }
@@ -658,6 +665,8 @@ class MainActivity : Activity() {
         greeting.ellipsize = TextUtils.TruncateAt.END
         dateText = ui.text("", 17, C.TEXT3, 600)
         dateText.letterSpacing = 0.18f
+        dateText.maxLines = 1
+        dateText.ellipsize = TextUtils.TruncateAt.END
         col.addView(greeting, ui.ll(ui.match, ui.wrap))
         col.addView(dateText, ui.ll(ui.wrap, ui.wrap, top = 6))
         // The greeting takes all the free space on the left, so it is never cut short.
@@ -727,12 +736,16 @@ class MainActivity : Activity() {
         weatherBox.addView(weatherIcon, ui.ll(ui.u(34), ui.u(34)))
         tempView = ui.text("", 30, C.TEXT, 500)
         weatherBox.addView(tempView, ui.ll(ui.wrap, ui.wrap, left = 10))
+        // "1 saat içinde yağmur": only when the weather is about to change.
+        weatherNote = ui.text("", 18, C.TEXT2, 600)
+        weatherNote.visibility = View.GONE
+        weatherBox.addView(weatherNote, ui.ll(ui.wrap, ui.wrap, left = 14))
         val sep = View(this)
         sep.setBackgroundColor(C.STROKE)
         weatherBox.addView(sep, ui.ll(maxOf(1, ui.u(2)), ui.u(30), left = 26, right = 26))
         cluster.addView(weatherBox)
 
-        barClock = rollingClock(34, 500)
+        barClock = rollingClock(38, 400)
         cluster.addView(barClock)
         // A new notice: a small pink dot beside the clock; the bell itself opens with the buttons.
         newDot = View(this)
@@ -743,7 +756,7 @@ class MainActivity : Activity() {
 
         // "Ne izlesem?": a die among the buttons.
         val ask = ui.iconButton(R.drawable.ic_dice, 60)
-        (ask.layoutParams as LinearLayout.LayoutParams).leftMargin = ui.u(30)
+        (ask.layoutParams as LinearLayout.LayoutParams).leftMargin = 0
         ask.setOnClickListener { askWhatToWatch() }
         ask.contentDescription = "Ne izlesem?"
         tools.addView(ask)
@@ -784,10 +797,23 @@ class MainActivity : Activity() {
         g.setOnClickListener { openPanel() }
         tools.addView(g)
         gear = g
-        bar.addView(tools)
+        // The buttons sit in a capsule of Liquid Glass that appears with them (tvOS 26's top bar);
+        // its rim light glides as the remote moves along.
+        val capsule = ui.glass(Color.argb(46, 255, 255, 255), 44, 2)
+        capsule.alpha = 0
+        barGlass = capsule
+        tools.background = capsule
+        tools.setPadding(ui.u(12), ui.u(8), ui.u(12), ui.u(8))
+        tools.clipChildren = false
+        tools.clipToPadding = false
+        bar.addView(tools, ui.ll(ui.wrap, ui.wrap, left = 26))
         // At rest the buttons are closed: once measured, the clock moves over to the right edge.
         tools.post { setBarOpen(false, animate = false) }
-        bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now -> setBarOpen(now != null && isInBar(now)) }
+        bar.viewTreeObserver.addOnGlobalFocusChangeListener { _, now ->
+            val inBar = now != null && isInBar(now)
+            if (inBar && barOpen) barGlass?.sweep(Fx.lastDir)
+            setBarOpen(inBar)
+        }
         return bar
     }
 
@@ -827,6 +853,15 @@ class MainActivity : Activity() {
     private fun setBarOpen(open: Boolean, animate: Boolean = true) {
         if (!::barTools.isInitialized || (open == barOpen && animate)) return
         barOpen = open
+        barGlass?.let { glass ->
+            barGlassAnim?.cancel()
+            if (!animate || Fx.lite) glass.alpha = if (open) 255 else 0
+            else barGlassAnim = ValueAnimator.ofInt(glass.alpha, if (open) 255 else 0).apply {
+                duration = if (open) 320L else 260L
+                addUpdateListener { glass.alpha = it.animatedValue as Int }
+                start()
+            }
+        }
         val w = barTools.width.toFloat()
         val ease = DecelerateInterpolator(2f)
         barCluster.animate().cancel()
@@ -1653,7 +1688,7 @@ class MainActivity : Activity() {
 
         val card = ui.vbox()
         card.setPadding(ui.u(48), ui.u(40), ui.u(56), ui.u(40))
-        card.background = ui.round(Color.argb(ui.panelAlpha(), 0x18, 0x18, 0x1E), D.PANEL, 1, Color.argb(50, 255, 255, 255))
+        card.background = ui.glass(Color.argb(ui.panelAlpha(), 0x18, 0x18, 0x1E), D.PANEL, 2)
         card.elevation = ui.uf(40)
         val name = prefs.name.trim()
         card.addView(ui.text(if (name.isEmpty()) "Günaydın" else "Günaydın, $name", 46, C.TEXT, 700))
@@ -1800,6 +1835,9 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         panel.background = bg
+        // Liquid Glass over it: the sheen and the rim of light, which glides as the remote moves.
+        val glass = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r))
+        panel.foreground = glass
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))
@@ -1808,6 +1846,7 @@ class MainActivity : Activity() {
         var tintNow = base
         var tintAnim: ValueAnimator? = null
         fun tint(img: ImageView?) {
+            glass.sweep(Fx.lastDir)
             if (Fx.lite) return
             val bmp = (img?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
             val a = bmp?.let { Fx.accent(it) } ?: 0
@@ -2834,6 +2873,33 @@ class MainActivity : Activity() {
         return col
     }
 
+    private fun colorAction(code: Int): String? {
+        val color = when (code) {
+            KeyEvent.KEYCODE_PROG_RED -> "red"
+            KeyEvent.KEYCODE_PROG_GREEN -> "green"
+            KeyEvent.KEYCODE_PROG_YELLOW -> "yellow"
+            KeyEvent.KEYCODE_PROG_BLUE -> "blue"
+            else -> return null
+        }
+        return prefs.colorKey(color).takeIf { it != "none" }
+    }
+
+    private fun runColorAction(act: String) {
+        when (act) {
+            "night" -> askWhatToWatch()
+            "bell" -> openNotices()
+            "history" -> openHistory()
+            "explore" -> openExplore()
+            "search" -> openSearch()
+            "apps" -> if (appsSide()) openSideApps(currentFocus) else openAllApps()
+            "calendar" -> {
+                idleOff()
+                startActivity(Intent(this, CalendarActivity::class.java))
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            }
+        }
+    }
+
     private fun openHistory() {
         closeMenu(false)
         idleOff()
@@ -2898,6 +2964,10 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
         panel.background = bg
+        val glass = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f))
+        glass.light = 0.12f
+        panel.foreground = glass
+        sideGlass = glass
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(40), ui.u(64), ui.u(40), ui.u(36))
@@ -3018,6 +3088,7 @@ class MainActivity : Activity() {
                 .translationZ(if (f) ui.uf(24) else 0f).translationY(if (f) -ui.uf(4) else 0f)
                 .setDuration(if (Fx.lite) 0L else D.FAST).setInterpolator(DecelerateInterpolator(2f)).start()
             gloss.animate().alpha(if (f) 1f else 0f).setDuration(D.FAST).start()
+            if (f) sideGlass?.sweep(Fx.lastDir)
             name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ui.uf(4) else 0f).setDuration(D.FAST).start()
         }
         return col
@@ -3669,7 +3740,7 @@ class MainActivity : Activity() {
         layer.isClickable = true
 
         val card = ui.vbox()
-        card.background = ui.round(Color.argb(ui.panelAlpha() - 23, 0x1E, 0x1E, 0x22), 36, 1)
+        card.background = ui.glass(Color.argb(ui.panelAlpha() - 23, 0x1E, 0x1E, 0x22), 36, 2)
         card.setPadding(ui.u(28), ui.u(32), ui.u(28), ui.u(24))
         card.elevation = ui.uf(40)
         card.clipChildren = false
@@ -3704,6 +3775,7 @@ class MainActivity : Activity() {
         val r = ui.uf(36)
         bg.cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         panel.background = bg
+        panel.foreground = LiquidGlass(0, 0f, maxOf(1f, ui.uf(2)), floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r))
         panel.elevation = ui.uf(40)
         panel.clipChildren = false
         panel.setPadding(ui.u(44), ui.u(70), ui.u(40), ui.u(40))
@@ -3850,6 +3922,16 @@ class MainActivity : Activity() {
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN) Sleep.onKey()
+        // The remote's coloured keys open what Ayarlar › Renkli tuşlar says.
+        colorAction(event.keyCode)?.let { act ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && updateWall == null) {
+                if (idle) exitIdle()
+                if (::heroStage.isInitialized) heroStage.wake()
+                closeMenu(false)
+                runColorAction(act)
+            }
+            return true
+        }
         // The trailer had the whole screen: the first key brings the home screen back. OK opens
         // the film, Back only wakes; the arrows go on and move as usual.
         if (::heroStage.isInitialized && event.action == KeyEvent.ACTION_DOWN) {
@@ -4057,7 +4139,10 @@ class MainActivity : Activity() {
         ambientWeather.visibility = if (w) View.VISIBLE else View.GONE
         if (w) {
             ambientTemp.text = tempView.text
-            if (Fx.weatherIcon != 0) ambientWeatherIcon.setImageResource(Fx.weatherIcon)
+            if (Fx.weatherIcon != 0) {
+                ambientWeatherIcon.setImageResource(Fx.weatherIcon)
+                liveIcon(ambientWeatherIcon, Fx.weatherIcon)
+            }
         }
         // A big clock needs room so the weather moves left of it.
         (ambientWeather.layoutParams as LinearLayout.LayoutParams).rightMargin = ui.u(if (big) 110 else 40)
@@ -4699,6 +4784,8 @@ class MainActivity : Activity() {
                 logoView.setImageBitmap(logo)
                 logoView.visibility = View.VISIBLE
                 titleView.visibility = View.GONE
+                // A thin light crosses the film's logo as it comes.
+                logoView.postDelayed({ Fx.shine(logoView) }, 500)
             } else {
                 logoView.visibility = View.GONE
                 titleView.visibility = View.VISIBLE
@@ -4926,6 +5013,74 @@ class MainActivity : Activity() {
 
     // ---------- Weather, network, greeting ----------
 
+    /** "yağmur", "kar", "fırtına" for weather that falls; null for the rest. */
+    private fun kindOf(code: Int): String? = when (code) {
+        in 51..67, in 80..82 -> "yağmur"
+        in 71..77, 85, 86 -> "kar"
+        in 95..99 -> "fırtına"
+        else -> null
+    }
+
+    /** The weather in a word, for the line under the greeting: "Yağmurlu", "Açık"… */
+    private fun weatherWord(code: Int): String = when (code) {
+        0 -> "Açık"
+        1, 2 -> "Parçalı bulutlu"
+        3 -> "Bulutlu"
+        45, 48 -> "Sisli"
+        in 51..67 -> "Yağmurlu"
+        in 80..82 -> "Sağanak"
+        in 71..77, 85, 86 -> "Karlı"
+        in 95..99 -> "Fırtınalı"
+        else -> "Bulutlu"
+    }
+
+    /**
+     * The weather icon lives, as in Apple's Weather: the sun turns slowly, the moon glows softly,
+     * a cloud drifts, rain and snow bob. Still on weak TVs.
+     */
+    private fun liveIcon(v: ImageView, icon: Int) {
+        (v.getTag(R.id.lexia_anim) as? android.animation.Animator)?.cancel()
+        v.rotation = 0f
+        v.translationX = 0f
+        v.translationY = 0f
+        v.alpha = 1f
+        if (Fx.lite) return
+        val a: android.animation.Animator = when (icon) {
+            R.drawable.ic_sun -> ObjectAnimator.ofFloat(v, View.ROTATION, 0f, 360f).apply {
+                duration = 40_000
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = android.view.animation.LinearInterpolator()
+            }
+            R.drawable.ic_moon -> ObjectAnimator.ofFloat(v, View.ALPHA, 1f, 0.7f).apply {
+                duration = 3_000
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+            R.drawable.ic_cloud, R.drawable.ic_fog -> ObjectAnimator.ofFloat(v, View.TRANSLATION_X, -ui.uf(3), ui.uf(3)).apply {
+                duration = 4_000
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+            else -> ObjectAnimator.ofFloat(v, View.TRANSLATION_Y, -ui.uf(2), ui.uf(2)).apply {
+                duration = 1_200
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+        }
+        v.setTag(R.id.lexia_anim, a)
+        a.start()
+    }
+
+    private fun liveIcons(run: Boolean) {
+        for (v in listOfNotNull(
+            if (::weatherIcon.isInitialized) weatherIcon else null,
+            if (::ambientWeatherIcon.isInitialized) ambientWeatherIcon else null
+        )) {
+            val a = v.getTag(R.id.lexia_anim) as? android.animation.Animator ?: continue
+            if (run) a.resume() else a.pause()
+        }
+    }
+
     private fun weatherIconFor(code: Int, day: Boolean): Int = when (code) {
         0, 1 -> if (day) R.drawable.ic_sun else R.drawable.ic_moon
         45, 48 -> R.drawable.ic_fog
@@ -4953,10 +5108,19 @@ class MainActivity : Activity() {
             if (lat == null || lon == null) return@Thread
             val body = Net.get(
                 "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
-                    "&current=temperature_2m,weather_code,is_day&timezone=auto"
+                    "&current=temperature_2m,weather_code,is_day&hourly=weather_code&forecast_hours=3&timezone=auto"
             ) ?: return@Thread
             try {
                 val cur = JSONObject(body).getJSONObject("current")
+                // What the next two hours bring, when it is not what falls now.
+                val soon = try {
+                    val hours = JSONObject(body).getJSONObject("hourly").getJSONArray("weather_code")
+                    val now = cur.getInt("weather_code")
+                    (1 until minOf(3, hours.length())).firstNotNullOfOrNull { i ->
+                        val k = kindOf(hours.getInt(i))
+                        if (k != null && k != kindOf(now)) i to k else null
+                    }
+                } catch (_: Exception) { null }
                 val temp = cur.getDouble("temperature_2m").roundToInt()
                 val icon = weatherIconFor(cur.getInt("weather_code"), cur.optInt("is_day", 1) == 1)
                 val code = cur.getInt("weather_code")
@@ -4968,12 +5132,16 @@ class MainActivity : Activity() {
                     }
                     tempView.text = "$temp°"
                     weatherIcon.setImageResource(icon)
+                    liveIcon(weatherIcon, icon)
+                    weatherNote.text = soon?.let { (h, k) -> "${if (h <= 1) "1 saat" else "$h saat"} içinde $k" }.orEmpty()
+                    weatherNote.visibility = if (soon != null) View.VISIBLE else View.GONE
                     Fx.weatherTemp = "$temp°"
                     Fx.weatherIcon = icon
                     weatherCode = code
                     weatherTempC = temp
                     useMood()
                     if (prefs.weather) weatherBox.visibility = View.VISIBLE
+                    updateGreeting()
                 }
             } catch (e: Exception) {
             }
@@ -5025,7 +5193,24 @@ class MainActivity : Activity() {
         }
         greeting.text = if (prefs.name.isEmpty()) hello else "$hello, ${prefs.name}"
         greeting.visibility = if (prefs.greet) View.VISIBLE else View.GONE
-        dateText.text = SimpleDateFormat("d MMMM EEEE", tr).format(c.time).uppercase(tr)
+        dateText.text = smartLine(c).uppercase(tr)
+    }
+
+    /**
+     * The line under the greeting says what matters most today: tonight's plan, a followed
+     * series' new episode, or else the date and the weather in a word.
+     */
+    private fun smartLine(c: Calendar): String {
+        MovieNight.get(prefs)?.takeIf { it.at > System.currentTimeMillis() }?.let { plan ->
+            return "${MovieNight.day(plan.at)}  ·  ${plan.film.title}"
+        }
+        prefs.watchlist.firstOrNull { p -> Episodes.of(p)?.let { Episodes.daysUntil(it.date) == 0 } == true }?.let { p ->
+            val n = Episodes.of(p)
+            return "Bugün ${n?.let { Episodes.what(it).lowercase(tr) } ?: "yeni bölüm"}  ·  ${p.title}"
+        }
+        val day = SimpleDateFormat("d MMMM EEEE", tr).format(c.time)
+        val w = if (prefs.weather && tempView.text.isNotEmpty() && weatherCode >= 0) "  ·  ${weatherWord(weatherCode)}, ${tempView.text}" else ""
+        return day + w
     }
 
     // ---------- Updates ----------
@@ -5064,6 +5249,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        liveIcons(true)
         if (level == 0 && !idle) queueHeroTrailer()
         // Ayarlar › Görünüm › Büyük yazı changed: build the screen again with the new text size.
         if (prefs.bigText != builtBig) {
@@ -5214,6 +5400,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        // The living weather icons rest while another page or app is on screen: no work for nothing.
+        liveIcons(false)
         if (::heroStage.isInitialized) heroStage.wake()
         stopHeroTrailer()
         if (::peek.isInitialized) peek.pause()

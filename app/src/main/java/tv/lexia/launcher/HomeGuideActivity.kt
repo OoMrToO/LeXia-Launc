@@ -156,7 +156,7 @@ class HomeGuideActivity : Activity() {
     /** A numbered glass card; the number turns into a check when the guide is done. */
     private fun step(n: Int, title: String, text: String): View {
         val card = ui.vbox()
-        card.background = ui.round(C.GLASS, D.PANEL, 1)
+        card.background = ui.glass(C.GLASS, D.PANEL, 2)
         card.setPadding(ui.u(34), ui.u(32), ui.u(34), ui.u(36))
         val dot = FrameLayout(this)
         dot.background = ui.round(Color.parseColor("#E6FFFFFF"), 26)

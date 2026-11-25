@@ -48,6 +48,66 @@ object Fx {
             }.start()
     }
 
+    /**
+     * A thin, slanted light crosses a film's logo once, only over its letters (as on a poster
+     * catching the light). Nothing on weak TVs.
+     */
+    fun shine(img: android.widget.ImageView) {
+        if (lite || img.visibility != android.view.View.VISIBLE || !img.isAttachedToWindow) return
+        val base = img.drawable ?: return
+        if (base is Shine) return
+        val glow = Shine(base)
+        img.setImageDrawable(glow)
+        android.animation.ValueAnimator.ofFloat(-0.35f, 1.35f).apply {
+            duration = 1100
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                glow.at = it.animatedValue as Float
+                glow.invalidateSelf()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (img.drawable === glow) img.setImageDrawable(base)
+                }
+            })
+            start()
+        }
+    }
+
+    /** The logo, with a band of light drawn only where the logo is ([at]: 0..1 across it). */
+    private class Shine(private val base: android.graphics.drawable.Drawable) : android.graphics.drawable.Drawable() {
+        var at = -1f
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+        }
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val b = bounds
+            val layer = canvas.saveLayer(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat(), null)
+            base.bounds = b
+            base.draw(canvas)
+            if (at > -0.3f && at < 1.3f) {
+                val w = b.width().toFloat()
+                val x = b.left + w * at
+                val band = w * 0.22f
+                paint.shader = android.graphics.LinearGradient(
+                    x - band, b.top.toFloat(), x + band * 0.4f, b.bottom.toFloat(),
+                    intArrayOf(Color.TRANSPARENT, Color.argb(210, 255, 255, 255), Color.TRANSPARENT),
+                    floatArrayOf(0f, 0.5f, 1f), android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(b, paint)
+            }
+            canvas.restoreToCount(layer)
+        }
+
+        override fun getIntrinsicWidth() = base.intrinsicWidth
+        override fun getIntrinsicHeight() = base.intrinsicHeight
+        override fun setAlpha(alpha: Int) = base.setAlpha(alpha)
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = base.setColorFilter(colorFilter)
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+    }
+
     private val accents = java.util.WeakHashMap<Bitmap, Int>()
 
     /** [a] moved toward [b] by [t] (0..1), channel by channel. */
@@ -477,7 +537,7 @@ object Fx {
  * Clock whose digits slide up when they change, like on Apple TV.
  * Follows the 12/24 hour setting through [use24].
  */
-class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, color: Int) : LinearLayout(ctx) {
+class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, private val color: Int, light: Boolean = false) : LinearLayout(ctx) {
     private val digits = ArrayList<TextSwitcher>()
     private val suffix: TextView
     private val handler = Handler(Looper.getMainLooper())
@@ -486,6 +546,23 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
             field = v
             update(false)
         }
+
+    /** At night (22:00 to 06:00) the digits turn a warm white, kinder to the eyes in a dark room. */
+    var warmAtNight = false
+        set(v) {
+            field = v
+            tint()
+        }
+    private var tinted = 0
+
+    private fun tint() {
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val c = if (warmAtNight && (h >= 22 || h < 6)) Color.parseColor("#FFE3BC") else color
+        if (c == tinted) return
+        tinted = c
+        for (s in digits) for (i in 0 until s.childCount) (s.getChildAt(i) as? TextView)?.setTextColor(c)
+        suffix.setTextColor(c)
+    }
     private val tick = object : Runnable {
         override fun run() {
             update(true)
@@ -501,6 +578,11 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
             val s = TextSwitcher(ctx)
             s.setFactory {
                 val t = ui.text("", size, color, weight)
+                // tvOS: thin, wide digits.
+                if (light) {
+                    t.typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+                    t.letterSpacing = 0.02f
+                }
                 t.gravity = Gravity.CENTER
                 // Equal-width digits so the time doesn't jiggle when it changes.
                 t.fontFeatureSettings = "tnum"
@@ -545,6 +627,7 @@ class RollingClock(ctx: Context, private val ui: Ui, size: Int, weight: Int, col
         }
         suffix.text = s
         suffix.visibility = if (s.isEmpty()) View.GONE else View.VISIBLE
+        tint()
     }
 
     override fun onAttachedToWindow() {

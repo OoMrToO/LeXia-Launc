@@ -81,7 +81,8 @@ object MovieNight {
         Dialogs.list(a, "Akşam planı", names.map { it to "" }, subtitle = film.title, icon = R.drawable.ic_moon) { i ->
             val o = JSONObject().put("at", times[i]).put("film", film.toJson())
             prefs.movieNight = o.toString()
-            Glass.toast(a, "Akşam planı: ${names[i]} · ${film.title}")
+            // The plan as a cinema ticket.
+            Ticket.show(a, film, times[i])
             done()
         }
     }
@@ -115,18 +116,35 @@ object MovieNight {
         val title = ui.text(film.title, 84, C.TEXT, 800)
         title.letterSpacing = -0.02f
         title.maxLines = 2
-        col.addView(title, ui.ll(ui.u(1200), ui.wrap, top = 14))
+        col.addView(title, ui.ll(ui.u(860), ui.wrap, top = 14))
         val bits = ArrayList<String>()
         if (film.imdb > 0) bits.add(String.format(Locale("tr", "TR"), "IMDb %.1f", film.imdb))
         if (film.meta.isNotEmpty()) bits.add(film.meta)
         col.addView(ui.text(bits.joinToString("  ·  "), 24, C.TEXT2, 500), ui.ll(ui.wrap, ui.wrap, top = 14))
         col.addView(ui.text("Işıkları kıs, keyifli seyirler.", 28, C.TEXT, 400), ui.ll(ui.wrap, ui.wrap, top = 26))
 
+        // The ticket waits at the bottom right; "Filmi başlat" tears its stub off and starts the film.
+        val ticket = Ticket.build(a, ui, film, plan.at)
+        val tlp = ui.fl(ui.wrap, ui.wrap, Gravity.BOTTOM or Gravity.END)
+        tlp.rightMargin = ui.u(30)
+        tlp.bottomMargin = ui.u(70)
+        ticket.view.scaleX = 0.78f
+        ticket.view.scaleY = 0.78f
+
         val buttons = ui.hbox()
         buttons.clipChildren = false
         buttons.clipToPadding = false
+        val start = ui.pill("▶   Filmi başlat", 64, 23, primary = true)
+        start.setOnClickListener {
+            Ticket.tear(ticket.stub) {
+                clear(prefs)
+                d.dismiss()
+                MediaSourcePickerActivity.open(a, film)
+            }
+        }
+        buttons.addView(start)
         if (film.trailer.isNotEmpty()) {
-            val tr = ui.pill("▶   Fragman", 64, 23, primary = true)
+            val tr = ui.pill("▶   Fragman", 64, 23)
             tr.setOnClickListener { TrailerActivity.open(a, film) }
             buttons.addView(tr)
         }
@@ -148,6 +166,7 @@ object MovieNight {
         clp.leftMargin = ui.u(130)
         clp.bottomMargin = ui.u(110)
         root.addView(col, clp)
+        root.addView(ticket.view, tlp)
         d.setContentView(root)
         d.setOnCancelListener { clear(prefs) }
         d.show()

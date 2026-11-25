@@ -113,6 +113,7 @@ class SettingsActivity : Activity() {
             gradientRadius = ui.uf(200)
             setStroke(maxOf(1, ui.u(1.5f)), Color.argb(40, 255, 255, 255))
         }
+        disc.foreground = LiquidGlass(0, ui.uf(400), maxOf(1f, ui.uf(2)), strength = 0.9f)
         disc.elevation = ui.uf(18)
         disc.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
         disc.addView(bigIcon, FrameLayout.LayoutParams(ui.u(190), ui.u(190), Gravity.CENTER))
@@ -276,7 +277,8 @@ class SettingsActivity : Activity() {
         g.clipChildren = false
         g.clipToPadding = false
         g.setPadding(ui.u(8), ui.u(8), ui.u(8), ui.u(8))
-        g.background = ui.round(Color.argb(22, 255, 255, 255), 30, 1, Color.argb(24, 255, 255, 255))
+        // Liquid Glass: the light on the pane's rim glides as the remote moves through it.
+        g.background = ui.glass(Color.argb(22, 255, 255, 255), 30, 2, 0.7f)
         list.addView(g, ui.ll(ui.match, ui.wrap, bottom = 6))
         group = g
         return g
@@ -436,6 +438,7 @@ class SettingsActivity : Activity() {
             focused = f
             style()
             if (f) {
+                ((v.parent as? View)?.background as? LiquidGlass)?.sweep(Fx.lastDir)
                 glideTo(v)
                 when {
                     r.icon != null -> showIcon(0, r.icon, true)
@@ -667,6 +670,7 @@ class SettingsActivity : Activity() {
                 value = { prefs.platforms.size.let { if (it == 0) "Hepsi" else "$it seçili" } }),
             sub("Ana ekran satırları", "Top 10, sinema ve Listem satırlarının sırası; istemediğini gizle.", { rowsPage() }),
             sub("Uygulamalar", "Ana ekrana ekle ya da çıkar, yeri, sırası ve TV açılınca ne olacağı.", { appsPage() }),
+            sub("Renkli tuşlar", "Kumandadaki kırmızı, yeşil, sarı ve mavi tuş ana ekranda ne açsın.", { colorKeysPage() }),
             sub("Ekran koruyucu ve uyku", "Ne zaman başlasın, nasıl görünsün, uyku zamanlayıcısı ve gece uykusu.", { sleepPage() },
                 value = { if (Sleep.minutesLeft > 0) "Uyku ${Sleep.endsText(prefs.clock24)}" else if (Sleep.afterPlayback) "Film bitince uyku" else "" }),
 
@@ -1238,6 +1242,21 @@ class SettingsActivity : Activity() {
             )
         }
         items
+    }
+
+    private fun colorKeysPage() = Page(
+        "Renkli tuşlar", R.drawable.ic_tv,
+        keys = listOf("keyRed", "keyGreen", "keyYellow", "keyBlue")
+    ) {
+        val actions = listOf("night", "bell", "history", "explore", "search", "apps", "calendar", "none")
+        val names = listOf("Sinema Gecesi", "Bildirimler", "İzlediklerim", "Keşfet", "Arama", "Uygulamalar", "Takvim", "Hiçbiri")
+        listOf(
+            Note("Ana ekranda kumandanın renkli tuşlarına basınca seçtiğin yer hemen açılır."),
+            choice("Kırmızı tuş", "", actions, names, { prefs.colorKey("red") }, { prefs.setColorKey("red", it) }),
+            choice("Yeşil tuş", "", actions, names, { prefs.colorKey("green") }, { prefs.setColorKey("green", it) }),
+            choice("Sarı tuş", "", actions, names, { prefs.colorKey("yellow") }, { prefs.setColorKey("yellow", it) }),
+            choice("Mavi tuş", "", actions, names, { prefs.colorKey("blue") }, { prefs.setColorKey("blue", it) })
+        )
     }
 
     private fun sleepPage() = Page(

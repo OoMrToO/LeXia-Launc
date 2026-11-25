@@ -149,3 +149,7 @@ stats text
 heroTrailerHd bool
 weekendPlan text
 cinemaSeen text
+keyRed text
+keyGreen text
+keyYellow text
+keyBlue text

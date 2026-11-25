@@ -852,7 +852,7 @@ class TrailerActivity : Activity() {
         row.addView(buttons, ui.ll(0, ui.wrap, weight = 1f))
         nextCard = ui.hbox()
         nextCard.setPadding(ui.u(10), ui.u(10), ui.u(24), ui.u(10))
-        nextCard.background = ui.round(Color.argb(140, 20, 20, 26), D.PLATE, 1, Color.argb(40, 255, 255, 255))
+        nextCard.background = ui.glass(Color.argb(140, 20, 20, 26), D.PLATE, 2, 0.8f)
         nextThumb = ImageView(this)
         nextThumb.scaleType = ImageView.ScaleType.CENTER_CROP
         nextThumb.background = ui.round(Color.parseColor("#1C2A3A"), 10)
@@ -1266,6 +1266,19 @@ class TrailerActivity : Activity() {
                 return true
             }
             if (event.action == KeyEvent.ACTION_DOWN) showInfo()
+            // Left and right step from button to button by hand: the buttons change width as they
+            // open and close, and Android's own search sometimes found nothing to the right then,
+            // so one press did not move (TV photo, 25 Kasım: "uzun basmam gerekiyor").
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val kids = (0 until buttons.childCount).map { buttons.getChildAt(it) }
+                        .filter { it.visibility == View.VISIBLE && it.isFocusable }
+                    val at = kids.indexOfFirst { it.hasFocus() || it.isFocused }
+                    val next = kids.getOrNull(at + if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1)
+                    next?.requestFocus()
+                }
+                return true
+            }
             return super.dispatchKeyEvent(event)
         }
         if (event.action != KeyEvent.ACTION_DOWN) {
@@ -1651,7 +1664,7 @@ class TrailerActivity : Activity() {
         val box = ui.vbox()
         box.isFocusable = true
         box.isClickable = true
-        box.background = ui.round(Color.argb(160, 20, 20, 26), 24, 1, Color.argb(40, 255, 255, 255))
+        box.background = ui.glass(Color.argb(160, 20, 20, 26), 24, 2)
         box.clipToOutline = true
         val pic = FrameLayout(this)
         val img = ImageView(this)
@@ -1967,7 +1980,7 @@ class TrailerActivity : Activity() {
         }
         val panel = ui.vbox()
         panel.setPadding(ui.u(40), ui.u(56), ui.u(40), ui.u(40))
-        panel.background = ui.round(Color.argb(ui.panelAlpha(), 0x16, 0x16, 0x1B), D.PANEL)
+        panel.background = ui.glass(Color.argb(ui.panelAlpha(), 0x16, 0x16, 0x1B), D.PANEL, 2)
         panel.addView(ui.label("OYUNCULAR"), ui.ll(ui.wrap, ui.wrap, bottom = 20))
         for (c in p.cast.take(7)) {
             val row = ui.hbox()

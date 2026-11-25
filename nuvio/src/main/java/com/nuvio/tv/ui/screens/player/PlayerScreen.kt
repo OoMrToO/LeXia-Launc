@@ -1541,8 +1541,8 @@ fun PlayerScreen(
                 .reportSubtitleClearance(subtitleClearanceGapPx) { postPlayClearancePx = it },
         )
 
-        // Parental guide overlay (shows when video first starts playing)
-        ParentalGuideOverlay(
+        // LeXia: LeXia's content card in place of ParentalGuideOverlay (same arguments).
+        LeXiaParentalGuide(
             warnings = uiState.parentalWarnings,
             isVisible = uiState.showParentalGuide,
             onAnimationComplete = {

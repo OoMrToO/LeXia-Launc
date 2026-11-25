@@ -145,6 +145,10 @@ android.testOptions.unitTests.isIncludeAndroidResources = true
 android.testOptions.unitTests.all {
     it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
     it.systemProperty("roborazzi.test.record", "true")
+    // Robolectric fetches its Android jars from Maven Central while the tests run, outside Gradle's
+    // cache; Central answers CI with 429 (Too Many Requests) again and again. Google's mirror of
+    // Central serves the same files.
+    it.systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2")
     System.getProperty("lexia.repo")?.let { repo -> it.systemProperty("lexia.repo", repo) }
 }
 dependencies {

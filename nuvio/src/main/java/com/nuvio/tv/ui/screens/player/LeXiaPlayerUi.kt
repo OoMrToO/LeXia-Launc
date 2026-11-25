@@ -122,6 +122,132 @@ internal fun lexiaSpan(ms: Long): String {
     }
 }
 
+/**
+ * As the film starts: for three seconds, top right, a small glass card with what really plays
+ * ("4K  ·  Dolby Vision  ·  Dolby Atmos 5.1"), the first in the film's colour, as on Apple TV and
+ * Netflix. Once per opening; nothing when the decoder tells nothing.
+ */
+@Composable
+internal fun LeXiaQualityCard(viewModel: PlayerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    var started by remember { mutableStateOf(false) }
+    if (!started && state.isPlaying && !state.showLoadingOverlay) started = true
+    var items by remember { mutableStateOf(emptyList<String>()) }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(started) {
+        if (!started) return@LaunchedEffect
+        // After the opening has faded into the film.
+        delay(1800)
+        repeat(4) {
+            if (items.isEmpty()) {
+                items = lexiaQuality(viewModel.playerMediaInfo())
+                if (items.isEmpty()) delay(700)
+            }
+        }
+        if (items.isEmpty()) return@LaunchedEffect
+        shown = true
+        delay(3200)
+        shown = false
+    }
+    val accent = remember { lexiaAccent() }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+        AnimatedVisibility(shown, enter = fadeIn(tween(600)), exit = fadeOut(tween(700))) {
+            Row(
+                Modifier
+                    .padding(top = 28.dp, end = 34.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.06f))))
+                    .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.25f))), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items.forEachIndexed { i, label ->
+                    if (i > 0) Box(Modifier.size(3.dp).background(Color.White.copy(alpha = 0.5f), CircleShape))
+                    Text(
+                        label,
+                        style = TextStyle(
+                            fontSize = if (i == 0) 15.sp else 13.sp,
+                            fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium,
+                            letterSpacing = 0.4.sp,
+                            color = if (i == 0) lerp(accent, Color.White, 0.35f) else Color.White.copy(alpha = 0.92f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * As the film starts, top left: what it holds (violence, language, fear…) on a small card of
+ * LeXia's glass, a thin line in the film's colour beside it, as LeXia's trailer page shows it. It
+ * comes in softly, line by line, stays five seconds and goes; the controls coming up take it away.
+ */
+@Composable
+internal fun LeXiaParentalGuide(
+    warnings: List<ParentalWarning>,
+    isVisible: Boolean,
+    onAnimationComplete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (warnings.isEmpty()) return
+    val accent = remember { lexiaAccent() }
+    val shown = remember { androidx.compose.animation.core.Animatable(0f) }
+    var running by remember { mutableStateOf(false) }
+    LaunchedEffect(isVisible) {
+        if (isVisible && !running) {
+            running = true
+            shown.animateTo(1f, tween(600))
+            delay(5000)
+            shown.animateTo(0f, tween(500))
+            running = false
+            onAnimationComplete()
+        } else if (!isVisible && running) {
+            shown.snapTo(0f)
+            running = false
+            onAnimationComplete()
+        }
+    }
+    if (shown.value <= 0f) return
+    Row(
+        modifier
+            .padding(start = 36.dp, top = 28.dp)
+            .graphicsLayer {
+                alpha = shown.value
+                translationX = (1f - shown.value) * -16.dp.toPx()
+            }
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.40f))))
+            .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.18f))), RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .height((18 * warnings.size + 22).dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Brush.verticalGradient(listOf(lerp(accent, Color.White, 0.3f), accent.copy(alpha = 0.4f))))
+        )
+        Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "İÇERİK",
+                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp, color = lerp(accent, Color.White, 0.45f))
+            )
+            warnings.forEachIndexed { i, w ->
+                // Line by line, as the card comes in.
+                val step = ((shown.value - i * 0.08f) / 0.6f).coerceIn(0f, 1f)
+                Row(Modifier.alpha(step), verticalAlignment = Alignment.CenterVertically) {
+                    Text(w.label, style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f)))
+                    Text("  ·  ", style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.35f)))
+                    Text(w.severity, style = TextStyle(fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f)))
+                }
+            }
+        }
+    }
+}
+
 /** What really plays now, read from the decoder: "4K", "HDR10", "Dolby Atmos 5.1"… */
 internal fun lexiaQuality(info: PlayerMediaInfo): List<String> = buildList {
     val w = info.videoWidth ?: 0
