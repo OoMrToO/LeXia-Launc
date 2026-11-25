@@ -70,6 +70,7 @@ class LiquidGlass(
         path.reset()
         if (radii != null) path.addRoundRect(box, radii, Path.Direction.CW)
         else path.addRoundRect(box, radius, radius, Path.Direction.CW)
+        rimShader = null
         sheenPaint.shader = LinearGradient(
             0f, box.top, 0f, box.top + box.height() * 0.45f,
             Color.argb((34 * strength).toInt(), 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP
@@ -77,31 +78,35 @@ class LiquidGlass(
         shade()
     }
 
+    /** The rim's gradient, made once per size; the light moves by turning it ([shade]), nothing new per frame. */
+    private var rimShader: LinearGradient? = null
+    private val turn = android.graphics.Matrix()
+
     /** The rim's light: bright where [light] points, dim on the far side, a faint second glint opposite. */
     private fun shade() {
         if (box.isEmpty) return
-        val a = (light * 2 * Math.PI).toFloat()
         val cx = box.centerX()
         val cy = box.centerY()
-        val r = Math.hypot(box.width().toDouble(), box.height().toDouble()).toFloat() / 2f
-        val dx = -kotlin.math.cos(a) * r
-        val dy = -kotlin.math.sin(a) * r
-        fun white(alpha: Float) = Color.argb((alpha * strength).toInt().coerceIn(0, 255), 255, 255, 255)
-        rimPaint.shader = LinearGradient(
-            cx + dx, cy + dy, cx - dx, cy - dy,
-            intArrayOf(white(170f), white(40f), white(12f), white(70f)),
-            floatArrayOf(0f, 0.35f, 0.7f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        val shader = rimShader ?: run {
+            val r = Math.hypot(box.width().toDouble(), box.height().toDouble()).toFloat() / 2f
+            fun white(alpha: Float) = Color.argb((alpha * strength).toInt().coerceIn(0, 255), 255, 255, 255)
+            LinearGradient(
+                cx - r, cy, cx + r, cy,
+                intArrayOf(white(170f), white(40f), white(12f), white(70f)),
+                floatArrayOf(0f, 0.35f, 0.7f, 1f),
+                Shader.TileMode.CLAMP
+            ).also { rimShader = it; rimPaint.shader = it }
+        }
+        turn.setRotate(light * 360f, cx, cy)
+        shader.setLocalMatrix(turn)
     }
 
     override fun draw(canvas: Canvas) {
         if (box.isEmpty) return
         if (Color.alpha(fill) > 0) canvas.drawPath(path, fillPaint)
-        canvas.save()
-        canvas.clipPath(path)
-        canvas.drawRect(box, sheenPaint)
-        canvas.restore()
+        // The sheen fades out within the plate's top half, so it is drawn as the plate itself (no clip:
+        // clipping to a rounded shape is slow on TV graphics).
+        canvas.drawPath(path, sheenPaint)
         canvas.drawPath(path, rimPaint)
     }
 

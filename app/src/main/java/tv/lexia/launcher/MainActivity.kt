@@ -5071,6 +5071,16 @@ class MainActivity : Activity() {
         a.start()
     }
 
+    private fun liveIcons(run: Boolean) {
+        for (v in listOfNotNull(
+            if (::weatherIcon.isInitialized) weatherIcon else null,
+            if (::ambientWeatherIcon.isInitialized) ambientWeatherIcon else null
+        )) {
+            val a = v.getTag(R.id.lexia_anim) as? android.animation.Animator ?: continue
+            if (run) a.resume() else a.pause()
+        }
+    }
+
     private fun weatherIconFor(code: Int, day: Boolean): Int = when (code) {
         0, 1 -> if (day) R.drawable.ic_sun else R.drawable.ic_moon
         45, 48 -> R.drawable.ic_fog
@@ -5239,6 +5249,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        liveIcons(true)
         if (level == 0 && !idle) queueHeroTrailer()
         // Ayarlar › Görünüm › Büyük yazı changed: build the screen again with the new text size.
         if (prefs.bigText != builtBig) {
@@ -5389,6 +5400,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        // The living weather icons rest while another page or app is on screen: no work for nothing.
+        liveIcons(false)
         if (::heroStage.isInitialized) heroStage.wake()
         stopHeroTrailer()
         if (::peek.isInitialized) peek.pause()

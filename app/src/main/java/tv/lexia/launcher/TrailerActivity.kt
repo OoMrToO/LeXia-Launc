@@ -1266,6 +1266,19 @@ class TrailerActivity : Activity() {
                 return true
             }
             if (event.action == KeyEvent.ACTION_DOWN) showInfo()
+            // Left and right step from button to button by hand: the buttons change width as they
+            // open and close, and Android's own search sometimes found nothing to the right then,
+            // so one press did not move (TV photo, 25 Kasım: "uzun basmam gerekiyor").
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val kids = (0 until buttons.childCount).map { buttons.getChildAt(it) }
+                        .filter { it.visibility == View.VISIBLE && it.isFocusable }
+                    val at = kids.indexOfFirst { it.hasFocus() || it.isFocused }
+                    val next = kids.getOrNull(at + if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1)
+                    next?.requestFocus()
+                }
+                return true
+            }
             return super.dispatchKeyEvent(event)
         }
         if (event.action != KeyEvent.ACTION_DOWN) {
